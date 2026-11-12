@@ -27,7 +27,22 @@ function pickEmployeeId(raw: string | null): string | null {
   return token && EMPLOYEE_ID.test(token[1]) ? token[1] : null
 }
 
-/** 본문의 `- **상태:** ...` 줄을 새 상태로 바꾼다. 줄이 없으면 그대로 둔다. */
+const STATUS_LINE = /^([ \t]*[-*][ \t]+\*\*상태:\*\*)[ \t]*.*$/
+
+/**
+ * 본문의 `- **상태:** ...` 줄을 새 상태로 바꾼다. 줄이 없으면 그대로 둔다.
+ * `m` 플래그 정규식 대신 `\n` 단위로 훑는다: `\s*`가 개행을 넘어 큰 파일에서 느려질 수 있고,
+ * 단독 `\r`/LS 같은 문자로 줄이 위조되는 것도 막기 위해서다. 각 줄 끝의 `\r`(CRLF)은 보존한다.
+ */
 export function withTicketStatus(text: string, status: TicketStatus): string {
-  return text.replace(/^(\s*[-*]\s+\*\*상태:\*\*)[ \t]*.*$/m, `$1 ${status}`)
+  const lines = text.split('\n')
+  for (const [i, line] of lines.entries()) {
+    const cr = line.endsWith('\r') ? '\r' : ''
+    const m = STATUS_LINE.exec(cr ? line.slice(0, -1) : line)
+    if (m) {
+      lines[i] = `${m[1]} ${status}${cr}`
+      break
+    }
+  }
+  return lines.join('\n')
 }
