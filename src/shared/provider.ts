@@ -45,12 +45,12 @@ export interface WeeklyLimitsSaveRequest {
   limits: WeeklyLimit[]
 }
 
-/** 0보다 크고 WEEKLY_LIMIT_MAX 이하인 유한한 수, 소수점 둘째 자리까지. main과 renderer가 같은 규칙을 쓴다. */
+/** 0.01 이상 WEEKLY_LIMIT_MAX 이하인 유한한 수, 소수점 둘째 자리까지. main과 renderer가 같은 규칙을 쓴다. */
 export function validateWeeklyLimitAmount(value: unknown): value is number {
   return (
     typeof value === 'number' &&
     Number.isFinite(value) &&
-    value > 0 &&
+    value >= 0.01 - 1e-9 && // 0.01 미만의 극소값(5e-324 등)은 센트 단위 검사를 우연히 통과하므로 하한을 둔다
     value <= WEEKLY_LIMIT_MAX &&
     Math.abs(value * 100 - Math.round(value * 100)) < 1e-6
   )
