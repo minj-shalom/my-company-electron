@@ -2,3 +2,8 @@
 export function shouldCollapsePanel(prevView: string, nextView: string, narrow: boolean): boolean {
   return narrow && prevView !== 'org' && nextView === 'org'
 }
+
+/** 처음 열 때 하단 시트가 지도를 반 넘게 가리지 않도록, 좁은 화면에서는 패널을 접은 채 시작한다. */
+export function initialPanelOpen(narrow: boolean): boolean {
+  return !narrow
+}

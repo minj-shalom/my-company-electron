@@ -1,15 +1,16 @@
 import type { WindowApi } from '../../shared/api'
 import type { OrgAgentDetail, OrgMember, OrgSnapshot, OrgTreeNode } from '../../shared/org'
 
-/** 브라우저 개발 모드 전용. `?mock-org=empty|error|loading|issues`로 상태를 바꿔 화면을 확인한다. */
-export type OrgScenario = 'normal' | 'empty' | 'error' | 'loading' | 'issues' | 'blocking'
+/** 브라우저 개발 모드 전용. `?mock-org=empty|error|loading|issues|many`로 상태를 바꿔 화면을 확인한다. */
+export type OrgScenario = 'normal' | 'empty' | 'error' | 'loading' | 'issues' | 'blocking' | 'many'
 const SCENARIOS: readonly OrgScenario[] = [
   'normal',
   'empty',
   'error',
   'loading',
   'issues',
-  'blocking'
+  'blocking',
+  'many'
 ]
 
 export function parseOrgScenario(search: string): OrgScenario {
@@ -108,7 +109,41 @@ const NORMAL: OrgSnapshot = {
   agents: AGENTS
 }
 
+/** 직원 20명, 부서 6개. 맵 성능과 방 배치가 부서/직원 수에 따라 늘어나는지 확인하는 시나리오. */
+function manySnapshot(): OrgSnapshot {
+  const depts = ['경영', 'R&D', '재무', '기획팀', '개발팀', '운영팀']
+  const sizes = [2, 3, 2, 3, 6, 4]
+  const members: OrgMember[] = depts.flatMap((dept, d) =>
+    Array.from({ length: sizes[d] }, (_, i) =>
+      member(
+        d === 0 && i === 0 ? 'CEO' : `${dept} ${i + 1}`,
+        d === 0 && i === 0 ? 'human' : 'agent',
+        d === 0 && i === 0 ? null : `agent-${d}-${i}`,
+        dept,
+        d === 0 && i === 0 ? null : 'CEO',
+        `${dept} 업무 ${i + 1}`
+      )
+    )
+  )
+  return {
+    org: {
+      members,
+      departments: depts.map((name) => ({
+        name,
+        members: members.filter((m) => m.department === name).map((m) => m.title)
+      })),
+      tree: [
+        { member: members[0], children: members.slice(1).map((m) => ({ member: m, children: [] })) }
+      ],
+      chart: [],
+      issues: []
+    },
+    agents: []
+  }
+}
+
 function scenarioSnapshot(s: OrgScenario): OrgSnapshot {
+  if (s === 'many') return manySnapshot()
   const snap = structuredClone(NORMAL)
   if (s === 'empty')
     return { org: { ...snap.org, members: [], departments: [], tree: [] }, agents: [] }

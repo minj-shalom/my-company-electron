@@ -3,6 +3,7 @@ import './assets/main.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { setOfficeStatusSource } from './office/status'
 import {
   applyTheme,
   getBrowserStorage,
@@ -18,6 +19,9 @@ async function bootstrap(): Promise<void> {
   if (import.meta.env.DEV && !window.api) {
     const { mockApi } = await import('./mock-api')
     window.api = mockApi
+    // 실제 실행 이벤트가 연결되기 전까지 사무실 아바타 상태를 순환시킨다 (개발 전용).
+    const { mockOfficeStatus } = await import('./office/mock-status')
+    setOfficeStatusSource(mockOfficeStatus)
   }
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
