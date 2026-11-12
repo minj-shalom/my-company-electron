@@ -6,6 +6,9 @@ import { checkSqlite } from './db'
 import { registerCompanyHandlers } from './company-ipc'
 import { CompanyContext, createLastCompanyStore } from './company/company-context'
 import { CompanyService } from './company/company-service'
+import { registerDomainHandlers } from './domain-ipc'
+import { ProviderService } from './providers/provider-service'
+import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
 import { registerRunHandlers } from './run-ipc'
 import { ClaudeAdapter } from './providers/claude/claude-adapter'
 import type { ProviderAdapter } from './providers/types'
@@ -13,6 +16,7 @@ import type { ProviderAdapter } from './providers/types'
 const RESTORE_TIMEOUT_MS = 5000
 
 let runner: ProviderAdapter | undefined
+let providers: ProviderService | undefined
 
 app
   .whenReady()
@@ -28,6 +32,12 @@ app
       store: createLastCompanyStore(app.getPath('userData'))
     })
     registerCompanyHandlers(new CompanyService({ context: companyContext }))
+    providers = new ProviderService()
+    registerDomainHandlers({
+      context: companyContext,
+      providers,
+      limits: createWeeklyLimitsStore(app.getPath('userData'))
+    })
     // 창이 뜨기 전에 마지막 회사를 복원해 첫 company:current부터 최종 상태를 돌려준다.
     // 느린 디스크(네트워크 드라이브 등)가 창 표시를 막지 않도록 기다리는 시간에 상한을 둔다.
     // 시간이 지나면 복원은 백그라운드에서 이어지고, renderer는 company:current를 다시 물으면 된다.
@@ -54,4 +64,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => runner?.cancelAll())
+app.on('before-quit', () => {
+  runner?.cancelAll()
+  providers?.shutdown()
+})
