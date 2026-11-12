@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   PROVIDER_CLI_IDS,
@@ -36,6 +37,19 @@ export interface WeeklyLimitsStore {
 /** 앱 userData에 둔다 (회사 폴더가 아니라 이 기기의 설정). 인증 정보는 담지 않는다. */
 export function createWeeklyLimitsStore(userDataDir: string): WeeklyLimitsStore {
   const file = join(userDataDir, FILE)
+  // 저장이 겹쳐도 읽기-쓰기 순서가 섞이지 않게 한 줄로 세운다.
+  let queue: Promise<unknown> = Promise.resolve()
+  const writeOnce = async (limits: WeeklyLimit[]): Promise<void> => {
+    await mkdir(dirname(file), { recursive: true })
+    const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`
+    try {
+      await writeFile(tmp, JSON.stringify({ limits }), 'utf8')
+      await rename(tmp, file)
+    } catch (e) {
+      await unlink(tmp).catch(() => undefined)
+      throw e
+    }
+  }
   return {
     async load() {
       let raw: string
@@ -52,11 +66,10 @@ export function createWeeklyLimitsStore(userDataDir: string): WeeklyLimitsStore 
         return []
       }
     },
-    async save(limits) {
-      await mkdir(dirname(file), { recursive: true })
-      const tmp = `${file}.tmp`
-      await writeFile(tmp, JSON.stringify({ limits }), 'utf8')
-      await rename(tmp, file)
+    save(limits) {
+      const run = queue.then(() => writeOnce(limits))
+      queue = run.catch(() => undefined)
+      return run
     }
   }
 }

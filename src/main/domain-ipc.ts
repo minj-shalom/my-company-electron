@@ -61,13 +61,24 @@ export function createDomainHandlers(deps: DomainDeps): {
   }
 }
 
+/** 신뢰하지 않는 발신자면 fn을 호출하지 않고 거부한다. Electron과 분리해 테스트한다. */
+export function trustedHandler<E, R>(
+  isTrusted: (event: E) => boolean,
+  fn: (arg: unknown) => Promise<R>
+): (event: E, arg: unknown) => Promise<R> {
+  return async (event, arg) => {
+    if (!isTrusted(event)) throw new Error('Untrusted sender')
+    return fn(arg)
+  }
+}
+
 export function registerDomainHandlers(deps: DomainDeps): void {
   const h = createDomainHandlers(deps)
   const handle = (channel: string, fn: (arg: unknown) => Promise<ApiResult<unknown>>): void => {
-    ipcMain.handle(channel, (event: IpcMainInvokeEvent, arg: unknown) => {
-      if (!isTrustedSender(event)) throw new Error('Untrusted sender')
-      return fn(arg)
-    })
+    ipcMain.handle(
+      channel,
+      trustedHandler<IpcMainInvokeEvent, ApiResult<unknown>>(isTrustedSender, fn)
+    )
   }
   handle(IPC_CHANNELS.orgGet, () => h.getOrg())
   handle(IPC_CHANNELS.providerDetect, () => h.detectProviders())
