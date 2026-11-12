@@ -19,3 +19,11 @@ export type CompanyCreateResult =
 
 /** 폴더 선택 결과. 사용자가 취소하면 null. */
 export type CompanySelectFolderResult = string | null
+
+/** 현재 열린 회사의 요약. 경로는 표시용이며 renderer가 파일 접근에 쓰지 않는다. */
+export interface CompanyInfo {
+  name: string
+  dir: string
+  /** company/mission.md 본문. 없으면 빈 문자열. */
+  mission: string
+}
