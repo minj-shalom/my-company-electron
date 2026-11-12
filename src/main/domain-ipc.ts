@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/api'
 import type { Decision, DecisionList } from '../shared/decision'
 import type { OrgSnapshot } from '../shared/org'
@@ -15,11 +15,12 @@ import { isTrustedSender } from './ipc-guard'
 import { NoCompanyError, type CompanyContext } from './company/company-context'
 import { normalizeMemo } from './repository/decision-memo'
 import { MAX_MEMO_LENGTH, DECISION_ID, TICKET_ID } from './repository/ids'
-import { FileCompanyRepository } from './repository/file-repository'
-import type { SafeFs } from './repository/safe-fs'
+import type { FileCompanyRepository } from './repository/file-repository'
+import { sharedRepository } from './repository/shared-repository'
 import { buildOrgSnapshot } from './org/org-snapshot'
 import { createEmployeeHandlers, type EmployeeHandlers } from './employee/employee-ipc'
 import type { AssignmentSource } from './employee/employee-service'
+import { createProjectHandlers, type ProjectHandlers } from './project/project-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
 
@@ -29,6 +30,8 @@ export interface DomainDeps {
   limits: WeeklyLimitsStore
   /** 직원 프로젝트 배정 조회. T-045 전에는 생략하며 항상 빈 목록으로 본다. */
   assignments?: AssignmentSource
+  /** 프로젝트 경로 검증에서 "홈 폴더"로 볼 경로. 테스트에서만 바꾼다. */
+  homeDir?: string
 }
 
 const fail = (
@@ -50,16 +53,8 @@ async function guarded<T>(task: () => Promise<T>): Promise<ApiResult<T>> {
   }
 }
 
-/** 열린 회사(SafeFs)마다 저장소 하나를 쓴다. resolve 직렬화 큐가 호출 사이에 공유되어야 하기 때문이다. */
-const repositories = new WeakMap<SafeFs, FileCompanyRepository>()
 function repositoryFor(deps: DomainDeps): FileCompanyRepository {
-  const fs = deps.context.requireOpenCompany().fs
-  let repo = repositories.get(fs)
-  if (!repo) {
-    repo = FileCompanyRepository.fromSafeFs(fs)
-    repositories.set(fs, repo)
-  }
-  return repo
+  return sharedRepository(deps.context.requireOpenCompany().fs)
 }
 
 const DECISION_STATUS_VALUES: readonly unknown[] = ['pending', 'done']
@@ -105,8 +100,10 @@ export function createDomainHandlers(deps: DomainDeps): {
   moveTicket: (req: unknown) => Promise<ApiResult<Ticket>>
   listDecisions: (status: unknown) => Promise<ApiResult<DecisionList>>
   resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
-} & EmployeeHandlers {
+} & EmployeeHandlers &
+  ProjectHandlers {
   return {
+    ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createEmployeeHandlers({
       context: deps.context,
       repository: () => repositoryFor(deps),
@@ -229,6 +226,29 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.employeeRetire, h.retireEmployee)
   handle(IPC_CHANNELS.companyHirePm, () => h.hirePm())
   handle(IPC_CHANNELS.companyFirstHire, h.firstHire)
+  handle(IPC_CHANNELS.projectList, () => h.list())
+  handle(IPC_CHANNELS.projectAdd, h.add)
+  handle(IPC_CHANNELS.projectRename, h.rename)
+  handle(IPC_CHANNELS.projectArchive, h.archive)
+  handle(IPC_CHANNELS.projectRestore, h.restore)
+  handle(IPC_CHANNELS.projectSetType, h.setType)
+  handle(IPC_CHANNELS.projectSetPm, h.setPm)
+  handle(IPC_CHANNELS.projectClearPm, h.clearPm)
+  // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).
+  ipcMain.handle(IPC_CHANNELS.projectSelectFolder, (event) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted sender')
+    const win = BrowserWindow.fromWebContents(event.sender)
+    return h.selectFolder(async () => {
+      const options = {
+        title: '프로젝트 폴더 선택',
+        properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[]
+      }
+      const result = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+    })
+  })
   handle(IPC_CHANNELS.settingsWeeklyLimitsGet, () => h.getWeeklyLimits())
   handle(IPC_CHANNELS.settingsWeeklyLimitsSave, h.saveWeeklyLimits)
 }
