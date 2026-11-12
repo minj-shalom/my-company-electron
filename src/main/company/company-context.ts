@@ -1,4 +1,5 @@
 import { lstat, mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
 import type {
   CompanyInfo,
@@ -40,6 +41,16 @@ export interface LastCompanyStore {
 
 const LAST_COMPANY_FILE = 'last-company.json'
 
+function isPlausibleStoredPath(path: string): boolean {
+  return (
+    path.length > 0 &&
+    path.length <= MAX_PATH_LENGTH &&
+    !path.includes('\0') &&
+    isAbsolute(path) &&
+    !path.split(/[\\/]/).includes('..')
+  )
+}
+
 export function createLastCompanyStore(userDataDir: string): LastCompanyStore {
   const file = join(userDataDir, LAST_COMPANY_FILE)
   return {
@@ -56,9 +67,7 @@ export function createLastCompanyStore(userDataDir: string): LastCompanyStore {
         const path =
           typeof data === 'object' && data !== null ? (data as { path?: unknown }).path : null
         // 손상되었거나 다른 형태의 파일은 "기억 없음"으로 본다. 파일 내용을 경로로 신뢰하지 않으려고 형태를 다시 검사한다.
-        return typeof path === 'string' && path.length <= MAX_PATH_LENGTH && isAbsolute(path)
-          ? path
-          : null
+        return typeof path === 'string' && isPlausibleStoredPath(path) ? path : null
       } catch {
         return null
       }
@@ -98,6 +107,8 @@ class OpenError extends Error {
 export interface CompanyContextDeps {
   store: LastCompanyStore
   fs?: CompanyFsPort
+  /** 회사 폴더로 쓸 수 없는 홈 디렉터리. 테스트에서 바꿔 끼운다. */
+  homeDir?: string
 }
 
 /**
@@ -108,12 +119,16 @@ export interface CompanyContextDeps {
 export class CompanyContext {
   private readonly store: LastCompanyStore
   private readonly fsPort: CompanyFsPort
+  private readonly homeDir: string
   private current: OpenCompany | null = null
   private state: CompanyState = { status: 'none' }
+  // open/restoreLast가 겹치면 "이미 열림" 판정과 current 설정 사이에 await가 끼어 불변식이 깨진다. 한 줄로 세운다.
+  private queue: Promise<unknown> = Promise.resolve()
 
   constructor(deps: CompanyContextDeps) {
     this.store = deps.store
     this.fsPort = deps.fs ?? nodeCompanyFs
+    this.homeDir = deps.homeDir ?? homedir()
   }
 
   getState(): CompanyState {
@@ -129,8 +144,23 @@ export class CompanyContext {
     return this.current
   }
 
-  /** 경로를 검증해 회사를 연다. 실패하면 기존 컨텍스트는 그대로다. */
-  async open(path: unknown): Promise<CompanyOpenResult> {
+  /** 경로를 검증해 회사를 연다. 실패하면 기존 컨텍스트는 그대로다. 호출은 순서대로 처리된다. */
+  open(path: unknown): Promise<CompanyOpenResult> {
+    return this.serialize(() => this.openNow(path))
+  }
+
+  /** 시작 시 마지막 회사를 연다. 폴더가 사라져도 기억한 경로는 지우지 않는다 (복구 가능성). */
+  restoreLast(): Promise<CompanyState> {
+    return this.serialize(() => this.restoreNow())
+  }
+
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(task, task)
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
+  private async openNow(path: unknown): Promise<CompanyOpenResult> {
     try {
       const root = await this.verify(path)
       if (this.current !== null) {
@@ -144,7 +174,9 @@ export class CompanyContext {
       } catch {
         // 기억하지 못해도 이번 실행은 정상이다. 다음 시작 때 시작 화면으로 돌아갈 뿐이라 열기를 실패로 만들지 않는다.
       }
-      return { ok: true, company: await this.describe(company) }
+      const info = await this.describe(company)
+      this.state = { status: 'open', company: info }
+      return { ok: true, company: info }
     } catch (e) {
       if (e instanceof OpenError) return { ok: false, code: e.code, message: e.message }
       // 원본 오류에는 내부 경로가 들어 있을 수 있어 renderer에 보내지 않는다.
@@ -152,8 +184,7 @@ export class CompanyContext {
     }
   }
 
-  /** 시작 시 마지막 회사를 연다. 폴더가 사라져도 기억한 경로는 지우지 않는다 (복구 가능성). */
-  async restoreLast(): Promise<CompanyState> {
+  private async restoreNow(): Promise<CompanyState> {
     if (this.current !== null) return this.state
     let last: string | null
     try {
@@ -164,21 +195,22 @@ export class CompanyContext {
     if (last === null) return this.state
     const name = basename(last)
     try {
-      this.state = {
-        status: 'open',
-        company: await this.describe(await this.activate(await this.verify(last)))
-      }
+      const company = await this.activate(await this.verify(last))
+      this.state = { status: 'open', company: await this.describe(company) }
     } catch (e) {
       if (e instanceof OpenError && e.code === 'not-found') this.state = { status: 'missing', name }
-      else if (e instanceof OpenError && e.code === 'not-company')
-        this.state = { status: 'invalid', name, message: e.message }
-      else this.state = { status: 'missing', name }
+      // 권한 오류 등은 "없음"이 아니다. 사용자가 폴더가 사라졌다고 오해하지 않게 별도 상태로 둔다.
+      else if (e instanceof OpenError) this.state = { status: 'invalid', name, message: e.message }
+      else this.state = { status: 'invalid', name, message: '회사 폴더를 열지 못했습니다.' }
     }
     return this.state
   }
 
   private async activate(root: string): Promise<OpenCompany> {
-    const company: OpenCompany = { root, name: basename(root), fs: await SafeFs.open(root) }
+    const fs = await SafeFs.open(root)
+    // verify 이후 경로가 바뀌어 SafeFs가 다른 폴더를 열었다면 검증하지 않은 폴더이므로 거부한다.
+    if (fs.root !== root) throw new OpenError('open-failed', '회사 폴더를 열지 못했습니다.')
+    const company: OpenCompany = { root, name: basename(root), fs }
     this.current = company
     return company
   }
@@ -190,9 +222,7 @@ export class CompanyContext {
     } catch {
       // mission.md는 선택 파일이다. 없거나 읽을 수 없으면 빈 문자열로 둔다.
     }
-    const info: CompanyInfo = { name: company.name, dir: company.root, mission }
-    this.state = { status: 'open', company: info }
-    return info
+    return { name: company.name, dir: company.root, mission }
   }
 
   /** 입력 형태 -> 실제 경로(심볼릭 링크 해소) -> 폴더 -> 표식 파일 순으로 검사해 실제 경로를 돌려준다. */
@@ -207,15 +237,26 @@ export class CompanyContext {
     try {
       root = await this.fsPort.realpath(normalize(path))
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT')
+      const code = (e as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ENOTDIR')
         throw new OpenError('not-found', '폴더를 찾을 수 없습니다.')
       throw new OpenError('open-failed', '회사 폴더를 열지 못했습니다.')
     }
-    if (!(await this.fsPort.isDirectory(root)))
-      throw new OpenError('invalid-path', '폴더를 선택해야 합니다.')
+    // 파일 시스템 루트와 홈 디렉터리는 회사 폴더로 쓰지 않는다 (scaffold의 루트 거부와 같은 방식).
+    if (dirname(root) === root || root === this.homeDir)
+      throw new OpenError('invalid-path', '이 폴더는 회사 폴더로 쓸 수 없습니다.')
     const missing: string[] = []
-    for (const marker of COMPANY_MARKER_FILES) {
-      if (!(await this.fsPort.isRegularFile(join(root, ...marker.split('/'))))) missing.push(marker)
+    try {
+      if (!(await this.fsPort.isDirectory(root)))
+        throw new OpenError('invalid-path', '폴더를 선택해야 합니다.')
+      for (const marker of COMPANY_MARKER_FILES) {
+        if (!(await this.fsPort.isRegularFile(join(root, ...marker.split('/')))))
+          missing.push(marker)
+      }
+    } catch (e) {
+      if (e instanceof OpenError) throw e
+      // 권한 오류 등. 원본 메시지에는 경로가 있을 수 있어 일반 문구로 바꾼다.
+      throw new OpenError('open-failed', '폴더를 읽을 수 없어요. 접근 권한을 확인해 주세요.')
     }
     if (missing.length > 0)
       throw new OpenError(

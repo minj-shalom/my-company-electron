@@ -29,6 +29,9 @@ export class CompanyService {
   private readonly context: CompanyContext
   private readonly createFolder: typeof createCompanyFolder
   private readonly resolveReal: (path: string) => Promise<string>
+  private readonly pendingSelect: Partial<
+    Record<CompanyFolderPurpose, Promise<CompanySelectFolderResult>>
+  > = {}
   private readonly approved: Record<CompanyFolderPurpose, string[]> = {
     'create-location': [],
     open: []
@@ -48,7 +51,21 @@ export class CompanyService {
     throw new Error('Invalid purpose')
   }
 
-  async selectFolder(
+  /** 같은 용도의 다이얼로그가 열려 있는 동안의 요청은 같은 결과를 공유한다 (다이얼로그 중복 방지). */
+  selectFolder(
+    purpose: CompanyFolderPurpose,
+    pick: FolderPicker
+  ): Promise<CompanySelectFolderResult> {
+    const pending = this.pendingSelect[purpose]
+    if (pending !== undefined) return pending
+    const run = this.selectNow(purpose, pick).finally(() => {
+      delete this.pendingSelect[purpose]
+    })
+    this.pendingSelect[purpose] = run
+    return run
+  }
+
+  private async selectNow(
     purpose: CompanyFolderPurpose,
     pick: FolderPicker
   ): Promise<CompanySelectFolderResult> {
@@ -65,13 +82,15 @@ export class CompanyService {
     if (typeof req !== 'object' || req === null)
       return { ok: false, code: 'invalid-request', message: '요청 형식이 올바르지 않습니다.' }
     const { name, path } = req as Record<string, unknown>
-    if (typeof path !== 'string' || !(await this.isApproved('create-location', path)))
+    const approvedPath =
+      typeof path === 'string' ? await this.approvedReal('create-location', path) : null
+    if (approvedPath === null)
       return {
         ok: false,
         code: 'path-not-allowed',
         message: '폴더 선택 화면에서 고른 위치만 쓸 수 있어요.'
       }
-    const result = await this.createFolder(name, path)
+    const result = await this.createFolder(name, approvedPath)
     // 방금 만든 폴더는 main이 만든 것이므로, 같은 경로로 바로 열 수 있게 한다.
     if (result.ok)
       this.approve('open', await this.resolveReal(result.companyDir).catch(() => result.companyDir))
@@ -84,13 +103,15 @@ export class CompanyService {
     const { path } = req as Record<string, unknown>
     if (typeof path !== 'string')
       return { ok: false, code: 'invalid-request', message: '경로가 올바르지 않습니다.' }
-    if (!(await this.isApproved('open', path)))
+    const approvedPath = await this.approvedReal('open', path)
+    if (approvedPath === null)
       return {
         ok: false,
         code: 'path-not-allowed',
         message: '폴더 선택 화면에서 고른 폴더만 열 수 있어요.'
       }
-    return this.context.open(path)
+    // 승인 시점에 해소한 실제 경로를 넘겨, 선택 이후 링크가 바뀌어도 다른 폴더가 열리지 않게 한다.
+    return this.context.open(approvedPath)
   }
 
   current(): CompanyState {
@@ -104,8 +125,9 @@ export class CompanyService {
     while (list.length > MAX_APPROVED_PER_PURPOSE) list.shift()
   }
 
-  private async isApproved(purpose: CompanyFolderPurpose, path: string): Promise<boolean> {
+  /** 승인된 경로면 해소한 실제 경로를, 아니면 null을 돌려준다. */
+  private async approvedReal(purpose: CompanyFolderPurpose, path: string): Promise<string | null> {
     const real = await this.resolveReal(path).catch(() => null)
-    return real !== null && this.approved[purpose].includes(real)
+    return real !== null && this.approved[purpose].includes(real) ? real : null
   }
 }
