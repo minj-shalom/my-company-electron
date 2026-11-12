@@ -7,6 +7,8 @@ const api: WindowApi = {
   ping: () => ipcRenderer.invoke(IPC_CHANNELS.ping),
   startRun: (req) => ipcRenderer.invoke(IPC_CHANNELS.runStart, req),
   cancelRun: (runId) => ipcRenderer.invoke(IPC_CHANNELS.runCancel, runId),
+  createCompany: (req) => ipcRenderer.invoke(IPC_CHANNELS.companyCreate, req),
+  selectCompanyFolder: () => ipcRenderer.invoke(IPC_CHANNELS.companySelectFolder),
   onRunEvent: (listener) => {
     // IpcRendererEvent를 renderer에 넘기지 않고 payload만 전달한다.
     const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]): void =>

@@ -5,5 +5,7 @@ export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
   startRun: async () => ({ ok: false, code: 'cli-not-found', message: 'mock: runner unavailable' }),
   cancelRun: async () => false,
+  createCompany: async (req) => ({ ok: true, companyDir: `/mock/${req.name}` }),
+  selectCompanyFolder: async () => '/mock',
   onRunEvent: () => () => {}
 }
