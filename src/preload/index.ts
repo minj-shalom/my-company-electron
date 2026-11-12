@@ -30,6 +30,8 @@ const api: WindowApi = {
   updateEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.employeeUpdate, req),
   moveEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.employeeMove, req),
   retireEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.employeeRetire, req),
+  hirePm: () => ipcRenderer.invoke(IPC_CHANNELS.companyHirePm),
+  firstHire: (req) => ipcRenderer.invoke(IPC_CHANNELS.companyFirstHire, req),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),

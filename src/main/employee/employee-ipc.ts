@@ -1,3 +1,4 @@
+import type { FirstHireResult, HirePmResult } from '../../shared/company-hire'
 import type { EmployeeChangeResult, EmployeeTemplateInfo } from '../../shared/employee-change'
 import type { ApiResult } from '../../shared/result'
 import { NoCompanyError, type CompanyContext } from '../company/company-context'
@@ -19,6 +20,8 @@ export interface EmployeeHandlers {
   updateEmployee: (req: unknown) => Promise<ApiResult<EmployeeChangeResult>>
   moveEmployee: (req: unknown) => Promise<ApiResult<EmployeeChangeResult>>
   retireEmployee: (req: unknown) => Promise<ApiResult<EmployeeChangeResult>>
+  hirePm: () => Promise<ApiResult<HirePmResult>>
+  firstHire: (req: unknown) => Promise<ApiResult<FirstHireResult>>
 }
 
 const services = new WeakMap<SafeFs, EmployeeService>()
@@ -47,8 +50,8 @@ export function createEmployeeHandlers(deps: EmployeeIpcDeps): EmployeeHandlers 
     return svc
   }
   const call =
-    (fn: (svc: EmployeeService, req: unknown) => Promise<ApiResult<EmployeeChangeResult>>) =>
-    async (req: unknown): Promise<ApiResult<EmployeeChangeResult>> => {
+    <T>(fn: (svc: EmployeeService, req: unknown) => Promise<ApiResult<T>>) =>
+    async (req: unknown): Promise<ApiResult<T>> => {
       try {
         return await fn(serviceFor(), req)
       } catch (e) {
@@ -62,6 +65,9 @@ export function createEmployeeHandlers(deps: EmployeeIpcDeps): EmployeeHandlers 
     createEmployee: call((s, r) => s.create(r, 'ceo-ui')),
     updateEmployee: call((s, r) => s.update(r, 'ceo-ui')),
     moveEmployee: call((s, r) => s.move(r, 'ceo-ui')),
-    retireEmployee: call((s, r) => s.retire(r, 'ceo-ui'))
+    retireEmployee: call((s, r) => s.retire(r, 'ceo-ui')),
+    // 입력이 없는 채널이라 renderer가 무엇을 보내도 무시한다.
+    hirePm: () => call((s) => s.hirePm('ceo-ui'))(undefined),
+    firstHire: call((s, r) => s.firstHire(r, 'ceo-ui'))
   }
 }
