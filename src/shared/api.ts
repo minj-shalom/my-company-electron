@@ -8,7 +8,7 @@ import type {
   CompanySelectFolderResult,
   CompanyState
 } from './company'
-import type { Decision, DecisionResolveRequest } from './decision'
+import type { Decision, DecisionList, DecisionResolveRequest } from './decision'
 import type { OrgChart } from './employee'
 import type { OrgSnapshot } from './org'
 import type {
@@ -52,7 +52,8 @@ export interface WindowApi {
   listTickets: (status?: TicketStatus) => Promise<ApiResult<Ticket[]>>
   /** main은 id를 허용 형식(예: ^T-\d+$)만 받고, 경로를 id로 조합하지 말고 목록에서 찾아 쓴다. body는 마크다운이므로 renderer가 sanitize한다. */
   getTicket: (id: string) => Promise<ApiResult<Ticket>>
-  listDecisions: (status?: Decision['status']) => Promise<ApiResult<Decision[]>>
+  /** 읽지 못한 카드(손상, 너무 큼, 중복 id)는 `unreadable`로 알린다. 같은 id가 pending과 done에 있으면 done만 `items`에 둔다. */
+  listDecisions: (status?: Decision['status']) => Promise<ApiResult<DecisionList>>
   /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것 하나뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
   resolveDecision: (req: DecisionResolveRequest) => Promise<ApiResult<Decision>>
   /**
@@ -81,7 +82,7 @@ export const IPC_CHANNELS = {
   companySelectFolder: 'company:select-folder',
   companyOpen: 'company:open',
   companyCurrent: 'company:current',
-  // companyGet~decisionResolve는 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
+  // companyGet~ticketGet은 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
   companyGet: 'company:get',
   employeeList: 'employee:list',
   orgGet: 'org:get',

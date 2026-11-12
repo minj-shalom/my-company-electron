@@ -1,5 +1,4 @@
 import type { CompanyInfo } from '../../shared/company'
-import type { Decision } from '../../shared/decision'
 import type { OrgChart } from '../../shared/employee'
 import type { Ticket } from '../../shared/ticket'
 
@@ -81,33 +80,5 @@ export const mockTickets: Ticket[] = [
     status: 'backlog',
     assignee: null,
     body: '## 목표\n주간 사용량을 표시한다.'
-  }
-]
-
-export const mockDecisions: Decision[] = [
-  {
-    id: 'D-001',
-    title: 'T-002 푸시 승인',
-    status: 'pending',
-    ticketId: 'T-002',
-    question: 'feature/T-002를 푸시하고 PR을 올릴까요?',
-    options: [
-      { key: 'A', label: '승인', description: '푸시하고 PR 생성' },
-      { key: 'B', label: '거절', description: '보류' }
-    ],
-    recommended: 'A',
-    chosen: null,
-    memo: ''
-  },
-  {
-    id: 'D-000',
-    title: '초기 결정',
-    status: 'done',
-    ticketId: null,
-    question: '기본 제공자는?',
-    options: [{ key: 'A', label: 'Claude', description: 'Claude Code CLI' }],
-    recommended: 'A',
-    chosen: 'A',
-    memo: ''
   }
 ]

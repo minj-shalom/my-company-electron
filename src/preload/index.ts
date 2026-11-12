@@ -22,8 +22,8 @@ const api: WindowApi = {
   getOrg: () => ipcRenderer.invoke(IPC_CHANNELS.orgGet),
   listTickets: notImplemented,
   getTicket: notImplemented,
-  listDecisions: notImplemented,
-  resolveDecision: notImplemented,
+  listDecisions: (status) => ipcRenderer.invoke(IPC_CHANNELS.decisionList, status),
+  resolveDecision: (req) => ipcRenderer.invoke(IPC_CHANNELS.decisionResolve, req),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),

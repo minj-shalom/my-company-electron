@@ -1,4 +1,4 @@
-interface Props extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'> {
+interface Props extends Omit<React.ComponentPropsWithRef<'button'>, 'className'> {
   variant?: 'default' | 'primary'
   size?: 'normal' | 'small'
 }

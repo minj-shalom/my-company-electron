@@ -23,16 +23,18 @@ describe('mockApi', () => {
 
   it('filters decisions by status', async () => {
     const r = await mockApi.listDecisions('pending')
-    expect(r.ok && r.value.length > 0 && r.value.every((d) => d.status === 'pending')).toBe(true)
+    expect(
+      r.ok && r.value.items.length > 0 && r.value.items.every((d) => d.status === 'pending')
+    ).toBe(true)
   })
 
   it('resolves a pending decision once and reflects it in listDecisions', async () => {
     const first = await mockApi.resolveDecision({ id: 'D-001', choice: 'A' })
     expect(first).toMatchObject({ ok: true, value: { status: 'done', chosen: 'A' } })
     const pending = await mockApi.listDecisions('pending')
-    expect(pending.ok && pending.value.some((d) => d.id === 'D-001')).toBe(false)
+    expect(pending.ok && pending.value.items.some((d) => d.id === 'D-001')).toBe(false)
     const done = await mockApi.listDecisions('done')
-    expect(done.ok && done.value.some((d) => d.id === 'D-001' && d.chosen === 'A')).toBe(true)
+    expect(done.ok && done.value.items.some((d) => d.id === 'D-001' && d.chosen === 'A')).toBe(true)
     const again = await mockApi.resolveDecision({ id: 'D-001', choice: 'A' })
     expect(again).toMatchObject({ ok: false, code: 'conflict' })
   })
