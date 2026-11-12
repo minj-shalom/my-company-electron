@@ -62,6 +62,13 @@
   --dept-rnd: #6fb7ff;
   --dept-fin: #ffb86b;
   --dept-plan: #7be0b0;
+  --office-desk: #8a6a4a;
+  --skin-1: #f1c9a5;
+  --skin-2: #d9a679;
+  --skin-3: #8d5a3b;
+  --hair-1: #2b1f1a;
+  --hair-2: #6b4226;
+  --hair-3: #c9a14a;
 
   /* 글꼴 */
   --font-body:
@@ -125,4 +132,11 @@
   --dept-rnd: #1f6fb8;
   --dept-fin: #b8620a;
   --dept-plan: #1f8a62;
+  --office-desk: #b08655;
+  --skin-1: #f1c9a5;
+  --skin-2: #d9a679;
+  --skin-3: #8d5a3b;
+  --hair-1: #2b1f1a;
+  --hair-2: #6b4226;
+  --hair-3: #a67c1f;
 }

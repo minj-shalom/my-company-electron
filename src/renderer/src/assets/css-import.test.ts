@@ -15,7 +15,7 @@ describe('main.css', () => {
     if (firstRule !== -1) expect(firstRule).toBeGreaterThan(lastImport)
   })
 
-  it.each(['tokens', 'base', 'components', 'shell', 'onboarding', 'org'])(
+  it.each(['tokens', 'base', 'components', 'shell', 'onboarding', 'org', 'office'])(
     'imports %s.css',
     (name) => {
       expect(stripped).toContain(`@import './${name}.css'`)

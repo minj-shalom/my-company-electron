@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useRef, useState } from 'react'
+import { useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -6,14 +6,15 @@ import { Panel } from '../ui/Panel'
 import {
   groupByDepartment,
   memberDetail,
-  nextListIndex,
-  splitIssues,
   toneByTitle,
   type DeptTone,
   type OrgIssueView,
   type OrgStatus
 } from './org-view'
+import { IssueList } from './IssueList'
 import { MemberDetail } from './MemberDetail'
+import { RovingList } from './RovingList'
+import { TabbableContext } from './tabbable-context'
 import { useOrg } from './use-org'
 
 /** 조직도 화면. 상태(로딩/오류/빈/정상)를 나누고 정상일 때만 본문을 그린다. 직원 텍스트는 모두 React 텍스트로 렌더링한다. */
@@ -69,39 +70,6 @@ function OrgBody({
     case 'ready':
       return <OrgReady snapshot={status.snapshot} issues={status.issues} />
   }
-}
-
-function IssueList({ issues }: { issues: OrgIssueView[] }): React.JSX.Element | null {
-  const { blocking, warnings } = splitIssues(issues)
-  if (issues.length === 0) return null
-  return (
-    <div className="org__issues">
-      {blocking.length > 0 && (
-        <div className="notice org__issues--blocking" role="alert" aria-label="조직도 문서 오류">
-          <p>
-            <Badge tone="bad">고쳐야 해요 {blocking.length}건</Badge>
-          </p>
-          <ul>
-            {blocking.map((it, i) => (
-              <li key={i}>{it.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {warnings.length > 0 && (
-        <div className="notice" role="group" aria-label="조직도 문서 경고">
-          <p>
-            <Badge tone="warn">확인 필요 {warnings.length}건</Badge>
-          </p>
-          <ul>
-            {warnings.map((it, i) => (
-              <li key={i}>{it.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
 }
 
 function OrgReady({
@@ -277,54 +245,5 @@ function MemberButton({
         <Badge tone="warn">파일 확인</Badge>
       )}
     </button>
-  )
-}
-
-/** 목록에서 현재 탭 정지점이 되는 직원 직급. 목록 밖이면 undefined(항상 탭 가능). */
-const TabbableContext = createContext<string | undefined>(undefined)
-
-/**
- * 목록 안의 직원 버튼을 하나의 탭 정지점으로 묶고 위/아래/Home/End로 옮긴다 (roving tabindex).
- * 대상은 `data-org-item` 속성을 가진 버튼이며, 포커스만 옮기고 선택은 Enter/Space(클릭)로 한다.
- */
-function RovingList({
-  titles,
-  selected,
-  children
-}: {
-  titles: string[]
-  selected: string | null
-  children: React.ReactNode
-}): React.JSX.Element {
-  const ref = useRef<HTMLDivElement>(null)
-  const [focused, setFocused] = useState<string | null>(null)
-  const active =
-    (focused && titles.includes(focused) ? focused : null) ??
-    (selected && titles.includes(selected) ? selected : null) ??
-    titles[0]
-
-  const onKeyDown = (e: React.KeyboardEvent): void => {
-    const current = titles.indexOf(document.activeElement?.getAttribute('data-org-item') ?? '')
-    if (current < 0) return
-    const next = nextListIndex(e.key, current, titles.length)
-    if (next === null) return
-    e.preventDefault()
-    setFocused(titles[next])
-    for (const b of ref.current?.querySelectorAll<HTMLButtonElement>('[data-org-item]') ?? []) {
-      if (b.dataset.orgItem === titles[next]) b.focus()
-    }
-  }
-
-  const onFocus = (e: React.FocusEvent): void => {
-    const t = (e.target as HTMLElement).getAttribute('data-org-item')
-    if (t) setFocused(t)
-  }
-
-  return (
-    <TabbableContext value={active}>
-      <div ref={ref} onKeyDown={onKeyDown} onFocus={onFocus}>
-        {children}
-      </div>
-    </TabbableContext>
   )
 }

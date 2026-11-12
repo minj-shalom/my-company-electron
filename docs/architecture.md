@@ -3,11 +3,13 @@
 > `TODO`는 아직 결정이나 조사가 필요한 부분이다. 초기 결정은 개발 회사(`my-company-cli`)의 `company/decisions/done/D-001-initial-decisions.md`에 있다.
 
 ## 스택
+
 - Electron, TypeScript, electron-vite
 - renderer: React + Vite, 가상 사무실은 PixiJS
 - main: Node/TS, better-sqlite3 (지금은 Electron이 DB를 쥔다. 나중에 서버로 전환 예정)
 
 ## 프로세스 구조
+
 ```
 renderer (React, PixiJS)  --window.api-->  preload (contextBridge)  --IPC-->  main (Node/TS)
                                                                               ├─ 제공자 어댑터 (Claude / ChatGPT / Gemini CLI)
@@ -15,10 +17,12 @@ renderer (React, PixiJS)  --window.api-->  preload (contextBridge)  --IPC-->  ma
                                                                               ├─ 폴더 감시
                                                                               └─ 데이터 접근 계층 (Repository) → SQLite 캐시
 ```
+
 - `contextIsolation: true`, `nodeIntegration: false`. 보안 규칙 상세는 개발 회사(`my-company-cli`)의 `.claude/rules/ipc-security.md`.
 - renderer는 파일/프로세스에 직접 접근하지 않는다.
 
 ## AI 제공자 어댑터 (Claude, ChatGPT, Gemini)
+
 - 앱은 각 제공자의 **공식 CLI**를 실행한다. 인증은 CLI가 처리하고 앱은 토큰·로그인 정보를 읽거나 저장하지 않는다.
 - 공통 어댑터 인터페이스: 설치/버전 확인, 실행(스트림 이벤트), 취소, 사용량 추출, 직원 정의 변환.
 - 모든 제공자의 출력은 공통 이벤트(시작, 메시지, 도구 사용, 결과, 에러, 종료)로 변환해 IPC로 renderer에 보낸다.
@@ -27,11 +31,14 @@ renderer (React, PixiJS)  --window.api-->  preload (contextBridge)  --IPC-->  ma
 - TODO: 직원(서브에이전트) 개념이 없는 제공자에서 부서/위임 구조를 어떻게 흉내 낼지
 
 ## 직원 정의 전달
+
 - 직원 파일의 원본은 회사 폴더의 `.claude/agents/*.md`(서브에이전트 형식)다. Claude는 회사 폴더를 작업 디렉터리로 실행하면 그대로 읽는다.
 - 다른 제공자는 어댑터가 실행 직전에 직원 정의를 해당 CLI의 지침 파일(예: 저장소 지침 파일)로 변환한다.
 
 ## 오토파일럿: COO 실행 방식
+
 CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으로 돌아간다.
+
 - **틱(tick):** 스케줄러가 일정 간격으로 COO를 비대화형으로 실행한다. 작업 디렉터리는 회사 폴더이고, 회사 폴더의 `CLAUDE.md`와 `.claude/loop.md` 절차를 수행한다. 상태는 파일(티켓, 결정, 보고서)이 원본이라 대화 이어가기에 의존하지 않는다.
 - **브리핑:** 틱이 끝나면 한 일/결과/막힌 점/결정 요청을 `company/reports/`에 남긴다. CEO는 방문 때 이것과 결재함만 보면 된다.
 - **결정 → 자동 재개:** CEO가 결재함에서 결정하면 카드가 `decisions/done/`으로 이동하고 다음 틱이 즉시 예약된다.
@@ -42,12 +49,14 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - 앱이 꺼져 있으면 돌지 않는다. 트레이(백그라운드)에서 동작하도록 한다. TODO: 슬립/종료 중 동작 방식, 서버 전환 후의 실행 위치
 
 ## CLI 설치·연결 (온보딩)
+
 - 시작 시 각 제공자 CLI의 설치 여부와 버전을 확인한다 (시간 제한 포함. Windows의 `.cmd` 실행 파일 포함).
 - 미설치면 OS별 설치 방법과 복사 가능한 명령을 안내한다. 로그인은 사용자가 터미널에서 직접 한다.
 - 로그인 여부는 사용자가 누르는 `연결 테스트`로만 확인한다 (자동으로 사용량을 쓰지 않는다).
 - 이 단계에서 제공자별 **주간 한도**를 입력받아 예산 기준으로 쓴다.
 
 ## 데이터 모델과 데이터 계층
+
 - **원본:** 회사 폴더의 마크다운 파일 (직원, 티켓, 결정 카드, 보고서, `org.md`, `schedule.md`).
 - **캐시:** SQLite. 목록/검색/집계를 빠르게 하기 위한 것이며 폴더에서 언제든 재생성할 수 있어야 한다.
 - 쓰기는 마크다운 파일에 먼저 한 뒤 캐시를 갱신한다. 폴더 감시가 외부 변경을 반영한다.
@@ -60,19 +69,25 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - TODO: SQLite 스키마와 재생성(rebuild) 절차 상세
 
 ## 조직 모델
+
 - 조직(부서, 보고 라인)의 원본은 회사 폴더의 `org.md`(마크다운)다. 앱은 이를 읽어 조직도와 가상 사무실의 부서 공간을 만든다.
 - 기본 조직: CEO(사용자) → COO(메인 세션) → CTO(개발팀), CFO, 기획팀. 부서는 확장 가능하다.
 - 실행은 COO만 배정한다. 임원급 직원은 계획·검토를 반환하고 COO가 개발팀에 배정한다 (Claude Code 서브에이전트는 다른 서브에이전트를 호출할 수 없음).
 
 ## 가상 사무실 UI (게더타운 스타일)
+
 - renderer에 PixiJS 기반 2D 사무실 맵을 둔다. 부서별 공간에 직원 아바타를 배치한다.
 - 처음에는 `org.md`의 부서 기준 자동 배치(고정 레이아웃)로 만들고, 이후 사용자 편집 기능을 추가한다.
 - 아바타 상태는 실행 이벤트와 티켓 상태에서 만든다: 대기, 작업 중, 승인 대기.
 - 직원/COO를 클릭하면 로그 뷰나 대화 창이 열린다. 결정 인박스는 CEO 결재함으로 표시한다.
 - 브라우저 모드(`--host`)에서도 mock 데이터로 사무실이 보여야 한다.
 - 에셋은 퍼미시브 라이선스(CC0 등)만 쓰고 출처를 문서화한다.
+- 구현(T-020, `src/renderer/src/office/`): 레이아웃/카메라/상태는 순수 함수(`layout.ts`, `camera.ts`, `status.ts`), PixiJS는 `scene.ts` 한 곳, 에셋 접근은 `sprites.ts` 한 곳이다. 렌더링은 변화가 있을 때만 하고(ticker 없음), 탭을 떠나면 장면을 destroy한다. CSP를 유지하려고 `pixi.js/unsafe-eval`을 쓴다.
+- 상태 계약은 `src/shared/office.ts`(`OfficeStatusSource`). 실제 공급자(실행 이벤트 + 티켓/결재 상태)는 아직 없고, 기본값은 모두 대기, 개발 모드 mock만 순환한다. 실제 공급자는 `setOfficeStatusSource`로 교체한다.
+- 지도는 마우스/터치용이다(휠 확대, 드래그 이동, 클릭 선택). 지도 위에서는 휠이 확대에 쓰여 페이지 스크롤이 막히고, `touch-action: none`이라 터치로 캔버스 위에서 페이지를 스크롤할 수 없으며 핀치 줌은 지원하지 않는다. 키보드와 스크린리더는 같은 정보를 담은 직원 목록(위/아래 화살표)을 쓴다.
 
 ## CFO와 사용량
+
 - 사용량은 제공자 어댑터가 실행 결과 이벤트에서 추출해 `company/finance/usage/`에 기록한다 (인증·토큰 값은 기록하지 않는다).
 - 예산 기준은 사용자가 온보딩에서 입력한 **제공자별 주간 한도**다. 기본 경고 기준은 80%다.
 - 제공자마다 한도 체계(구독 한도, API 금액)가 달라서 기준을 따로 둔다. 사용량 정보가 없는 제공자는 '알 수 없음'으로 표시한다.
@@ -80,12 +95,14 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - TODO: 구독 한도의 현재 사용률을 앱에서 가져올 방법 (공식 API가 없으면 사용자 입력/추정)
 
 ## IPC / window.api
+
 - `src/shared/`에 `window.api` 인터페이스 타입을 정의한다 (main/preload/renderer 공용).
 - 개발 중 브라우저(`npm run dev -- --host`)에서는 mock 구현을 주입해 UI만 확인할 수 있게 한다.
 - 채널명 규칙: `도메인:동작` (예: `ticket:list`, `run:start`, `run:event`).
 - 모든 입력은 main에서 검증한다.
 
 ## 폴더 구성
+
 ```
 my-company-electron/
   src/main/      # main 프로세스
@@ -95,10 +112,12 @@ my-company-electron/
   assets/        # 아이콘 등 (icon.svg)
   docs/          # 제품 문서
 ```
+
 - `src/main/company/`: 회사 폴더 생성 (`scaffold.ts` 검증·생성, `templates.ts` 기본 마크다운). IPC는 `src/main/company-ipc.ts`.
 - TODO: 나머지 모듈(스케줄러, 폴더 감시, Repository)이 추가되면 구조를 갱신
 
 ## 패키징과 배포
+
 - electron-builder, better-sqlite3 네이티브 rebuild (macOS, Windows 각각).
 - 첫 릴리스는 서명 없이 만들고 SmartScreen/Gatekeeper 경고 우회 방법을 안내한다. 이후 macOS 서명·공증, Windows 코드 서명을 도입한다.
 - 자동 업데이트는 electron-updater + GitHub Releases.

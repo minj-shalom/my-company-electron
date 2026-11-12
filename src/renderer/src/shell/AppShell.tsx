@@ -1,9 +1,9 @@
 import { useId, useState } from 'react'
+import { OfficeView } from '../office/OfficeView'
 import { OrgView } from '../org/OrgView'
-import { shouldCollapsePanel } from './panel-rules'
+import { initialPanelOpen, shouldCollapsePanel } from './panel-rules'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-import { Panel } from '../ui/Panel'
 import { Tabs, type TabItem } from '../ui/Tabs'
 import { ThemeToggle } from '../ui/ThemeToggle'
 
@@ -18,9 +18,11 @@ const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'org', label: '조직도' }
 ]
 
-/** 앱 셸. 맵(T-020)과 각 탭의 실제 내용은 후속 티켓에서 채우고, 여기서는 자리와 빈 상태만 둔다. */
+/** 앱 셸. 사이드 패널 탭의 실제 내용은 후속 티켓에서 채우고, 여기서는 자리와 빈 상태만 둔다. */
 export function AppShell({ companyName }: { companyName: string }): React.JSX.Element {
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(() =>
+    initialPanelOpen(window.matchMedia?.('(max-width: 899px)').matches ?? false)
+  )
   const [tab, setTab] = useState(SIDE_TABS[0].id)
   const [view, setView] = useState(MAIN_VIEWS[0].id)
   const panelId = useId()
@@ -55,15 +57,7 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
               setView(id)
             }}
           >
-            {view === 'org' ? (
-              <OrgView />
-            ) : (
-              <div className="map-area__note">
-                <Panel title="사무실 맵">
-                  <p className="hint">가상 사무실이 들어올 자리예요. 곧 만나요.</p>
-                </Panel>
-              </div>
-            )}
+            {view === 'org' ? <OrgView /> : <OfficeView />}
           </Tabs>
         </main>
         <aside className="side-panel" id={panelId} hidden={!panelOpen} aria-label="업무 패널">
