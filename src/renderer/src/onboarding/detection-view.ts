@@ -1,4 +1,4 @@
-import type { ConnectionTestState, DetectState } from '../../../shared/provider'
+import type { ConnectionTestState, DetectState, ProviderDetection } from '../../../shared/provider'
 
 export type Tone = 'good' | 'warn' | 'bad' | 'neutral'
 
@@ -63,4 +63,23 @@ const TEST_VIEWS: Record<ConnectionTestState, StateView> = {
 
 export function connectionTestView(state: ConnectionTestState): StateView {
   return TEST_VIEWS[state]
+}
+
+export interface BadgeView {
+  label: string
+  tone: Tone
+}
+
+/** 탭과 카드 머리가 같은 상태 표시를 쓰도록 한 곳에서 정한다. detection이 null이면 아직 결과가 없거나 조회에 실패한 것이다. */
+export function providerBadge(
+  detection: ProviderDetection | null,
+  loading: boolean,
+  withVersion = true
+): BadgeView {
+  if (loading) return { label: '확인 중…', tone: 'neutral' }
+  if (!detection) return { label: '확인 못 함', tone: 'neutral' }
+  const view = detectView(detection.state)
+  const version =
+    withVersion && detection.state === 'ok' && detection.version ? ` (${detection.version})` : ''
+  return { label: `${view.label}${version}`, tone: view.tone }
 }
