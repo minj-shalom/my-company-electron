@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import type {
   ConnectionTestResult,
   ConnectionTestState,
@@ -9,9 +10,10 @@ import {
   buildLaunch,
   defaultExecEnv,
   isAllowedProvider,
-  resolveExecutable,
+  resolveExecutableDetailed,
   type ExecEnv
 } from './executable'
+import { terminateTree, treeSpawnOptions } from './kill-tree'
 
 /**
  * 사용자가 `연결 테스트`를 눌렀을 때만 호출한다. 자동 경로(시작 시 감지 등)에서 import/호출 금지.
@@ -41,6 +43,8 @@ export interface ConnectionTestOptions {
   execEnv?: ExecEnv
   spawnFn?: SpawnFn
   timeoutMs?: number
+  /** 기본값은 OS 임시 디렉터리. */
+  cwd?: string
 }
 
 function done(provider: ProviderCliId, state: ConnectionTestState): ConnectionTestResult {
@@ -55,9 +59,10 @@ export function runConnectionTest(
   const args = TEST_ARGS[provider]
   if (!args) return Promise.resolve(done(provider, 'unsupported'))
   const ctx = options.execEnv ?? defaultExecEnv()
-  const exe = resolveExecutable(provider, ctx)
-  if (exe === null) return Promise.resolve(done(provider, 'not-installed'))
-  const launch = buildLaunch(exe, args, ctx)
+  const found = resolveExecutableDetailed(provider, ctx)
+  if (found.kind === 'missing') return Promise.resolve(done(provider, 'not-installed'))
+  if (found.kind === 'not-executable') return Promise.resolve(done(provider, 'exec-failed'))
+  const launch = buildLaunch(found.path, args, ctx)
   if (launch === null) return Promise.resolve(done(provider, 'exec-failed'))
   const spawnFn = options.spawnFn ?? nodeSpawn
 
@@ -66,6 +71,9 @@ export function runConnectionTest(
     try {
       child = spawnFn(launch.file, launch.args, {
         shell: false,
+        // 앱/회사 폴더의 CLAUDE.md나 프로젝트 설정을 읽지 않도록 빈 작업 디렉터리에서 실행한다.
+        cwd: options.cwd ?? tmpdir(),
+        ...treeSpawnOptions(ctx),
         stdio: ['ignore', 'pipe', 'ignore'],
         windowsVerbatimArguments: launch.windowsVerbatimArguments
       })
@@ -81,7 +89,7 @@ export function runConnectionTest(
       resolve(done(provider, state))
     }
     const timer = setTimeout(() => {
-      child.kill('SIGKILL')
+      terminateTree(child, ctx, { spawnFn: options.spawnFn })
       finish('timeout')
     }, options.timeoutMs ?? CONNECTION_TEST_TIMEOUT_MS)
     let gotOutput = false

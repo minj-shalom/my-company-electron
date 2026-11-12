@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcess } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runConnectionTest } from './connection-test'
 import type { SpawnFn } from './cli-runner'
@@ -51,6 +52,14 @@ describe('runConnectionTest', () => {
     expect(JSON.stringify(r)).not.toContain('pong')
     expect(s.calls[0]?.[1]).toEqual(['-p', '--output-format', 'text', '--', 'ping'])
     expect(s.calls[0]?.[2]).toMatchObject({ shell: false })
+  })
+
+  it('runs in the temp dir (not the app/company folder) as its own process group on POSIX', async () => {
+    const s = setup('darwin', { PATH: '/x' }, ['/x/claude'])
+    const p = runConnectionTest('claude', s)
+    s.child.emit('close', 1, null)
+    await p
+    expect(s.calls[0]?.[2]).toMatchObject({ cwd: tmpdir(), detached: true })
   })
 
   it('failed on nonzero exit or empty output', async () => {
