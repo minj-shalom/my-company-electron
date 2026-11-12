@@ -1,7 +1,8 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { RunErrorCode, RunEvent, RunEventBody, RunStartRequest } from '../../shared/run'
-import { LineBuffer, parseLine } from './parser'
+import { LineBuffer } from './line-buffer'
+import type { StartResult } from './types'
 
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 export const MAX_TIMEOUT_MS = 60 * 60 * 1000
@@ -11,14 +12,19 @@ const MAX_LOG_LINE = 2000
 
 export type SpawnFn = (command: string, args: string[], options: SpawnOptions) => ChildProcess
 
-export interface RunnerOptions {
+export interface CliRunnerOptions {
   cwd: string
-  command?: string
+  command: string
+  /** 사용자에게 보이는 메시지에 쓰는 CLI 이름. */
+  displayName: string
   spawnFn?: SpawnFn
+  /** 프롬프트를 CLI 인자 배열로 만든다. 프롬프트가 옵션으로 해석되지 않게 하는 책임은 어댑터에 있다. */
+  buildArgs: (prompt: string) => string[]
+  /** stdout 한 줄을 공통 이벤트로 변환한다. */
+  parseLine: (line: string) => RunEventBody[]
+  /** parseLine과 별개로 원문 stdout 줄을 관찰한다 (사용량 추출용). */
+  onStdoutLine?: (line: string, runId: string) => void
 }
-
-export type StartResult =
-  { ok: true; runId: string } | { ok: false; code: RunErrorCode; message: string }
 
 export function validateRequest(
   req: unknown
@@ -46,14 +52,12 @@ interface ActiveRun {
   stop: (code: 'cancelled' | 'timeout') => void
 }
 
-/** claude CLI를 spawn(인자 배열, shell 없음)으로 실행하고 stream-json을 이벤트로 흘려보낸다. */
-export class ClaudeRunner {
+/** CLI를 spawn(인자 배열, shell 없음)으로 실행하고 stdout을 이벤트로 흘려보낸다. 취소/타임아웃/에러 매핑은 제공자 공통. */
+export class CliRunner {
   private readonly runs = new Map<string, ActiveRun>()
-  private readonly command: string
   private readonly spawnFn: SpawnFn
 
-  constructor(private readonly options: RunnerOptions) {
-    this.command = options.command ?? 'claude'
+  constructor(private readonly options: CliRunnerOptions) {
     this.spawnFn = options.spawnFn ?? nodeSpawn
   }
 
@@ -62,20 +66,20 @@ export class ClaudeRunner {
     if (!checked.ok) return { ok: false, code: 'invalid-request', message: checked.message }
     const { prompt, timeoutMs } = checked.value
 
+    const name = this.options.displayName
     const runId = randomUUID()
     const send = (body: RunEventBody): void => emit({ ...body, runId })
 
-    // 프롬프트가 '-'로 시작해도 옵션으로 해석되지 않도록 `--` 뒤에 둔다.
-    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--', prompt]
+    const args = this.options.buildArgs(prompt)
     let child: ChildProcess
     try {
-      child = this.spawnFn(this.command, args, {
+      child = this.spawnFn(this.options.command, args, {
         cwd: this.options.cwd,
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe']
       })
     } catch {
-      return { ok: false, code: 'spawn-failed', message: 'Failed to start claude CLI' }
+      return { ok: false, code: 'spawn-failed', message: `Failed to start ${name} CLI` }
     }
 
     let finished = false
@@ -96,7 +100,10 @@ export class ClaudeRunner {
 
     const stdoutBuf = new LineBuffer()
     const handleLines = (lines: string[]): void => {
-      for (const line of lines) for (const ev of parseLine(line)) send(ev)
+      for (const line of lines) {
+        this.options.onStdoutLine?.(line, runId)
+        for (const ev of this.options.parseLine(line)) send(ev)
+      }
     }
     child.stdout?.setEncoding('utf8')
     child.stdout?.on('data', (chunk: string) => handleLines(stdoutBuf.push(chunk)))
@@ -122,8 +129,8 @@ export class ClaudeRunner {
         const code: RunErrorCode = spawnError.code === 'ENOENT' ? 'cli-not-found' : 'spawn-failed'
         const message =
           code === 'cli-not-found'
-            ? 'claude CLI not found. Install it and make sure it is on PATH.'
-            : 'Failed to start claude CLI'
+            ? `${name} CLI not found. Install it and make sure it is on PATH.`
+            : `Failed to start ${name} CLI`
         send({ type: 'error', code, message })
       } else if (stopReason === 'timeout') {
         send({ type: 'error', code: 'timeout', message: `Run timed out after ${timeoutMs}ms` })
@@ -133,7 +140,7 @@ export class ClaudeRunner {
         send({
           type: 'error',
           code: 'exit-nonzero',
-          message: `claude CLI exited with code ${exitCode ?? signal ?? 'unknown'}`
+          message: `${name} CLI exited with code ${exitCode ?? signal ?? 'unknown'}`
         })
       }
       send({ type: 'exit', exitCode, signal })

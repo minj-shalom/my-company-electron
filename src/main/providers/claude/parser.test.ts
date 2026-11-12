@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { LineBuffer, parseLine } from './parser'
-import type { RunEventBody } from '../../shared/run'
+import { LineBuffer } from '../line-buffer'
+import { parseLine } from './parser'
+import type { RunEventBody } from '../../../shared/run'
 
 function parseFixture(name: string, chunkSize: number): RunEventBody[] {
   const text = readFileSync(join(__dirname, '__fixtures__', name), 'utf8')

@@ -2,8 +2,9 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ClaudeRunner, type SpawnFn } from './runner'
-import type { RunEvent } from '../../shared/run'
+import { ClaudeAdapter } from './claude-adapter'
+import type { SpawnFn } from '../cli-runner'
+import type { RunEvent } from '../../../shared/run'
 
 class FakeChild extends EventEmitter {
   stdout = new PassThrough()
@@ -18,7 +19,7 @@ class FakeChild extends EventEmitter {
 
 function setup(): {
   child: FakeChild
-  runner: ClaudeRunner
+  runner: ClaudeAdapter
   events: RunEvent[]
   calls: unknown[][]
 } {
@@ -28,7 +29,7 @@ function setup(): {
     calls.push(a)
     return child as unknown as ChildProcess
   }
-  return { child, runner: new ClaudeRunner({ cwd: '/work', spawnFn }), events: [], calls }
+  return { child, runner: new ClaudeAdapter({ cwd: '/work', spawnFn }), events: [], calls }
 }
 
 const types = (e: RunEvent[]): string[] => e.map((x) => x.type)
@@ -36,7 +37,7 @@ const types = (e: RunEvent[]): string[] => e.map((x) => x.type)
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
-describe('ClaudeRunner', () => {
+describe('ClaudeAdapter run', () => {
   it('spawns with an args array, no shell, and prompt after --', () => {
     const { runner, events, calls } = setup()
     const r = runner.start({ prompt: '--evil $(rm -rf /)' }, (e) => events.push(e))
