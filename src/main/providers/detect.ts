@@ -9,9 +9,10 @@ import {
   buildLaunch,
   defaultExecEnv,
   isAllowedProvider,
-  resolveExecutable,
+  resolveExecutableDetailed,
   type ExecEnv
 } from './executable'
+import { terminateTree, treeSpawnOptions } from './kill-tree'
 import { PROBE_TIMEOUT_MS, probeOutcome } from './version-probe'
 
 export interface DetectOptions {
@@ -47,16 +48,18 @@ export async function detectProvider(
 ): Promise<ProviderDetection> {
   if (!isAllowedProvider(provider)) return result(provider, 'not-installed', null)
   const ctx = options.execEnv ?? defaultExecEnv()
-  const exe = resolveExecutable(provider, ctx)
-  if (exe === null) return result(provider, 'not-installed', null)
-  const launch = buildLaunch(exe, ['--version'], ctx)
+  const found = resolveExecutableDetailed(provider, ctx)
+  if (found.kind === 'missing') return result(provider, 'not-installed', null)
+  if (found.kind === 'not-executable') return result(provider, 'exec-failed', null)
+  const launch = buildLaunch(found.path, ['--version'], ctx)
   if (launch === null) return result(provider, 'exec-failed', null)
   const outcome = await probeOutcome(
     launch.file,
     launch.args,
     options.spawnFn,
     options.timeoutMs ?? PROBE_TIMEOUT_MS,
-    { windowsVerbatimArguments: launch.windowsVerbatimArguments }
+    { ...treeSpawnOptions(ctx), windowsVerbatimArguments: launch.windowsVerbatimArguments },
+    (child) => terminateTree(child, ctx, { spawnFn: options.spawnFn })
   )
   return result(provider, outcome.state, outcome.state === 'ok' ? outcome.version : null)
 }

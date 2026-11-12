@@ -1,4 +1,4 @@
-import type { SpawnOptions } from 'node:child_process'
+import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { spawn as nodeSpawn } from 'node:child_process'
 import type { DetectState } from '../../shared/provider'
 import type { SpawnFn } from './cli-runner'
@@ -6,6 +6,7 @@ import type { ProviderInstallStatus } from './types'
 
 export const PROBE_TIMEOUT_MS = 5000
 const MAX_VERSION_LENGTH = 100
+const MAX_OUTPUT_LENGTH = 400
 
 export interface ProbeOutcome {
   state: DetectState
@@ -22,7 +23,10 @@ export function probeOutcome(
   args: readonly string[],
   spawnFn: SpawnFn = nodeSpawn,
   timeoutMs = PROBE_TIMEOUT_MS,
-  extraOptions: SpawnOptions = {}
+  extraOptions: SpawnOptions = {},
+  killFn: (child: ChildProcess) => void = (c) => {
+    c.kill('SIGKILL')
+  }
 ): Promise<ProbeOutcome> {
   return new Promise((resolve) => {
     let child
@@ -41,7 +45,7 @@ export function probeOutcome(
     let settled = false
     let out = ''
     const timer = setTimeout(() => {
-      child.kill('SIGKILL')
+      killFn(child)
       done({ state: 'timeout', version: null })
     }, timeoutMs)
     function done(outcome: ProbeOutcome): void {
@@ -53,7 +57,7 @@ export function probeOutcome(
 
     child.stdout?.setEncoding('utf8')
     child.stdout?.on('data', (chunk: string) => {
-      if (out.length < MAX_VERSION_LENGTH * 4) out += chunk
+      if (out.length < MAX_OUTPUT_LENGTH) out += chunk.slice(0, MAX_OUTPUT_LENGTH - out.length)
     })
     child.on('error', (err: NodeJS.ErrnoException) =>
       done({ state: err.code === 'ENOENT' ? 'not-installed' : 'exec-failed', version: null })
