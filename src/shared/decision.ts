@@ -2,6 +2,22 @@
 
 export type DecisionStatus = 'pending' | 'done'
 
+/** 결재 유형. 카드의 `- **유형:** <값>` 줄을 이 허용 목록으로만 해석한다. */
+export const DECISION_KINDS = [
+  'decision',
+  'permission',
+  'proposal',
+  'content-approval',
+  'integrity-warning',
+  'revert-suggestion',
+  'git-confirm'
+] as const
+export type DecisionKind = (typeof DECISION_KINDS)[number]
+
+/** `proposal` 카드의 제안자. */
+export const DECISION_PROPOSERS = ['hr', 'coo'] as const
+export type DecisionProposer = (typeof DECISION_PROPOSERS)[number]
+
 export interface DecisionOption {
   /** 선택지 식별자 (예: A). */
   key: string
@@ -25,6 +41,10 @@ export interface Decision {
   chosen: string | null
   /** 결정 메모. */
   memo: string
+  /** 결재 유형. 줄이 없거나 허용 목록 밖이면 main이 `decision`으로 채운다. 이전 main/mock 호환을 위해 optional이며 없으면 `decision`으로 취급한다. */
+  kind?: DecisionKind
+  /** 제안자 줄(`- **제안자:** hr|coo`)이 허용 값일 때만 채운다. 없거나 알 수 없으면 null/undefined. */
+  proposedBy?: DecisionProposer | null
 }
 
 /**

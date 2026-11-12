@@ -1,4 +1,12 @@
-import type { Decision, DecisionOption, DecisionStatus } from '../../shared/decision'
+import {
+  DECISION_KINDS,
+  DECISION_PROPOSERS,
+  type Decision,
+  type DecisionKind,
+  type DecisionOption,
+  type DecisionProposer,
+  type DecisionStatus
+} from '../../shared/decision'
 import { asString, firstHeading, metaValue, section, splitFrontmatter } from './markdown'
 import { DECISION_ID, leadingId } from './ids'
 
@@ -34,6 +42,17 @@ function bullet(sectionText: string | null, label: string): string | null {
   return m ? m[1].trim() : null
 }
 
+/** 허용 목록에 있는 값만 돌려준다. 알 수 없는 유형은 일반 결정으로 폴백한다 (목록을 깨지 않는다). */
+function parseKind(raw: string | null): DecisionKind {
+  const v = raw?.replace(/[`*]/g, '').trim().toLowerCase()
+  return DECISION_KINDS.find((k) => k === v) ?? 'decision'
+}
+
+function parseProposer(raw: string | null): DecisionProposer | null {
+  const v = raw?.replace(/[`*]/g, '').trim().toLowerCase()
+  return DECISION_PROPOSERS.find((p) => p === v) ?? null
+}
+
 export function parseDecision(fileName: string, text: string, status: DecisionStatus): Decision {
   const id = leadingId(fileName, 'D')
   if (!id || !DECISION_ID.test(id)) throw new Error('파일명이 D-번호로 시작해야 합니다.')
@@ -50,7 +69,21 @@ export function parseDecision(fileName: string, text: string, status: DecisionSt
   const decided = section(body, '결정')
   const chosen = status === 'done' ? pickKey(bullet(decided, '선택'), options) : null
   const memo = decided ? memoOf(decided) : ''
-  return { id, title, status, ticketId, question, options, recommended, chosen, memo }
+  const kind = parseKind(metaValue(body, '유형'))
+  const proposedBy = parseProposer(metaValue(body, '제안자'))
+  return {
+    id,
+    title,
+    status,
+    ticketId,
+    question,
+    options,
+    recommended,
+    chosen,
+    memo,
+    kind,
+    proposedBy
+  }
 }
 
 /** `- 메모:` 줄과 그 아래 들여쓴 이어지는 줄. */
