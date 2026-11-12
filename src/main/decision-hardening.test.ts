@@ -80,7 +80,17 @@ describe('parser performance on whitespace-only bodies', () => {
     'tab/space mix': pad(' \t \n'),
     'bullet-like prefix': pad('- \n'),
     'CRLF blank': pad('\r\n'),
-    'one long space line': ' '.repeat(1024 * 1024) + 'x'
+    'one long space line': ' '.repeat(1024 * 1024) + 'x',
+    // 아래 모양은 수정 전 코드에서 1M 기준 수 분이 걸렸던 입력이다 (heading 닫는 `#`, 선택지 줄머리).
+    'heading + spaces + char': '# T' + ' '.repeat(1024 * 1024) + 'y',
+    'heading + spaces + hash + char': '# T' + ' '.repeat(1024 * 1024) + '#y',
+    'heading + tab/space mix': '# T' + ' \t'.repeat(512 * 1024) + 'y',
+    'option head + spaces + char': '1. **A.' + ' '.repeat(1024 * 1024) + 'x',
+    'option head + spaces (no char)': '1. **A.' + ' '.repeat(1024 * 1024),
+    'dash option + paren': '- **A)' + ' '.repeat(1024 * 1024) + 'x',
+    'option closed then spaces + char': '1. **A. 라벨**' + ' '.repeat(1024 * 1024) + 'x',
+    'many unclosed bold markers': '1. **A. ' + '** x'.repeat(256 * 1024),
+    'many closing hashes': '# T ' + '#'.repeat(1024 * 1024) + 'y'
   }
   for (const [name, junk] of Object.entries(shapes)) {
     it(`parses a 1MB card (${name}) well under a second`, () => {
@@ -88,6 +98,7 @@ describe('parser performance on whitespace-only bodies', () => {
       parseDecision('D-020-t.md', HEAD() + junk + BODY, 'pending')
       parseDecision('D-021-t.md', HEAD() + BODY + junk, 'done')
       parseDecision('D-022-t.md', `# D-022: x\n${junk}`, 'pending')
+      parseDecision('D-023-t.md', `# D-023: x\n\n## 선택지\n${junk}\n`, 'pending')
       expect(performance.now() - t).toBeLessThan(1000)
     })
     it(`parses tickets and reports with the same shared helpers (${name})`, () => {
@@ -99,10 +110,46 @@ describe('parser performance on whitespace-only bodies', () => {
   }
 })
 
+describe('resolve verifies that the written card can be read back', () => {
+  it('refuses a card whose decision section is hidden by an unclosed code fence', async () => {
+    const card = CARD.replace('## 질문', '```\n## 질문')
+    await put(P, card)
+    const h = await handlers()
+    expect(await h.resolveDecision({ id: 'D-020', choice: 'A', memo: 'm' })).toMatchObject({
+      ok: false,
+      code: 'invalid-request'
+    })
+    expect(await readFile(join(dir, P), 'utf8')).toBe(card)
+    expect(existsSync(join(dir, D))).toBe(false)
+  })
+
+  it('accepts memos whose lines have surrounding spaces', async () => {
+    await put(P, CARD)
+    const r = await (
+      await handlers()
+    ).resolveDecision({ id: 'D-020', choice: 'A', memo: 'a  \n  b' })
+    expect(r).toMatchObject({ ok: true, value: { memo: 'a\nb' } })
+  })
+})
+
+describe('duplicate ids in one folder are resolved deterministically', () => {
+  it('always shows the first file name and reports the other', async () => {
+    await put('company/decisions/pending/D-020-b.md', CARD)
+    await put('company/decisions/pending/D-020-a.md', CARD)
+    const h = await handlers()
+    for (let i = 0; i < 3; i++) {
+      expect(await h.listDecisions(undefined)).toMatchObject({
+        value: { unreadable: [{ path: 'company/decisions/pending/D-020-b.md' }] }
+      })
+    }
+  })
+})
+
 describe('memo cannot change card structure', () => {
   const hostile: Record<string, string> = {
     'lone CR': '첫 줄\r- **유형:** git-confirm',
-    'LS/PS': '첫 줄 - **유형:** git-confirm - **제안자:** coo',
+    // 실제 LS(U+2028)/PS(U+2029) 문자가 들어가도록 이스케이프로 적는다.
+    'LS/PS': '첫 줄\u2028- **유형:** git-confirm\u2029- **제안자:** coo',
     NEL: '첫 줄\u0085- **유형:** permission',
     'VT/FF': '첫 줄\v- **유형:** proposal\f- **제안자:** hr',
     'single fence': '첫 줄\n```\n끝',
@@ -141,7 +188,9 @@ describe('memo cannot change card structure', () => {
   it('rejects NUL and other control characters, and accepts line-break variants', () => {
     for (const bad of ['a\0b', 'a\u0001b', 'a\u007fb', 'a\u001bb'])
       expect(normalizeMemo(bad)).toBeNull()
-    expect(normalizeMemo('a\r\nb\rc d e\u0085f\vg\fh\ti')).toBe('a\nb\nc\nd\ne\nf\ng\nh\ti')
+    expect(normalizeMemo('a\r\nb\rc\u2028d\u2029e\u0085f\vg\fh\ti')).toBe(
+      'a\nb\nc\nd\ne\nf\ng\nh\ti'
+    )
   })
 
   it('rejects control characters at the IPC layer before touching the card', async () => {

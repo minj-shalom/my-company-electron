@@ -24,14 +24,37 @@ export const DECISION_DIRS: Record<DecisionStatus, string> = {
   done: 'company/decisions/done'
 }
 
-// `1. **A. 라벨** — 설명` (구분자는 em dash, en dash, 하이픈, 콜론 허용; 설명은 선택)
-const OPTION_LINE = /^\s*(?:\d+\.|[-*])\s+\*\*([A-Za-z0-9]+)[.)]\s*(.+?)\*\*\s*(?:[—–:-]\s*(.*))?$/
+// `1. **A. 라벨** — 설명` 의 줄머리. 라벨 끝(`**`)과 설명은 정규식 대신 문자열 탐색으로 읽는다:
+// 공백 뒤에 닫는 `**`가 없는 긴 줄에서 `\s*(.+?)\*\*` 같은 겹치는 패턴이 O(n²)가 되기 때문이다.
+const OPTION_HEAD = /^[ \t]*(?:\d+\.|[-*])[ \t]+\*\*([A-Za-z0-9]+)[.)]/
+const OPTION_DASH = /^[—–:-]/
+
+function parseOptionLine(line: string): DecisionOption | null {
+  const head = OPTION_HEAD.exec(line)
+  if (!head) return null
+  const rest = line.slice(head[0].length)
+  // 첫 `**`부터 차례로 시험해, 뒤가 (공백 +) 줄 끝이거나 (공백 +) 구분자인 첫 위치를 닫는 `**`로 본다.
+  // 후보마다 앞부분을 잘라 trim하면 `**`가 많은 줄에서 다시 O(n²)가 되므로 라벨 시작 위치만 한 번 구한다.
+  let first = 0
+  while (first < rest.length && (rest[first] === ' ' || rest[first] === '\t')) first++
+  for (let close = rest.indexOf('**'); close >= 0; close = rest.indexOf('**', close + 1)) {
+    if (close <= first) continue
+    const label = (): string => rest.slice(0, close).trim()
+    let i = close + 2
+    while (i < rest.length && (rest[i] === ' ' || rest[i] === '\t')) i++
+    if (i === rest.length) return { key: head[1], label: label(), description: '' }
+    if (OPTION_DASH.test(rest[i])) {
+      return { key: head[1], label: label(), description: rest.slice(i + 1).trim() }
+    }
+  }
+  return null
+}
 
 export function parseOptions(sectionText: string): DecisionOption[] {
   const options: DecisionOption[] = []
   for (const line of sectionText.split(/\r?\n/)) {
-    const m = OPTION_LINE.exec(line)
-    if (m) options.push({ key: m[1], label: m[2].trim(), description: (m[3] ?? '').trim() })
+    const option = parseOptionLine(line)
+    if (option) options.push(option)
   }
   return options
 }

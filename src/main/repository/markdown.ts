@@ -29,6 +29,18 @@ export function asString(v: unknown): string | null {
   return null
 }
 
+/**
+ * ATX 제목의 닫는 `#`들(앞에 공백이 있을 때만)을 뗀다. 정규식 `[ \t]+#+$`는 공백이 길게 이어진 줄에서
+ * 시작 위치마다 끝까지 훑어 O(n²)가 되므로 뒤에서부터 직접 센다.
+ */
+export function stripClosingHashes(title: string): string {
+  let end = title.length
+  while (end > 0 && title[end - 1] === '#') end--
+  if (end === title.length || end === 0) return title
+  if (title[end - 1] !== ' ' && title[end - 1] !== '\t') return title
+  return title.slice(0, end).trimEnd()
+}
+
 /** 첫 `# 제목` 줄. 코드 펜스 안은 무시한다. */
 export function firstHeading(body: string): string | null {
   let fence = false
@@ -36,7 +48,7 @@ export function firstHeading(body: string): string | null {
     if (/^[ \t]*(```|~~~)/.test(line)) fence = !fence
     if (fence) continue
     const m = /^#[ \t]+(\S.*)$/.exec(line.trimEnd())
-    if (m) return m[1].replace(/[ \t]+#+$/, '')
+    if (m) return stripClosingHashes(m[1])
   }
   return null
 }
