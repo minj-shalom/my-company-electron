@@ -7,6 +7,9 @@ export const MAX_RUNS = 20
 /** 이벤트 한 건의 본문 상한(글자). 넘으면 잘라 표시한다. */
 export const MAX_BODY_CHARS = 20_000
 export const WINDOW_STEP = 200
+export const RUN_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/
+/** 도구 입력 직렬화 전에 허용하는 문자열 총량(글자). 넘으면 직렬화를 중단한다. */
+const MAX_INPUT_CHARS = 200_000
 export const AUTOSCROLL_THRESHOLD_PX = 24
 
 export type RunStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
@@ -96,12 +99,26 @@ export function truncateText(
     : { text, truncated: false }
 }
 
+const TOO_BIG = Symbol('too-big')
+
+/** 거대한 입력은 직렬화 도중 중단해 CPU와 메모리를 제한한다. */
 function safeStringify(value: unknown): string {
   if (typeof value === 'string') return value
+  let budget = MAX_INPUT_CHARS
   try {
-    return JSON.stringify(value, null, 2) ?? ''
-  } catch {
-    return ''
+    return (
+      JSON.stringify(
+        value,
+        (_k, v: unknown) => {
+          budget -= typeof v === 'string' ? v.length + 1 : 8
+          if (budget < 0) throw TOO_BIG
+          return v
+        },
+        2
+      ) ?? ''
+    )
+  } catch (e) {
+    return e === TOO_BIG ? '(입력이 너무 커서 표시하지 않았어요.)' : ''
   }
 }
 
@@ -124,7 +141,8 @@ export interface ClassifiedEvent {
 export function classifyEvent(raw: unknown): ClassifiedEvent | null {
   if (!isRecord(raw)) return null
   const runId = raw.runId
-  if (typeof runId !== 'string' || runId.length === 0 || runId.length > 64) return null
+  // 객체 키로 쓰이므로 형식을 좁힌다. 어긋나면 조용히 버린다 (고정 안내도 남기지 않는다).
+  if (typeof runId !== 'string' || !RUN_ID_PATTERN.test(runId)) return null
   const type = typeof raw.type === 'string' ? raw.type : ''
   const mk = (
     kind: LogKind,
@@ -177,6 +195,9 @@ export function classifyEvent(raw: unknown): ClassifiedEvent | null {
   }
 }
 
+const getRun = (state: RunLogState, runId: string): RunLog | null =>
+  Object.hasOwn(state.runs, runId) ? state.runs[runId] : null
+
 function newRun(runId: string): RunLog {
   return {
     runId,
@@ -192,16 +213,19 @@ function newRun(runId: string): RunLog {
   }
 }
 
-/** 시작 요청 직후, 첫 이벤트 전의 '대기' 실행을 등록한다. */
+/**
+ * 시작 요청 직후, 첫 이벤트 전의 '대기' 실행을 등록한다.
+ * 지금은 테스트에서만 쓴다. 실행 시작 UI(후속 티켓)가 startRun 응답의 runId로 호출할 자리다.
+ */
 export function registerRun(state: RunLogState, runId: string): RunLogState {
-  if (state.runs[runId]) return state
+  if (!RUN_ID_PATTERN.test(runId) || getRun(state, runId)) return state
   return trim({ order: [...state.order, runId], runs: { ...state.runs, [runId]: newRun(runId) } })
 }
 
 function trim(state: RunLogState): RunLogState {
   if (state.order.length <= MAX_RUNS) return state
   // 끝난 실행 중 가장 오래된 것부터 버린다. 진행 중인 실행은 지키되, 전부 진행 중이면 가장 오래된 것을 버린다.
-  const drop = state.order.find((id) => state.runs[id]?.finished) ?? state.order[0]
+  const drop = state.order.find((id) => getRun(state, id)?.finished) ?? state.order[0]
   const runs = { ...state.runs }
   delete runs[drop]
   return trim({ order: state.order.filter((id) => id !== drop), runs })
@@ -210,7 +234,7 @@ function trim(state: RunLogState): RunLogState {
 export function applyEvent(state: RunLogState, raw: unknown): RunLogState {
   const ev = classifyEvent(raw)
   if (!ev) return state
-  const base = state.runs[ev.runId] ?? null
+  const base = getRun(state, ev.runId)
   // 종료 뒤에 늦게 도착한 이벤트는 순서가 어긋난 것이므로 버린다.
   if (base?.finished) return state
   const run: RunLog = base ? { ...base } : newRun(ev.runId)
@@ -243,7 +267,7 @@ export function applyEvent(state: RunLogState, raw: unknown): RunLogState {
   run.status = nextStatus(run, ev)
   if (ev.type === 'exit') run.finished = true
 
-  const exists = state.runs[ev.runId] !== undefined
+  const exists = base !== null
   return trim({
     order: exists ? state.order : [...state.order, ev.runId],
     runs: { ...state.runs, [ev.runId]: run }
@@ -266,17 +290,31 @@ export function applyEvents(state: RunLogState, events: readonly unknown[]): Run
   return events.reduce<RunLogState>(applyEvent, state)
 }
 
+export { getRun }
+
 export function isActive(status: RunStatus): boolean {
   return status === 'pending' || status === 'running'
 }
 
-export function windowEntries(run: RunLog): { shown: LogEntry[]; hidden: number } {
-  const hidden = Math.max(0, run.entries.length - run.visible)
-  return { shown: hidden > 0 ? run.entries.slice(hidden) : run.entries, hidden }
+/**
+ * 화면에 그릴 구간. 기본은 최근 visible건이다.
+ * pinnedSeq(자동 스크롤을 끈 시점에 보던 첫 항목)가 있으면 그 항목부터 보여, 새 이벤트가 와도 읽던 항목이 밀려나지 않는다.
+ */
+export function windowEntries(
+  run: RunLog,
+  pinnedSeq: number | null = null
+): { shown: LogEntry[]; hidden: number } {
+  const len = run.entries.length
+  let start = Math.max(0, len - run.visible)
+  if (pinnedSeq !== null) {
+    const idx = run.entries.findIndex((e) => e.seq >= pinnedSeq)
+    start = Math.max(0, Math.min(start, idx === -1 ? len : idx))
+  }
+  return { shown: start > 0 ? run.entries.slice(start) : run.entries, hidden: start }
 }
 
 export function showEarlier(state: RunLogState, runId: string): RunLogState {
-  const run = state.runs[runId]
+  const run = getRun(state, runId)
   if (!run) return state
   return {
     ...state,

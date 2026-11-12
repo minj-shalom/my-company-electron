@@ -2,11 +2,16 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { buildScenarioEvents, createMockRunApi, parseRunScenario } from '../mock-run'
 import { RunLogView } from './RunLogView'
-import { applyEvents, EMPTY_STATE, MAX_ENTRIES_PER_RUN } from './run-log-model'
+import { applyEvents, EMPTY_STATE } from './run-log-model'
 import type { RunLogView as View } from './use-run-log'
 
 const render = (view: View): string =>
   renderToStaticMarkup(<RunLogView view={view} retry={() => {}} more={() => {}} />)
+/** 실행 취소 버튼의 여는 태그. 이름(텍스트)으로 찾는다. */
+const cancelButton = (html: string): string => {
+  const end = html.indexOf('>실행 취소<')
+  return html.slice(html.lastIndexOf('<button', end), end)
+}
 const withRun = (scenario: Parameters<typeof buildScenarioEvents>[0]): View => ({
   kind: 'ready',
   log: applyEvents(
@@ -32,7 +37,7 @@ describe('RunLogView states', () => {
     expect(html).not.toContain('<b>HTML')
     expect(html).toContain('완료')
     expect(html).toContain('비용 $0.0123')
-    expect(html).toMatch(/disabled=""[^>]*>실행 취소/)
+    expect(cancelButton(html)).toContain('disabled')
   })
   it('shows error runs with fixed text and no internal path', () => {
     const html = render(withRun('error'))
@@ -43,14 +48,13 @@ describe('RunLogView states', () => {
     const html = render(withRun('long'))
     expect(html).toContain('더 보기')
     expect(html).toContain('보관 한도')
-    expect((html.match(/class="rev"/g) ?? []).length).toBeLessThanOrEqual(200)
-    expect(MAX_ENTRIES_PER_RUN).toBe(2000)
+    expect(html.split('class="rev"').length - 1).toBeLessThanOrEqual(200)
   })
   it('enables cancel while running', () => {
     const log = applyEvents(EMPTY_STATE, [
       { runId: 'r', type: 'message', role: 'assistant', text: 'hi' }
     ])
-    expect(render({ kind: 'ready', log })).not.toMatch(/disabled=""[^>]*>실행 취소/)
+    expect(cancelButton(render({ kind: 'ready', log }))).not.toContain('disabled')
   })
 })
 

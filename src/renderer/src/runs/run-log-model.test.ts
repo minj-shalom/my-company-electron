@@ -5,6 +5,7 @@ import {
   classifyEvent,
   createBatcher,
   EMPTY_STATE,
+  getRun,
   errorText,
   MAX_BODY_CHARS,
   MAX_ENTRIES_PER_RUN,
@@ -208,5 +209,65 @@ describe('createBatcher', () => {
     expect(apply).toHaveBeenCalledTimes(1)
     b.push(4)
     expect(frames).toHaveLength(2)
+  })
+})
+
+describe('runId hardening', () => {
+  it.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valueOf'])(
+    'does not crash on runId %s',
+    (id) => {
+      const s = applyEvents(EMPTY_STATE, [msg(id, 'a'), msg(id, 'b')])
+      // 형식 검증을 통과하는 이름은 자기 소유 키로만 다뤄져 프로토타입 값을 돌려받지 않는다.
+      if (id === '__proto__') expect(s).toBe(EMPTY_STATE)
+      else expect(s.runs[id].entries.map((e) => e.text)).toEqual(['a', 'b'])
+      expect(Object.getPrototypeOf(s.runs)).toBe(Object.prototype)
+    }
+  )
+  it('ignores malformed runIds silently', () => {
+    for (const id of ['', 'x'.repeat(65), 'a b', 'a/b', 'a.b', 123, null, undefined, {}, ['a']]) {
+      expect(applyEvent(EMPTY_STATE, { runId: id, type: 'message', text: 'x' })).toBe(EMPTY_STATE)
+      expect(classifyEvent({ runId: id, type: 'message' })).toBeNull()
+    }
+  })
+  it('registerRun and showEarlier reject prototype names safely', () => {
+    expect(registerRun(EMPTY_STATE, '__proto__')).toBe(EMPTY_STATE)
+    expect(showEarlier(EMPTY_STATE, 'constructor')).toBe(EMPTY_STATE)
+    expect(getRun(EMPTY_STATE, 'toString')).toBeNull()
+  })
+})
+
+describe('pinned windowing', () => {
+  const many = (n: number): ReturnType<typeof applyEvents> =>
+    applyEvents(
+      EMPTY_STATE,
+      Array.from({ length: n }, (_, i) => msg('r', String(i)))
+    )
+  it('keeps the first visible item while new events arrive', () => {
+    const before = windowEntries(many(500).runs.r)
+    const pin = before.shown[0].seq
+    const after = windowEntries(many(560).runs.r, pin)
+    expect(after.shown[0].seq).toBe(pin)
+    expect(after.shown.length).toBe(WINDOW_STEP + 60)
+    // 고정하지 않으면 같은 항목이 밀려난다.
+    expect(windowEntries(many(560).runs.r).shown[0].seq).toBeGreaterThan(pin)
+  })
+  it('follows the tail without a pin and respects showEarlier with a pin', () => {
+    let s = many(500)
+    const pin = windowEntries(s.runs.r).shown[0].seq
+    s = showEarlier(s, 'r')
+    expect(windowEntries(s.runs.r, pin).shown).toHaveLength(WINDOW_STEP * 2)
+  })
+  it('handles a pin older than what was dropped', () => {
+    const s = many(MAX_ENTRIES_PER_RUN + 50)
+    expect(windowEntries(s.runs.r, 1).hidden).toBe(0)
+  })
+})
+
+describe('size limits', () => {
+  it('flattens truncated text and stops serializing huge tool input', () => {
+    const big = { a: 'x'.repeat(300_000) }
+    const e = classifyEvent(ev('r', { type: 'tool_use', toolUseId: 'a', name: 'X', input: big }))
+    expect(e?.entry?.text).toBe('(입력이 너무 커서 표시하지 않았어요.)')
+    expect(truncateText('y'.repeat(MAX_BODY_CHARS + 10)).text).toHaveLength(MAX_BODY_CHARS)
   })
 })

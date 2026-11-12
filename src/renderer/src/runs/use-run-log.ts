@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  applyEvents,
-  createBatcher,
-  EMPTY_STATE,
-  showEarlier,
-  type RunLogState
-} from './run-log-model'
+import { startSubscription } from './run-log-controller'
+import { applyEvents, EMPTY_STATE, showEarlier, type RunLogState } from './run-log-model'
 
 export type RunLogView =
   { kind: 'connecting' } | { kind: 'error' } | { kind: 'ready'; log: RunLogState }
@@ -25,32 +20,21 @@ export function useRunLog(): UseRunLog {
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    let active = true
-    const batcher = createBatcher<unknown>(
-      (batch) => {
-        if (!active) return
-        setView((v) => (v.kind === 'ready' ? { kind: 'ready', log: applyEvents(v.log, batch) } : v))
-      },
+    const sub = startSubscription(
+      (listener) => window.api.onRunEvent(listener),
+      (batch) =>
+        setView((v) =>
+          v.kind === 'ready' ? { kind: 'ready', log: applyEvents(v.log, batch) } : v
+        ),
       (cb) => requestAnimationFrame(cb),
       (id) => cancelAnimationFrame(id)
     )
-    let off: (() => void) | null = null
-    let failed = false
-    try {
-      off = window.api.onRunEvent((event) => batcher.push(event))
-    } catch {
-      failed = true
-    }
     // 구독은 동기 호출이라 연결 결과(성공/실패)를 여기서 한 번만 반영한다. 구독 자체가 외부 시스템과의 동기화다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setView((v) =>
-      failed ? { kind: 'error' } : v.kind === 'ready' ? v : { kind: 'ready', log: EMPTY_STATE }
+      sub.failed ? { kind: 'error' } : v.kind === 'ready' ? v : { kind: 'ready', log: EMPTY_STATE }
     )
-    return () => {
-      active = false
-      batcher.dispose()
-      off?.()
-    }
+    return sub.dispose
   }, [attempt])
 
   const retry = useCallback(() => {

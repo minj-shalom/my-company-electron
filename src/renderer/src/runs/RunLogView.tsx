@@ -1,9 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import { runExclusive } from '../lib/refresh'
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Badge, type BadgeTone } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { canCancel, requestCancel } from './run-log-controller'
 import {
+  getRun,
   isActive,
+  WINDOW_STEP,
   KIND_LABEL,
   runLabel,
   scrolledAwayFromBottom,
@@ -28,6 +30,10 @@ export function RunLogView({ view, retry, more }: UseRunLog): React.JSX.Element 
   const [autoScroll, setAutoScroll] = useState(true)
   const [autoOffNotice, setAutoOffNotice] = useState(false)
   const toggleId = useId()
+  const onUserScrolledUp = useCallback(() => {
+    setAutoScroll(false)
+    setAutoOffNotice(true)
+  }, [])
 
   if (view.kind === 'connecting') {
     return (
@@ -71,19 +77,14 @@ export function RunLogView({ view, retry, more }: UseRunLog): React.JSX.Element 
         )}
       </div>
       {[...log.order].reverse().map((id) => {
-        const run = log.runs[id]
+        const run = getRun(log, id)
         return run ? (
           <RunGroup
             key={id}
             run={run}
             label={runLabel(log.order, id)}
             autoScroll={autoScroll}
-            onUserScrolledUp={() => {
-              if (autoScroll) {
-                setAutoScroll(false)
-                setAutoOffNotice(true)
-              }
-            }}
+            onUserScrolledUp={onUserScrolledUp}
             more={more}
           />
         ) : null
@@ -92,7 +93,7 @@ export function RunLogView({ view, retry, more }: UseRunLog): React.JSX.Element 
   )
 }
 
-function RunGroup({
+const RunGroup = memo(function RunGroup({
   run,
   label,
   autoScroll,
@@ -106,12 +107,16 @@ function RunGroup({
   more: (runId: string) => void
 }): React.JSX.Element {
   const headId = useId()
+  const [pin, setPin] = useState<number | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const lock = useRef(false)
   const mounted = useRef(true)
   const [cancelNote, setCancelNote] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
-  const { shown, hidden } = windowEntries(run)
+  const { shown, hidden } = windowEntries(run, pin)
+  // 자동 스크롤을 끄는 순간 보던 첫 항목을 고정하고, 다시 켜면 풀어 최근 구간을 따라간다 (렌더 중 파생 상태 갱신).
+  if (!autoScroll && pin === null && shown.length > 0) setPin(shown[0].seq)
+  if (autoScroll && pin !== null) setPin(null)
   const usage = usageText(run.usage)
 
   useEffect(() => {
@@ -127,21 +132,15 @@ function RunGroup({
   }, [autoScroll, run.entries])
 
   const cancel = async (): Promise<void> => {
-    const r = await runExclusive(lock, async () => {
-      setCancelling(true)
-      try {
-        return await window.api.cancelRun(run.runId)
-      } catch {
-        return null
-      } finally {
-        if (mounted.current) setCancelling(false)
+    const out = await requestCancel(
+      lock,
+      (id) => window.api.cancelRun(id),
+      run.runId,
+      (busy) => {
+        if (mounted.current) setCancelling(busy)
       }
-    })
-    if (!mounted.current) return
-    if (!r.ran) return
-    if (r.value === null) setCancelNote('취소하지 못했어요. 잠시 뒤 다시 시도해 주세요.')
-    else if (!r.value) setCancelNote('이미 끝났거나 찾을 수 없는 실행이에요.')
-    else setCancelNote(null)
+    )
+    if (mounted.current && out.kind !== 'skipped') setCancelNote(out.note)
   }
 
   return (
@@ -154,7 +153,7 @@ function RunGroup({
         {usage && <span className="rrun__usage">{usage}</span>}
         <Button
           size="small"
-          disabled={!isActive(run.status) || cancelling}
+          disabled={!canCancel(run.status, cancelling)}
           onClick={() => void cancel()}
         >
           {cancelling ? '취소하는 중…' : '실행 취소'}
@@ -178,7 +177,8 @@ function RunGroup({
         tabIndex={0}
         onScroll={(e) => {
           const t = e.currentTarget
-          if (scrolledAwayFromBottom(t)) onUserScrolledUp()
+          // 끝난 실행을 읽으려고 올리는 스크롤은 활성 실행의 자동 스크롤과 무관하다.
+          if (isActive(run.status) && scrolledAwayFromBottom(t)) onUserScrolledUp()
         }}
       >
         {(hidden > 0 || run.dropped > 0) && (
@@ -190,7 +190,7 @@ function RunGroup({
             )}
             {hidden > 0 && (
               <Button size="small" onClick={() => more(run.runId)}>
-                이전 {Math.min(hidden, 200)}건 더 보기 (숨김 {hidden}건)
+                이전 {Math.min(hidden, WINDOW_STEP)}건 더 보기 (숨김 {hidden}건)
               </Button>
             )}
           </div>
@@ -214,4 +214,4 @@ function RunGroup({
       </div>
     </article>
   )
-}
+})
