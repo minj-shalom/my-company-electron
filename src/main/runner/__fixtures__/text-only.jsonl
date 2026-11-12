@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"51a0afe1-8d53-48f7-bcd1-bb247bdcc9df","model":"claude-sonnet-5-5","tools":[]}
+{"type":"assistant","message":{"model":"claude-sonnet-5-5","role":"assistant","content":[{"type":"text","text":"Hello there, friend!"}]},"session_id":"51a0afe1-8d53-48f7-bcd1-bb247bdcc9df"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}
+{"type":"result","subtype":"success","is_error":false,"num_turns":1,"result":"Hello there, friend!","total_cost_usd":0.0095009,"duration_ms":1500,"session_id":"51a0afe1-8d53-48f7-bcd1-bb247bdcc9df"}
