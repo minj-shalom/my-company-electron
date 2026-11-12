@@ -18,6 +18,8 @@ import { MAX_MEMO_LENGTH, DECISION_ID, TICKET_ID } from './repository/ids'
 import { FileCompanyRepository } from './repository/file-repository'
 import type { SafeFs } from './repository/safe-fs'
 import { buildOrgSnapshot } from './org/org-snapshot'
+import { createEmployeeHandlers, type EmployeeHandlers } from './employee/employee-ipc'
+import type { AssignmentSource } from './employee/employee-service'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
 
@@ -25,6 +27,8 @@ export interface DomainDeps {
   context: CompanyContext
   providers: ProviderService
   limits: WeeklyLimitsStore
+  /** 직원 프로젝트 배정 조회. T-045 전에는 생략하며 항상 빈 목록으로 본다. */
+  assignments?: AssignmentSource
 }
 
 const fail = (
@@ -101,8 +105,13 @@ export function createDomainHandlers(deps: DomainDeps): {
   moveTicket: (req: unknown) => Promise<ApiResult<Ticket>>
   listDecisions: (status: unknown) => Promise<ApiResult<DecisionList>>
   resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
-} {
+} & EmployeeHandlers {
   return {
+    ...createEmployeeHandlers({
+      context: deps.context,
+      repository: () => repositoryFor(deps),
+      assignments: deps.assignments
+    }),
     // SafeFs는 열린 회사 컨텍스트에서만 얻는다 (renderer가 경로를 넘기지 않는다).
     getOrg: () => guarded(() => buildOrgSnapshot(deps.context.requireOpenCompany().fs)),
     detectProviders: () => guarded(() => deps.providers.detect()),
@@ -213,6 +222,11 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.ticketMove, h.moveTicket)
   handle(IPC_CHANNELS.decisionList, h.listDecisions)
   handle(IPC_CHANNELS.decisionResolve, h.resolveDecision)
+  handle(IPC_CHANNELS.employeeListTemplates, () => h.listTemplates())
+  handle(IPC_CHANNELS.employeeCreate, h.createEmployee)
+  handle(IPC_CHANNELS.employeeUpdate, h.updateEmployee)
+  handle(IPC_CHANNELS.employeeMove, h.moveEmployee)
+  handle(IPC_CHANNELS.employeeRetire, h.retireEmployee)
   handle(IPC_CHANNELS.settingsWeeklyLimitsGet, () => h.getWeeklyLimits())
   handle(IPC_CHANNELS.settingsWeeklyLimitsSave, h.saveWeeklyLimits)
 }
