@@ -6,6 +6,7 @@ import { AGENTS_DIR, ORG_FILE } from '../repository/parse-org'
 import {
   displayWidth,
   escapeCell,
+  CONTROL_CHARS,
   isValidName,
   locateTable,
   MAX_ORG_BYTES,
@@ -14,8 +15,6 @@ import {
 
 const MAX_ROLE = 300
 const MULTI = /[,;/、]/
-// eslint-disable-next-line no-control-regex -- 제어 문자 검출이 목적
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
 
 type Fail = {
   ok: false
@@ -27,6 +26,15 @@ const fail = (code: Fail['code'], message: string): Fail => ({ ok: false, code, 
 async function agentIdSet(fs: SafeFs): Promise<Set<string>> {
   const { files } = await fs.listMarkdown(AGENTS_DIR)
   return new Set(files.map((f) => f.slice(0, -3)))
+}
+
+/** 에이전트 폴더를 못 읽으면 빈 집합과 함께 알린다 (링크 등). 던지지 않는다. */
+async function safeAgentIds(fs: SafeFs): Promise<{ ids: Set<string>; failed: boolean }> {
+  try {
+    return { ids: await agentIdSet(fs), failed: false }
+  } catch {
+    return { ids: new Set(), failed: true }
+  }
 }
 
 /** org.md를 읽어 모델로 만든다. 읽기 실패와 파싱 문제는 던지지 않고 `issues`에 담는다. */
@@ -41,7 +49,11 @@ export async function loadOrg(fs: SafeFs): Promise<OrgModel> {
       issues: [{ code: read.code, message: read.message }]
     }
   }
-  return parseOrgDocument(read.text, await agentIdSet(fs))
+  const agents = await safeAgentIds(fs)
+  const model = parseOrgDocument(read.text, agents.ids)
+  if (agents.failed)
+    model.issues.push({ code: 'unreadable', message: '.claude/agents 폴더를 읽을 수 없습니다.' })
+  return model
 }
 
 async function readOrgText(
@@ -98,7 +110,8 @@ function validate(input: OrgMemberInput): string | null {
   const str = (v: unknown): v is string => typeof v === 'string'
   if (![input.title, input.agentId, input.department, input.reportsTo, input.role].every(str))
     return '입력 형식이 올바르지 않습니다.'
-  if (!isValidName(input.title)) return '직급 형식이 올바르지 않습니다.'
+  // trim 후 달라지는 값은 표에서 다른 이름으로 읽히므로 정규화하지 않고 거부한다.
+  if (!isValidName(input.title) || MULTI.test(input.title)) return '직급 형식이 올바르지 않습니다.'
   if (!isValidName(input.department) || MULTI.test(input.department))
     return '부서 이름 형식이 올바르지 않습니다.'
   if (!EMPLOYEE_ID.test(input.agentId)) return '직원 파일 id 형식이 올바르지 않습니다.'
@@ -114,9 +127,28 @@ function addRow(
   newDepartment: boolean
 ): Promise<ApiResult<OrgModel>> {
   return serialized(fs.root, async () => {
-    const invalid = validate(input)
-    if (invalid) return fail('invalid-request', invalid)
+    try {
+      return await addRowOnce(fs, input, newDepartment)
+    } catch {
+      return fail('internal', 'org.md를 갱신하지 못했습니다.')
+    }
+  })
+}
 
+/**
+ * 읽기-수정-쓰기. 쓰기 직전에 다시 읽어 달라졌으면 한 번 더 시도하고, 그래도 달라지면 conflict.
+ * 남는 위험: 마지막 재읽기와 rename 사이에 다른 프로세스(CLI 에이전트 등)가 쓰면 그 변경이 사라진다.
+ * 파일 잠금이 없어 막을 수 없고, 창은 매우 짧다.
+ */
+async function addRowOnce(
+  fs: SafeFs,
+  input: OrgMemberInput,
+  newDepartment: boolean
+): Promise<ApiResult<OrgModel>> {
+  const invalid = validate(input)
+  if (invalid) return fail('invalid-request', invalid)
+
+  for (let attempt = 0; attempt < 2; attempt++) {
     const read = await readOrgText(fs)
     if (!read.ok) return fail(read.code === 'missing-org' ? 'not-found' : 'internal', read.message)
     if (Buffer.byteLength(read.text, 'utf8') > MAX_ORG_BYTES)
@@ -160,12 +192,28 @@ function addRow(
       .map((c, i) => c + ' '.repeat(Math.max(0, widths[i] - displayWidth(c))))
       .join(' | ')} |`
     lines.splice(table.lastIdx + 1, 0, row)
+    const next = lines.join(eol)
 
-    try {
-      await fs.writeText(ORG_FILE, lines.join(eol))
-    } catch {
-      return fail('internal', 'org.md를 쓰지 못했습니다.')
-    }
-    return { ok: true, value: parseOrgDocument(lines.join(eol), agents) }
-  })
+    // 쓰기 전에 결과를 다시 파싱해 검증한다: 새 행이 정확히 하나 늘고 새 오류가 없어야 한다.
+    // (행 수 제한 초과처럼 파서가 조용히 무시하는 경우도 여기서 걸린다.)
+    const after = parseOrgDocument(next, agents)
+    const added = after.members[after.members.length - 1]
+    if (
+      after.members.length !== model.members.length + 1 ||
+      after.issues.length !== model.issues.length ||
+      added?.title !== input.title ||
+      added.agentId !== input.agentId ||
+      added.department !== input.department ||
+      added.reportsTo !== input.reportsTo ||
+      added.role !== input.role
+    )
+      return fail('invalid-request', '추가한 행이 표에서 올바르게 읽히지 않아 취소했습니다.')
+
+    const current = await readOrgText(fs)
+    if (!current.ok || current.text !== read.text) continue
+
+    await fs.writeText(ORG_FILE, next)
+    return { ok: true, value: after }
+  }
+  return fail('conflict', 'org.md가 동시에 수정되고 있습니다. 다시 시도하세요.')
 }

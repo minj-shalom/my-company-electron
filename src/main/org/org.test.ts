@@ -326,4 +326,163 @@ describe('loadOrg / addMember / addDepartment', () => {
     const re = await loadOrg(fs)
     expect(re.members.map((m) => m.title)).toEqual(expect.arrayContaining(['N1', 'N2']))
   })
+
+  it('rejects names that normalize differently or mean "none"', async () => {
+    const base = {
+      title: 'N',
+      agentId: 'qa-two',
+      department: '개발팀',
+      reportsTo: 'CTO',
+      role: 'r'
+    }
+    const before = await readFile(join(dir, 'company/org.md'), 'utf8')
+    for (const bad of [
+      { title: 'CTO ' },
+      { title: ' N' },
+      { title: '   ' },
+      { title: '-' },
+      { title: 'a/b' },
+      { title: 'a,b' },
+      { title: 'a\u2028b' },
+      { title: 'a\u0085b' },
+      { department: ' ' },
+      { department: '-' },
+      { department: '개발팀 ' },
+      { reportsTo: 'CTO ' },
+      { role: 'a\u2029b' },
+      { role: 'x'.repeat(301) }
+    ])
+      expect(await addMember(fs, { ...base, ...bad }), JSON.stringify(bad)).toMatchObject({
+        ok: false,
+        code: 'invalid-request'
+      })
+    expect(await readFile(join(dir, 'company/org.md'), 'utf8')).toBe(before)
+  })
+
+  it('refuses a row the parser would silently drop (over 500 rows)', async () => {
+    const uniq = Array.from({ length: 500 }, (_, i) => `| P${i} | (사용자) | d | - | x |`)
+    await put('company/org.md', `${HEAD}${uniq.join('\n')}\n`)
+    const r = await addMember(fs, {
+      title: 'N',
+      agentId: 'qa-two',
+      department: 'd',
+      reportsTo: 'P0',
+      role: 'r'
+    })
+    expect(r).toMatchObject({ ok: false, code: 'invalid-request' })
+    expect((await loadOrg(fs)).members).toHaveLength(500)
+  })
+
+  it('round-trips backslashes in cells', async () => {
+    for (const [i, role] of ['a\\b', 'x\\', 'a\\|b', '\\\\'].entries()) {
+      const r = await addMember(fs, {
+        title: `B${i}`,
+        agentId: i === 0 ? 'qa-two' : 'ops',
+        department: '개발팀',
+        reportsTo: 'CTO',
+        role
+      })
+      if (i > 1) {
+        expect(r.ok).toBe(false)
+        continue
+      }
+      expect(r.ok && r.value.members.find((m) => m.title === `B${i}`)?.role).toBe(role)
+      expect((await loadOrg(fs)).members.find((m) => m.title === `B${i}`)?.role).toBe(role)
+    }
+  })
+
+  it('concurrent additions keep every row exactly once', async () => {
+    const ids = Array.from({ length: 8 }, (_, i) => `w${i}`)
+    for (const id of ids) await put(`.claude/agents/${id}.md`, 'x')
+    const rs = await Promise.all(
+      ids.map((id) =>
+        addMember(fs, {
+          title: id.toUpperCase(),
+          agentId: id,
+          department: '개발팀',
+          reportsTo: 'CTO',
+          role: 'r'
+        })
+      )
+    )
+    expect(rs.every((r) => r.ok)).toBe(true)
+    const re = await loadOrg(fs)
+    expect(re.issues).toEqual([])
+    expect(re.members).toHaveLength(11 + ids.length)
+    expect(new Set(re.members.map((m) => m.title)).size).toBe(re.members.length)
+  })
+
+  it('concurrent additions of the same title or agent: only one wins', async () => {
+    const mk = (title: string, agentId: string): Promise<ApiResult<OrgModel>> =>
+      addMember(fs, { title, agentId, department: '개발팀', reportsTo: 'CTO', role: 'r' })
+    const sameTitle = await Promise.all([mk('Z', 'qa-two'), mk('Z', 'ops')])
+    expect(sameTitle.filter((r) => r.ok)).toHaveLength(1)
+    await put('.claude/agents/w1.md', 'x')
+    const sameAgent = await Promise.all([mk('Y1', 'w1'), mk('Y2', 'w1')])
+    expect(sameAgent.filter((r) => r.ok)).toHaveLength(1)
+    const re = await loadOrg(fs)
+    expect(re.issues).toEqual([])
+  })
+
+  it('addMember on a document with a cycle still works and keeps the cycle issue', async () => {
+    await put('company/org.md', `${HEAD}| A | \`cto\` | d | B | x |\n| B | \`cfo\` | d | A | x |\n`)
+    const r = await addMember(fs, {
+      title: 'C',
+      agentId: 'pm',
+      department: 'd',
+      reportsTo: 'A',
+      role: 'r'
+    })
+    expect(r.ok).toBe(true)
+    expect(codes(await loadOrg(fs))).toEqual(['cycle'])
+  })
+
+  it('loadOrg reports oversize org.md and a symlinked agents folder', async () => {
+    await put('company/org.md', `${HEAD}${'<!-- x -->\n'.repeat(30000)}`)
+    expect(codes(await loadOrg(fs))).toEqual(['file-too-large'])
+    await put('company/org.md', REAL)
+    await rm(join(dir, '.claude/agents'), { recursive: true })
+    await mkdir(join(outside, 'agents'))
+    await symlink(join(outside, 'agents'), join(dir, '.claude/agents'))
+    expect(codes(await loadOrg(fs))).toContain('unreadable')
+    expect(
+      await addMember(fs, {
+        title: 'N',
+        agentId: 'qa-two',
+        department: 'd',
+        reportsTo: 'CTO',
+        role: 'r'
+      })
+    ).toMatchObject({ ok: false, code: 'internal' })
+  })
+
+  let outside: string
+  beforeEach(async () => {
+    outside = await mkdtemp(join(tmpdir(), 'mc-org-out-'))
+  })
+  afterEach(() => rm(outside, { recursive: true, force: true }))
+})
+
+describe('parser hardening', () => {
+  it('long whitespace lines do not cause catastrophic backtracking', () => {
+    const t0 = Date.now()
+    parse('## 조직도\n```\na' + ' '.repeat(100_000) + 'b\n```\n')
+    parse(
+      '## 직원 목록\n| 직급 | 직원 파일 |\n|' +
+        ' '.repeat(100_000) +
+        '-' +
+        ' '.repeat(100_000) +
+        'x\n'
+    )
+    parse(`${HEAD}|${' '.repeat(100_000)}\n`)
+    expect(Date.now() - t0).toBeLessThan(500)
+  })
+
+  it('over-long cells and control characters are malformed rows', () => {
+    const r = parse(
+      `${HEAD}| A | (사용자) | d | - | ${'x'.repeat(301)} |\n| B | (사용자) | d | - | a\u0007b |\n| C | (사용자) | d | - | ok |\n`
+    )
+    expect(codes(r)).toEqual(['malformed-row', 'malformed-row'])
+    expect(r.members.map((m) => m.title)).toEqual(['C'])
+  })
 })

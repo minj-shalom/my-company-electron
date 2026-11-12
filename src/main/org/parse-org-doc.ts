@@ -20,7 +20,7 @@ const TABLE_HEADING = /^##\s+직원 목록/
 const CHART_HEADING = /^##\s+조직도/
 const FENCE = /^\s*(```|~~~)/
 // eslint-disable-next-line no-control-regex -- 제어 문자 검출이 목적
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+export const CONTROL_CHARS = /[\u0000-\u001f\u007f\u0085\u2028\u2029]/
 
 export interface TableLocation {
   /** 머리글 줄의 0-based 인덱스. 표가 없으면 null. */
@@ -33,7 +33,14 @@ export interface TableLocation {
 
 /** 이름(직급, 부서)으로 쓸 수 있는 값인지. 표 구분자, 줄바꿈, 제어 문자를 막는다. */
 export function isValidName(v: string): boolean {
-  return v.length > 0 && v.length <= MAX_NAME && !/[|`]/.test(v) && !CONTROL_CHARS.test(v)
+  return (
+    v.length > 0 &&
+    v.length <= MAX_NAME &&
+    v === v.trim() &&
+    v !== '-' && // 표에서 '없음'을 뜻하는 값
+    !/[|`]/.test(v) &&
+    !CONTROL_CHARS.test(v)
+  )
 }
 
 /** 셀을 `|`로 나눈다. `\|`는 셀 안의 리터럴 `|`로 읽는다. */
@@ -45,8 +52,8 @@ export function splitRow(line: string): string[] {
   let cur = ''
   for (let i = 0; i < s.length; i++) {
     const ch = s[i]
-    if (ch === '\\' && s[i + 1] === '|') {
-      cur += '|'
+    if (ch === '\\' && (s[i + 1] === '|' || s[i + 1] === '\\')) {
+      cur += s[i + 1]
       i++
     } else if (ch === '|') {
       cells.push(cur.trim())
@@ -57,13 +64,15 @@ export function splitRow(line: string): string[] {
   return cells
 }
 
-/** 셀에 쓸 값을 이스케이프한다 (쓰기 쪽). */
+/** 셀에 쓸 값을 이스케이프한다 (쓰기 쪽). `\`도 이스케이프해야 `\|`로 오해되지 않는다. */
 export function escapeCell(v: string): string {
-  return v.replace(/\|/g, '\\|')
+  return v.replace(/[\\|]/g, '\\$&')
 }
 
+// 정규식 대신 셀 단위로 판정한다 (긴 줄에서 역추적이 폭증하지 않도록 길이도 먼저 제한).
+const MAX_LINE = 5000
 const isSeparator = (line: string): boolean =>
-  /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(line)
+  line.length <= MAX_LINE && splitRow(line).every((c) => /^:?-+:?$/.test(c))
 
 /** `직원 목록` 아래 첫 표를 찾는다. 코드 펜스 안과 다음 `##` 이후는 보지 않는다. */
 export function locateTable(lines: string[]): TableLocation | null {
@@ -122,17 +131,31 @@ function parseChart(lines: string[], issues: OrgIssue[]): OrgChartLine[] {
       issues.push({ code: 'too-many-rows', message: '조직도 블록이 너무 깁니다.', line: i + 1 })
       break
     }
-    const col = line.search(/[^\s│├└─|`+\\-]/)
+    const col = line.slice(0, MAX_LINE).search(/[^\s│├└─|`+\\-]/)
     if (col < 0) continue
-    const text = line.slice(col).trim()
-    const m = /^(.*?)(?:\s+──+\s*(.*)|\s+(\(.*\)))?$/.exec(text)
-    const label = (m?.[1] ?? text).slice(0, MAX_CELL)
-    const detail = (m?.[2] ?? m?.[3] ?? '').slice(0, MAX_CELL)
+    const { label, detail } = splitChartText(line.slice(col, MAX_LINE).trim())
     while (stack.length && stack[stack.length - 1].col >= col) stack.pop()
     out.push({ label, parent: stack.length ? stack[stack.length - 1].label : null, detail })
     stack.push({ col, label })
   }
   return out
+}
+
+/** `CTO ── 개발팀 (...)`, `CEO (사용자)` 형태를 선형 탐색으로 나눈다 (정규식 역추적 방지). */
+function splitChartText(text: string): { label: string; detail: string } {
+  const dash = text.indexOf('──')
+  const paren = text.indexOf(' (')
+  let cut = -1
+  let rest = ''
+  if (dash >= 0 && (paren < 0 || dash < paren)) {
+    cut = dash
+    rest = text.slice(dash).replace(/^─+/, '').trim()
+  } else if (paren >= 0) {
+    cut = paren
+    rest = text.slice(paren).trim()
+  }
+  const label = cut >= 0 ? text.slice(0, cut).trim() : text
+  return { label: label.slice(0, MAX_CELL), detail: rest.slice(0, MAX_CELL) }
 }
 
 interface ParsedRef {
