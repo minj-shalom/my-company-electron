@@ -1,5 +1,5 @@
 import type { Ticket, TicketStatus } from '../../shared/ticket'
-import { asString, firstHeading, metaValue, splitFrontmatter } from './markdown'
+import { FORGED_LINE_BREAK, asString, firstHeading, metaValue, splitFrontmatter } from './markdown'
 import { EMPLOYEE_ID, TICKET_ID, leadingId } from './ids'
 
 /** 티켓 상태 폴더. 폴더가 상태의 원본이다 (본문의 상태 줄이 달라도 폴더를 따른다). */
@@ -36,20 +36,44 @@ function pickEmployeeId(raw: string | null): string | null {
   return token && EMPLOYEE_ID.test(token[1]) ? token[1] : null
 }
 
-const STATUS_LINE = /^([ \t]*[-*][ \t]+\*\*상태:\*\*)[ \t]*.*$/
+const STATUS_PREFIX = /^[-*][ \t]+\*\*상태:\*\*/
+const FENCE_LINE = /^[ \t]*(```|~~~)/
 
 /**
- * 본문의 `- **상태:** ...` 줄을 새 상태로 바꾼다. 줄이 없으면 그대로 둔다.
- * `m` 플래그 정규식 대신 `\n` 단위로 훑는다: `\s*`가 개행을 넘어 큰 파일에서 느려질 수 있고,
- * 단독 `\r`/LS 같은 문자로 줄이 위조되는 것도 막기 위해서다. 각 줄 끝의 `\r`(CRLF)은 보존한다.
+ * 메타 영역의 `- **상태:** ...` 줄을 새 상태로 바꾼다. 줄이 없으면 그대로 둔다.
+ * - 대상은 frontmatter 뒤, 첫 `# ` 제목 이후부터 첫 `## ` 앞까지의 영역에서 코드 펜스 밖이고 들여쓰지 않은 최상위 목록 줄이다
+ *   (코드 예시나 중첩 목록의 같은 모양 줄을 건드리지 않는다).
+ * - 줄 뒤에 붙어 있던 내용(예: `- **상태:** backlog (보류)`의 메모)은 지워진다. 상태 줄은 값 하나만 갖는다는 규칙이다.
+ * - `\n` 단위로 훑고 값 부분에는 정규식을 쓰지 않는다 (`[ \t]*.*$`는 공백이 긴 줄에서 O(n²)가 되고,
+ *   단독 `\r`/LS로 줄이 위조되는 것도 막아야 한다). 각 줄 끝의 `\r`(CRLF)은 보존한다.
  */
 export function withTicketStatus(text: string, status: TicketStatus): string {
   const lines = text.split('\n')
-  for (const [i, line] of lines.entries()) {
+  let from = 0
+  if (/^\uFEFF?---[ \t]*\r?$/.test(lines[0] ?? '')) {
+    const end = lines.findIndex((l, i) => i > 0 && /^---[ \t]*\r?$/.test(l))
+    from = end < 0 ? 0 : end + 1
+  }
+  let fence = false
+  let afterHeading = from
+  for (let i = from; i < lines.length; i++) {
+    if (FENCE_LINE.test(lines[i])) fence = !fence
+    if (!fence && /^#[ \t]/.test(lines[i])) {
+      afterHeading = i + 1
+      break
+    }
+  }
+  fence = false
+  for (let i = afterHeading; i < lines.length; i++) {
+    const line = lines[i]
+    if (FENCE_LINE.test(line)) fence = !fence
+    if (fence) continue
+    if (/^##[ \t]/.test(line)) break
     const cr = line.endsWith('\r') ? '\r' : ''
-    const m = STATUS_LINE.exec(cr ? line.slice(0, -1) : line)
-    if (m) {
-      lines[i] = `${m[1]} ${status}${cr}`
+    const bare = cr ? line.slice(0, -1) : line
+    const m = STATUS_PREFIX.exec(bare)
+    if (m && !FORGED_LINE_BREAK.test(bare.slice(m[0].length))) {
+      lines[i] = `${m[0]} ${status}${cr}`
       break
     }
   }
