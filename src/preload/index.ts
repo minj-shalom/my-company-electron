@@ -19,15 +19,16 @@ const api: WindowApi = {
   getCurrentCompany: () => ipcRenderer.invoke(IPC_CHANNELS.companyCurrent),
   getCompany: notImplemented,
   listEmployees: notImplemented,
-  getOrg: notImplemented,
+  getOrg: () => ipcRenderer.invoke(IPC_CHANNELS.orgGet),
   listTickets: notImplemented,
   getTicket: notImplemented,
   listDecisions: notImplemented,
   resolveDecision: notImplemented,
-  detectProviders: notImplemented,
-  testProviderConnection: notImplemented,
-  getWeeklyLimits: notImplemented,
-  saveWeeklyLimits: notImplemented,
+  detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
+  testProviderConnection: (provider) =>
+    ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),
+  getWeeklyLimits: () => ipcRenderer.invoke(IPC_CHANNELS.settingsWeeklyLimitsGet),
+  saveWeeklyLimits: (req) => ipcRenderer.invoke(IPC_CHANNELS.settingsWeeklyLimitsSave, req),
   onRunEvent: (listener) => {
     // IpcRendererEvent를 renderer에 넘기지 않고 payload만 전달한다.
     const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]): void =>

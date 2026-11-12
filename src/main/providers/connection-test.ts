@@ -45,6 +45,8 @@ export interface ConnectionTestOptions {
   timeoutMs?: number
   /** 기본값은 OS 임시 디렉터리. */
   cwd?: string
+  /** 앱 종료 같은 정리 시점에 자식 프로세스 트리를 끊는다. */
+  signal?: AbortSignal
 }
 
 function done(provider: ProviderCliId, state: ConnectionTestState): ConnectionTestResult {
@@ -65,6 +67,7 @@ export function runConnectionTest(
   const launch = buildLaunch(found.path, args, ctx)
   if (launch === null) return Promise.resolve(done(provider, 'exec-failed'))
   const spawnFn = options.spawnFn ?? nodeSpawn
+  if (options.signal?.aborted) return Promise.resolve(done(provider, 'failed'))
 
   return new Promise((resolve) => {
     let child
@@ -86,12 +89,18 @@ export function runConnectionTest(
       if (settled) return
       settled = true
       clearTimeout(timer)
+      options.signal?.removeEventListener('abort', onAbort)
       resolve(done(provider, state))
     }
     const timer = setTimeout(() => {
       terminateTree(child, ctx, { spawnFn: options.spawnFn })
       finish('timeout')
     }, options.timeoutMs ?? CONNECTION_TEST_TIMEOUT_MS)
+    const onAbort = (): void => {
+      terminateTree(child, ctx, { spawnFn: options.spawnFn })
+      finish('failed')
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
     let gotOutput = false
     // 출력은 버리고 "응답이 있었는지"만 본다 (본문을 보관하거나 반환하지 않는다).
     child.stdout?.on('data', (chunk: Buffer | string) => {

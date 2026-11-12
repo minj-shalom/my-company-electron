@@ -47,7 +47,7 @@ export interface WindowApi {
    */
   getCompany: () => Promise<ApiResult<CompanyInfo | null>>
   listEmployees: () => Promise<ApiResult<OrgChart>>
-  /** 조직도(T-011) 계약. main 핸들러는 후속 티켓에서 구현하며 그 전까지 preload는 `not-implemented`를 돌려준다. 파싱 문제는 실패가 아니라 `org.issues`에 담긴다. */
+  /** 조직도(T-011) 계약. main이 열린 회사에서 읽어 돌려주며 열린 회사가 없으면 `no-company`. 파싱 문제는 실패가 아니라 `org.issues`에 담긴다. */
   getOrg: () => Promise<ApiResult<OrgSnapshot>>
   listTickets: (status?: TicketStatus) => Promise<ApiResult<Ticket[]>>
   /** main은 id를 허용 형식(예: ^T-\d+$)만 받고, 경로를 id로 조합하지 말고 목록에서 찾아 쓴다. body는 마크다운이므로 renderer가 sanitize한다. */
@@ -56,7 +56,7 @@ export interface WindowApi {
   /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것 하나뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
   resolveDecision: (req: DecisionResolveRequest) => Promise<ApiResult<Decision>>
   /**
-   * 온보딩(T-009) 계약. main 핸들러는 후속 티켓에서 구현하며 그 전까지 preload는 `not-implemented`를 돌려준다.
+   * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
   /** 세 제공자 CLI의 설치 여부를 확인한다. 사용량을 쓰지 않는다. */
@@ -81,7 +81,7 @@ export const IPC_CHANNELS = {
   companySelectFolder: 'company:select-folder',
   companyOpen: 'company:open',
   companyCurrent: 'company:current',
-  // 아래 채널은 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
+  // companyGet~decisionResolve는 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
   companyGet: 'company:get',
   employeeList: 'employee:list',
   orgGet: 'org:get',
