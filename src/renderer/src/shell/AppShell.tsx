@@ -1,4 +1,7 @@
 import { useId, useState } from 'react'
+import { DecisionInbox } from '../decisions/DecisionInbox'
+import { pendingCount } from '../decisions/decision-view'
+import { useDecisions } from '../decisions/use-decisions'
 import { OfficeView } from '../office/OfficeView'
 import { OrgView } from '../org/OrgView'
 import { initialPanelOpen, shouldCollapsePanel } from './panel-rules'
@@ -10,7 +13,7 @@ import { ThemeToggle } from '../ui/ThemeToggle'
 const SIDE_TABS: readonly (TabItem & { empty: string })[] = [
   { id: 'logs', label: '직원 로그', empty: '아직 일하는 직원이 없어요.' },
   { id: 'tickets', label: '티켓', empty: '아직 티켓이 없어요.' },
-  { id: 'decisions', label: '결재함', empty: '결재를 기다리는 일이 없어요.' }
+  { id: 'decisions', label: '결재함', empty: '' }
 ]
 
 const MAIN_VIEWS: readonly TabItem[] = [
@@ -26,6 +29,12 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
   const [tab, setTab] = useState(SIDE_TABS[0].id)
   const [view, setView] = useState(MAIN_VIEWS[0].id)
   const panelId = useId()
+  const decisions = useDecisions()
+  const pending = pendingCount(decisions.state)
+  // 새 카드가 있으면 탭에도 개수를 붙여, 다른 탭을 보고 있어도 알아차리게 한다.
+  const sideTabs = SIDE_TABS.map((t) =>
+    t.id === 'decisions' && pending > 0 ? { ...t, extra: <Badge tone="warn">{pending}</Badge> } : t
+  )
   const current = SIDE_TABS.find((t) => t.id === tab) ?? SIDE_TABS[0]
 
   return (
@@ -33,7 +42,9 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
       <header className="statusbar">
         <span className="statusbar__name">{companyName}</span>
         <span className="statusbar__usage">사용량: 아직 집계 전</span>
-        <Badge>결재 0</Badge>
+        <Badge tone={pending > 0 ? 'warn' : 'neutral'}>
+          <span aria-live="polite">결재 {pending}</span>
+        </Badge>
         <ThemeToggle />
         <Button
           size="small"
@@ -61,8 +72,12 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
           </Tabs>
         </main>
         <aside className="side-panel" id={panelId} hidden={!panelOpen} aria-label="업무 패널">
-          <Tabs label="업무 종류" tabs={SIDE_TABS} selectedId={tab} onSelect={setTab}>
-            <p className="empty-state">{current.empty}</p>
+          <Tabs label="업무 종류" tabs={sideTabs} selectedId={tab} onSelect={setTab}>
+            {tab === 'decisions' ? (
+              <DecisionInbox {...decisions} />
+            ) : (
+              <p className="empty-state">{current.empty}</p>
+            )}
           </Tabs>
         </aside>
       </div>
