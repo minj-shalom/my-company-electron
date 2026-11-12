@@ -81,7 +81,7 @@ export const IPC_CHANNELS = {
   companySelectFolder: 'company:select-folder',
   companyOpen: 'company:open',
   companyCurrent: 'company:current',
-  // companyGet~decisionResolve는 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
+  // companyGet~ticketGet은 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
   companyGet: 'company:get',
   employeeList: 'employee:list',
   orgGet: 'org:get',

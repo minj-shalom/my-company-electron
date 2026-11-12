@@ -1,10 +1,14 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/api'
+import type { Decision } from '../shared/decision'
 import type { OrgSnapshot } from '../shared/org'
 import type { ConnectionTestResult, ProviderDetection, WeeklyLimit } from '../shared/provider'
 import type { ApiResult } from '../shared/result'
 import { isTrustedSender } from './ipc-guard'
 import { NoCompanyError, type CompanyContext } from './company/company-context'
+import { MAX_MEMO_LENGTH, DECISION_ID } from './repository/ids'
+import { FileCompanyRepository } from './repository/file-repository'
+import type { SafeFs } from './repository/safe-fs'
 import { buildOrgSnapshot } from './org/org-snapshot'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
@@ -16,7 +20,7 @@ export interface DomainDeps {
 }
 
 const fail = (
-  code: 'invalid-request' | 'no-company' | 'internal',
+  code: 'invalid-request' | 'no-company' | 'internal' | 'not-found' | 'conflict',
   message: string
 ): ApiResult<never> => ({
   ok: false,
@@ -34,12 +38,35 @@ async function guarded<T>(task: () => Promise<T>): Promise<ApiResult<T>> {
   }
 }
 
+/** 열린 회사(SafeFs)마다 저장소 하나를 쓴다. resolve 직렬화 큐가 호출 사이에 공유되어야 하기 때문이다. */
+const repositories = new WeakMap<SafeFs, FileCompanyRepository>()
+function repositoryFor(deps: DomainDeps): FileCompanyRepository {
+  const fs = deps.context.requireOpenCompany().fs
+  let repo = repositories.get(fs)
+  if (!repo) {
+    repo = FileCompanyRepository.fromSafeFs(fs)
+    repositories.set(fs, repo)
+  }
+  return repo
+}
+
+const DECISION_STATUS_VALUES: readonly unknown[] = ['pending', 'done']
+const MAX_CHOICE_LENGTH = 20
+const RESOLVE_INTERNAL: Parameters<typeof fail> = ['internal', '요청을 처리하지 못했습니다.']
+const RESOLVE_FAILURES: Record<string, Parameters<typeof fail>> = {
+  'invalid-request': ['invalid-request', '카드에 없는 선택지이거나 요청이 올바르지 않습니다.'],
+  'not-found': ['not-found', '결정 카드를 찾을 수 없습니다.'],
+  conflict: ['conflict', '이미 처리된 결정입니다.']
+}
+
 export function createDomainHandlers(deps: DomainDeps): {
   getOrg: () => Promise<ApiResult<OrgSnapshot>>
   detectProviders: () => Promise<ApiResult<ProviderDetection[]>>
   testProviderConnection: (provider: unknown) => Promise<ApiResult<ConnectionTestResult>>
   getWeeklyLimits: () => Promise<ApiResult<WeeklyLimit[]>>
   saveWeeklyLimits: (req: unknown) => Promise<ApiResult<WeeklyLimit[]>>
+  listDecisions: (status: unknown) => Promise<ApiResult<Decision[]>>
+  resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
 } {
   return {
     // SafeFs는 열린 회사 컨텍스트에서만 얻는다 (renderer가 경로를 넘기지 않는다).
@@ -48,6 +75,31 @@ export function createDomainHandlers(deps: DomainDeps): {
     testProviderConnection: async (provider) => {
       if (!isProviderCliId(provider)) return fail('invalid-request', '지원하지 않는 제공자입니다.')
       return guarded(() => deps.providers.testConnection(provider))
+    },
+    // 읽지 못한 카드는 목록에서 빠지고 나머지는 그대로 돌려준다 (저장소가 issues로 따로 수집한다).
+    listDecisions: async (status) => {
+      if (status !== undefined && !DECISION_STATUS_VALUES.includes(status))
+        return fail('invalid-request', '결정 상태 값이 올바르지 않습니다.')
+      return guarded(async () => {
+        const { items } = await repositoryFor(deps).listDecisions(status as Decision['status'])
+        return items
+      })
+    },
+    resolveDecision: async (req) => {
+      if (typeof req !== 'object' || req === null || Array.isArray(req))
+        return fail('invalid-request', '요청이 올바르지 않습니다.')
+      const { id, choice, memo } = req as Record<string, unknown>
+      if (typeof id !== 'string' || !DECISION_ID.test(id))
+        return fail('invalid-request', '결정 id가 올바르지 않습니다.')
+      if (typeof choice !== 'string' || choice.length === 0 || choice.length > MAX_CHOICE_LENGTH)
+        return fail('invalid-request', '선택지가 올바르지 않습니다.')
+      if (memo !== undefined && (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH))
+        return fail('invalid-request', '메모가 올바르지 않습니다.')
+      // 필요한 필드만 복사해 넘긴다 (추가 필드 전달 차단).
+      const r = await guarded(() => repositoryFor(deps).resolveDecision({ id, choice, memo }))
+      if (!r.ok) return r
+      // 저장소의 실패 사유는 고정 문구로 바꿔 돌려준다 (파일명/경로 노출 방지).
+      return r.value.ok ? r.value : fail(...(RESOLVE_FAILURES[r.value.code] ?? RESOLVE_INTERNAL))
     },
     getWeeklyLimits: () => guarded(() => deps.limits.load()),
     saveWeeklyLimits: async (req) => {
@@ -83,6 +135,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.orgGet, () => h.getOrg())
   handle(IPC_CHANNELS.providerDetect, () => h.detectProviders())
   handle(IPC_CHANNELS.providerTestConnection, h.testProviderConnection)
+  handle(IPC_CHANNELS.decisionList, h.listDecisions)
+  handle(IPC_CHANNELS.decisionResolve, h.resolveDecision)
   handle(IPC_CHANNELS.settingsWeeklyLimitsGet, () => h.getWeeklyLimits())
   handle(IPC_CHANNELS.settingsWeeklyLimitsSave, h.saveWeeklyLimits)
 }
