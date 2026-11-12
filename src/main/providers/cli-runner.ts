@@ -22,6 +22,8 @@ export interface CliRunnerOptions {
   buildArgs: (prompt: string) => string[]
   /** stdout 한 줄을 공통 이벤트로 변환한다. */
   parseLine: (line: string) => RunEventBody[]
+  /** parseLine과 별개로 원문 stdout 줄을 관찰한다 (사용량 추출용). */
+  onStdoutLine?: (line: string, runId: string) => void
 }
 
 export function validateRequest(
@@ -98,7 +100,10 @@ export class CliRunner {
 
     const stdoutBuf = new LineBuffer()
     const handleLines = (lines: string[]): void => {
-      for (const line of lines) for (const ev of this.options.parseLine(line)) send(ev)
+      for (const line of lines) {
+        this.options.onStdoutLine?.(line, runId)
+        for (const ev of this.options.parseLine(line)) send(ev)
+      }
     }
     child.stdout?.setEncoding('utf8')
     child.stdout?.on('data', (chunk: string) => handleLines(stdoutBuf.push(chunk)))
