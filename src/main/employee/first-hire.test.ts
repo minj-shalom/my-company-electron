@@ -10,7 +10,7 @@ import { ProviderService } from '../providers/provider-service'
 import { FileCompanyRepository } from '../repository/file-repository'
 import { SafeFs } from '../repository/safe-fs'
 import { createWeeklyLimitsStore } from '../settings/weekly-limits-store'
-import { EmployeeService } from './employee-service'
+import { EmployeeService, normalizeTitle } from './employee-service'
 import { EMPLOYEE_TEMPLATES } from './templates'
 import { parseFirstHire } from './requests'
 
@@ -78,12 +78,26 @@ describe('prompt wording is pinned', () => {
       expect(hr?.body, ro).toContain(ro)
   })
 
+  it('keeps PM: and 직원: inside the "4 write targets" section', () => {
+    const body = hr?.body ?? ''
+    const start = body.indexOf('## 권한 범위')
+    const end = body.indexOf('## CEO 승인이 필요한 변경')
+    expect(start).toBeGreaterThanOrEqual(0)
+    expect(end).toBeGreaterThan(start)
+    const section = body.slice(start, end)
+    expect(section).toContain('다음 4가지뿐이다')
+    expect(section).toContain('`직원:`')
+    expect(section).toContain('`PM:`')
+  })
+
   it('pm carries the project management responsibility and limits', () => {
     for (const phrase of [
       '프로젝트 관리를 책임진다',
       '측정 가능한 완료 조건',
       '`policy-change`',
       '인사팀(hr)에 요청',
+      '`company/tickets/`',
+      '`proposal` 블록',
       '정책, 예산, 회사 설정, 인사',
       '코드를 직접 구현하지 않는다',
       '다른 에이전트를 호출하지 않는다',
@@ -281,12 +295,105 @@ describe('firstHire', () => {
     expect(await agentFiles(c.dir)).toEqual(['cfo.md', 'cto.md', 'hr.md'])
   })
 
-  it('parses a 1MB role string array quickly', () => {
+  it('rejects an oversized roles array by the length precheck without iterating it', () => {
     const t = Date.now()
     expect(parseFirstHire({ roles: Array.from({ length: 200_000 }, () => 'x'.repeat(5)) }).ok).toBe(
       false
     )
     expect(Date.now() - t).toBeLessThan(500)
+  })
+})
+
+describe('restore approval needs the ceo-ui actor', () => {
+  it('requires an approval card for approved-proposal even for a plain restore', async () => {
+    const c = await freshCompany()
+    await rm(join(c.dir, '.claude/agents/hr.md'))
+    const org = await readFile(join(c.dir, 'company/org.md'), 'utf8')
+    await writeFile(
+      join(c.dir, 'company/org.md'),
+      org
+        .split('\n')
+        .filter((l) => !l.includes('`hr`'))
+        .join('\n')
+    )
+    const r = await c.svc.create(
+      { templateId: 'hr', id: 'hr', department: '인사팀', reportsTo: 'COO' },
+      'approved-proposal'
+    )
+    expect(!r.ok && r.code).toBe('approval-required')
+    expect(await agentFiles(c.dir)).toEqual(['cfo.md', 'cto.md'])
+  })
+})
+
+describe('duplicate PM detection', () => {
+  it('normalizes titles', () => {
+    for (const t of ['pm', 'Pm', ' PM ', 'PM']) expect(normalizeTitle(t)).toBe('pm')
+  })
+
+  it('rejects a PM under a case-variant title', async () => {
+    const c = await freshCompany()
+    expect(
+      (
+        await c.svc.create(
+          { templateId: 'pm', id: 'lead', title: 'Pm', department: '기획팀', reportsTo: 'COO' },
+          'ceo-ui'
+        )
+      ).ok
+    ).toBe(true)
+    const r = await c.svc.hirePm('ceo-ui')
+    expect(!r.ok && r.code).toBe('conflict')
+    expect(!r.ok && r.message).toContain('기존 PM')
+    const f = await c.svc.firstHire({ roles: ['pm'] }, 'ceo-ui')
+    expect(f.ok && f.value.skipped).toEqual(['pm'])
+  })
+
+  it('tells apart the pm id being used by another title', async () => {
+    const c = await freshCompany()
+    expect(
+      (
+        await c.svc.create(
+          { templateId: 'pm', id: 'pm', title: '기획자', department: '기획팀', reportsTo: 'COO' },
+          'ceo-ui'
+        )
+      ).ok
+    ).toBe(true)
+    const r = await c.svc.hirePm('ceo-ui')
+    expect(!r.ok && r.code).toBe('conflict')
+    expect(!r.ok && r.message).toContain('직원 id')
+  })
+})
+
+describe('firstHire failure handling', () => {
+  it('rolls back the new pm but keeps an unrelated developer.md that has no org row', async () => {
+    const c = await freshCompany()
+    await writeFile(join(c.dir, '.claude/agents/developer.md'), 'keep me\n')
+    const orgBefore = await readFile(join(c.dir, 'company/org.md'), 'utf8')
+    const r = await c.svc.firstHire(undefined, 'ceo-ui')
+    expect(!r.ok && r.code).toBe('conflict')
+    expect(await agentFiles(c.dir)).toEqual(['cfo.md', 'cto.md', 'developer.md', 'hr.md'])
+    expect(await readFile(join(c.dir, '.claude/agents/developer.md'), 'utf8')).toBe('keep me\n')
+    expect(await readFile(join(c.dir, 'company/org.md'), 'utf8')).toBe(orgBefore)
+  })
+
+  it('fails on a stray pm.md without a row and changes nothing', async () => {
+    const c = await freshCompany()
+    await writeFile(join(c.dir, '.claude/agents/pm.md'), 'stray\n')
+    const orgBefore = await readFile(join(c.dir, 'company/org.md'), 'utf8')
+    const r = await c.svc.firstHire(undefined, 'ceo-ui')
+    expect(!r.ok && r.code).toBe('conflict')
+    expect(await readFile(join(c.dir, '.claude/agents/pm.md'), 'utf8')).toBe('stray\n')
+    expect(await agentFiles(c.dir)).toEqual(['cfo.md', 'cto.md', 'hr.md', 'pm.md'])
+    expect(await readFile(join(c.dir, 'company/org.md'), 'utf8')).toBe(orgBefore)
+  })
+
+  it('keeps an existing pm when the developer hire then fails', async () => {
+    const c = await freshCompany()
+    expect((await c.svc.hirePm('ceo-ui')).ok).toBe(true)
+    await writeFile(join(c.dir, '.claude/agents/developer.md'), 'keep me\n')
+    const r = await c.svc.firstHire(undefined, 'ceo-ui')
+    expect(!r.ok && r.code).toBe('conflict')
+    expect(await titles(c.fs)).toContain('PM')
+    expect(await agentFiles(c.dir)).toContain('pm.md')
   })
 })
 

@@ -58,13 +58,21 @@ describe('createCompanyFolder', () => {
     expect(claude).not.toContain('developer')
   })
 
-  it('uses the same hr prompt as the template library', async () => {
+  it('writes cto, cfo and hr exactly as the template library defines them (tools, model, body)', async () => {
     const r = await createCompanyFolder('Acme', base)
     if (!r.ok) throw new Error('create failed')
+    for (const id of ['cto', 'cfo', 'hr']) {
+      const text = await readFile(join(r.companyDir, '.claude', 'agents', `${id}.md`), 'utf8')
+      const t = EMPLOYEE_TEMPLATES.find((e) => e.id === id)
+      expect(text.endsWith(`\n${t?.body.trim()}\n`), id).toBe(true)
+      expect(text).toContain(`\ntools: ${t?.tools.join(', ')}\n`)
+      expect(text).toContain(`\nmodel: ${t?.model}\n`)
+    }
+    const cto = await readFile(join(r.companyDir, '.claude', 'agents', 'cto.md'), 'utf8')
+    expect(cto).toContain('\ntools: Read, Grep, Glob\n')
     const hr = await readFile(join(r.companyDir, '.claude', 'agents', 'hr.md'), 'utf8')
-    const t = EMPLOYEE_TEMPLATES.find((e) => e.id === 'hr')
-    expect(hr.endsWith(`\n${t?.body.trim()}\n`)).toBe(true)
-    expect(hr).toMatch(/\ntools: Read, Write, Edit, Grep, Glob\n/)
+    expect(hr).toContain('\ntools: Read, Write, Edit, Grep, Glob\n')
+    expect(hr).not.toMatch(/\ntools:.*Bash/)
   })
 
   it('rejects an existing folder without touching it', async () => {

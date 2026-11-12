@@ -14,7 +14,8 @@ export const EMPLOYEE_TEMPLATES: readonly EmployeeTemplateInfo[] = Object.freeze
     description:
       '기술 계획, 설계, 기술 검토 담당. 목표를 기술적으로 분석해 티켓 초안과 설계 문서를 반환한다.',
     model: 'sonnet',
-    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    // 최소 권한: 기술 계획·검토는 읽기만 필요하다 (이전 scaffold 시드와 같다).
+    tools: ['Read', 'Grep', 'Glob'],
     body: `# CTO
 
 ## 담당 범위

@@ -23,66 +23,21 @@ export const KEEP_DIRS = COMPANY_DIRS.filter(
   (d) => !d.startsWith('.claude') && d !== 'company/templates'
 )
 
-interface AgentSeed {
-  file: string
-  name: string
-  description: string
-  tools: string
-  model: string
-  role: string
-  duties: string[]
-}
-
-const AGENTS: AgentSeed[] = [
-  {
-    file: 'cto',
-    name: 'cto',
-    description: '기술 계획, 설계, 기술 검토 담당.',
-    tools: 'Read, Grep, Glob',
-    model: 'opus',
-    role: 'CTO',
-    duties: ['기술 계획과 설계를 작성한다.', '결과(티켓 초안, 설계 문서)를 COO에게 반환한다.']
-  },
-  {
-    file: 'cfo',
-    name: 'cfo',
-    description: '사용량과 예산 점검 담당.',
-    tools: 'Read, Write, Edit, Grep, Glob',
-    model: 'sonnet',
-    role: 'CFO',
-    duties: ['`company/finance/`의 사용량을 집계하고 한도 근접 시 COO에게 알린다.']
-  }
-]
+/** 기본 직원 id. 직원 파일은 직원 템플릿 라이브러리(T-035)에서 그대로 만든다. */
+const BASE_AGENT_IDS = ['cto', 'cfo', 'hr'] as const
 
 /**
- * 인사 직원은 직원 템플릿 라이브러리(T-035)의 본문을 그대로 쓴다. 쓰기 범위와 승인 문구가 한 곳에만 있어야
- * 새 회사와 "인사팀 추가"(복구)로 채용한 hr이 어긋나지 않는다.
+ * 새 회사와 "복구 채용"이 같은 파일을 만들도록 본문·tools·model을 라이브러리에서 한 번만 정의한다.
+ * cto/cfo tools는 두 정의 중 더 적은 권한(Read, Grep, Glob)으로 통일했다. 최소 권한 원칙이고 둘 다 읽기만으로 충분하다.
+ * model은 라이브러리 값(sonnet)을 따른다.
  */
-function hrAgentMarkdown(): string {
-  const t = EMPLOYEE_TEMPLATES.find((e) => e.id === 'hr')
-  if (!t) throw new Error('hr template missing')
+function agentMarkdown(id: string): string {
+  const t = EMPLOYEE_TEMPLATES.find((e) => e.id === id)
+  if (!t) throw new Error(`template missing: ${id}`)
   return buildAgentFile(
     { name: t.id, description: t.description, tools: t.tools.join(', '), model: t.model },
     `${t.body.trim()}\n`
   )
-}
-
-function agentMarkdown(a: AgentSeed): string {
-  return `---
-name: ${a.name}
-description: ${a.description}
-tools: ${a.tools}
-model: ${a.model}
----
-
-# ${a.role}
-
-## 담당 범위
-${a.duties.map((d) => `- ${d}`).join('\n')}
-
-## 하지 말아야 할 것
-- 담당 범위 밖의 수정, 다른 직원 호출 (실행 배정은 COO만 한다).
-`
 }
 
 function orgMarkdown(name: string): string {
@@ -209,8 +164,7 @@ export function buildCompanyFiles(name: string): Record<string, string> {
     'company/templates/decision-card.md': DECISION_TEMPLATE,
     'company/templates/report.md': REPORT_TEMPLATE
   }
-  for (const a of AGENTS) files[`.claude/agents/${a.file}.md`] = agentMarkdown(a)
-  files['.claude/agents/hr.md'] = hrAgentMarkdown()
+  for (const id of BASE_AGENT_IDS) files[`.claude/agents/${id}.md`] = agentMarkdown(id)
   for (const dir of KEEP_DIRS) files[`${dir}/.gitkeep`] = ''
   return files
 }

@@ -40,6 +40,8 @@ const PROTECTED_TITLES: ReadonlySet<string> = new Set(['COO', 'CEO'])
 const SENSITIVE_IDS: ReadonlySet<string> = new Set(['cto', 'cfo', 'hr'])
 const SENSITIVE_TITLES: ReadonlySet<string> = new Set(['CTO', 'CFO', '인사'])
 const PM_TITLE = 'PM'
+/** 직급 비교용 정규화. 표기 변형(`Pm`, ` PM `)으로 중복 채용을 피하지 못하게 한다. */
+export const normalizeTitle = (t: string): string => t.trim().toLowerCase()
 const PM_ID = 'pm'
 const PM_DEPARTMENT = '기획팀'
 
@@ -129,9 +131,10 @@ export class EmployeeService {
       PROTECTED_TITLES.has(title)
     )
       reasons.push('protected-role')
-    // 빠진 기본 직원(cto, cfo, hr)을 템플릿 그대로 복구하는 채용은 CEO 클릭 자체가 승인이다.
+    // 빠진 기본 직원(cto, cfo, hr)을 템플릿 그대로 복구하는 채용은 CEO 클릭(`ceo-ui`) 자체가 승인이다. 다른 호출자는 카드가 필요하다.
     // 이미 있는 보호 파일을 바꾸는 것이 아니고(위에서 중복은 거부) 내용이 고정 템플릿이라 카드를 요구하지 않는다.
     const isBaseRestore =
+      actor === 'ceo-ui' &&
       r.id === template.id &&
       r.title === undefined &&
       r.role === undefined &&
@@ -214,8 +217,14 @@ export class EmployeeService {
     return this.run(actor, async () => {
       const org = await this.loadOrgModel()
       if (!org.ok) return org
-      if (org.value.members.some((m) => m.title === PM_TITLE || m.agentId === PM_ID))
+      const members = org.value.members
+      if (members.some((m) => normalizeTitle(m.title) === normalizeTitle(PM_TITLE)))
         return fail('conflict', '이미 PM이 있습니다. 기존 PM을 선택하세요.')
+      if (members.some((m) => m.agentId === PM_ID))
+        return fail(
+          'conflict',
+          '`pm` 직원 id를 다른 직급의 직원이 쓰고 있습니다. 조직도를 확인하세요.'
+        )
       const hired = await this.createLocked(
         { templateId: PM_ID, id: PM_ID, department: PM_DEPARTMENT, reportsTo: 'COO' },
         actor
@@ -236,6 +245,7 @@ export class EmployeeService {
       if (!req.ok) return fail('invalid-request', req.message)
       const records: ChangeRecord[] = []
       const skipped: FirstHireRole[] = []
+      // records에는 이번 호출이 방금 만든 직원만 들어 있다. 건너뛴 기존 직원이나 충돌한 기존 파일은 지우지 않는다.
       const undo = async (): Promise<boolean> => {
         let clean = true
         for (const rec of [...records].reverse()) {
@@ -257,7 +267,11 @@ export class EmployeeService {
           return org.ok ? fail('internal', '템플릿을 찾을 수 없습니다.') : org
         }
         const members = org.value.members
-        if (members.some((m) => m.agentId === role || m.title === template.title)) {
+        if (
+          members.some(
+            (m) => m.agentId === role || normalizeTitle(m.title) === normalizeTitle(template.title)
+          )
+        ) {
           skipped.push(role)
           continue
         }
