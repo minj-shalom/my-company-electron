@@ -39,17 +39,22 @@
 
 .map-area {
   position: relative;
-  display: grid;
-  place-items: center;
   min-width: 0;
   min-height: 0;
+  overflow-y: auto;
   padding: var(--space-4);
   /* 바닥 타일 느낌의 체크 무늬. 이미지 에셋 없이 CSS 그라디언트만 쓴다. */
   background: repeating-conic-gradient(var(--floor-a) 0% 25%, var(--floor-b) 0% 50%) 0 0 / 64px 64px;
 }
 .map-area__note {
   max-width: 320px;
+  margin: var(--space-5) auto;
   text-align: center;
+}
+
+.map-area > div > .tabs {
+  background: var(--bg-panel);
+  padding: var(--space-1) var(--space-2) 0;
 }
 
 .side-panel {

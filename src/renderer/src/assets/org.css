@@ -1,0 +1,181 @@
+/* 조직도 화면. 부서 색은 --dept-* 토큰을 data-tone으로 연결한다 (T-020 맵 구역도 같은 연결을 쓸 수 있다). */
+
+[data-tone='exec'] {
+  --dept-color: var(--dept-exec);
+}
+[data-tone='rnd'] {
+  --dept-color: var(--dept-rnd);
+}
+[data-tone='fin'] {
+  --dept-color: var(--dept-fin);
+}
+[data-tone='plan'] {
+  --dept-color: var(--dept-plan);
+}
+
+.org {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.org__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  background: var(--bg-panel);
+  border: var(--bw) solid var(--border);
+}
+.org__issues ul {
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+.org__issues {
+  margin-bottom: var(--space-3);
+}
+.org__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.org__lists {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.org__lists {
+  grid-column: 1;
+  grid-row: 1;
+}
+.org__detail {
+  grid-column: 2;
+  grid-row: 1;
+  position: sticky;
+  top: 0;
+  min-width: 0;
+}
+
+.org-tree__children {
+  margin-left: var(--space-4);
+  padding-left: var(--space-2);
+  border-left: var(--bw) solid var(--border);
+}
+
+.org-member {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  width: 100%;
+  min-height: var(--control-height);
+  margin: var(--space-1) 0;
+  padding: var(--space-1) var(--space-3);
+  font: inherit;
+  font-size: var(--fs-2);
+  text-align: left;
+  color: var(--text);
+  background: var(--bg-panel-raised);
+  border: var(--bw) solid var(--border);
+  border-left: 6px solid var(--dept-color, var(--border-strong));
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.org-member:hover {
+  background: var(--bg-inset);
+}
+.org-member[aria-current='true'] {
+  border-color: var(--accent);
+  border-left-color: var(--dept-color, var(--accent));
+  box-shadow: 3px 3px 0 var(--shadow-color);
+}
+.org-member__title {
+  font-family: var(--font-pixel);
+  font-weight: 700;
+}
+.org-member__role {
+  flex: 1 1 12ch;
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.org-dept {
+  margin-bottom: var(--space-3);
+}
+.org-dept__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--bw) solid var(--dept-color, var(--border));
+  font-size: var(--fs-2);
+}
+
+.org-detail__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 6px solid var(--dept-color, var(--border-strong));
+}
+.org-detail__list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  font-size: var(--fs-2);
+}
+.org-detail__list dt {
+  color: var(--text-muted);
+}
+.org-detail__list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.org-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+.org-tools code {
+  padding: 0 var(--space-2);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 899px) {
+  .org__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* 상세가 DOM에서 목록 앞에 있으므로 좁은 화면에서는 자연스럽게 위에 놓인다. */
+  .org__lists,
+  .org__detail {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .org__layout[data-selected='false'] .org__detail {
+    display: none;
+  }
+  .org__detail {
+    position: static;
+  }
+  .org-tree__children {
+    margin-left: var(--space-2);
+  }
+}
+
+.org__issues--blocking {
+  border-left-color: var(--bad);
+}
+
+/* disabled 대신 aria-disabled를 써서 포커스를 유지하므로 같은 모양을 직접 준다. */
+.org__head .btn[aria-disabled='true'] {
+  color: var(--text-muted);
+  border-style: dashed;
+  box-shadow: none;
+  cursor: not-allowed;
+}

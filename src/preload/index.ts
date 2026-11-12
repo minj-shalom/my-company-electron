@@ -17,6 +17,7 @@ const api: WindowApi = {
   selectCompanyFolder: () => ipcRenderer.invoke(IPC_CHANNELS.companySelectFolder),
   getCompany: notImplemented,
   listEmployees: notImplemented,
+  getOrg: notImplemented,
   listTickets: notImplemented,
   getTicket: notImplemented,
   listDecisions: notImplemented,

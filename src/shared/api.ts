@@ -6,6 +6,7 @@ import type {
 } from './company'
 import type { Decision, DecisionResolveRequest } from './decision'
 import type { OrgChart } from './employee'
+import type { OrgSnapshot } from './org'
 import type {
   ConnectionTestResult,
   ProviderCliId,
@@ -35,6 +36,8 @@ export interface WindowApi {
    */
   getCompany: () => Promise<ApiResult<CompanyInfo | null>>
   listEmployees: () => Promise<ApiResult<OrgChart>>
+  /** 조직도(T-011) 계약. main 핸들러는 후속 티켓에서 구현하며 그 전까지 preload는 `not-implemented`를 돌려준다. 파싱 문제는 실패가 아니라 `org.issues`에 담긴다. */
+  getOrg: () => Promise<ApiResult<OrgSnapshot>>
   listTickets: (status?: TicketStatus) => Promise<ApiResult<Ticket[]>>
   /** main은 id를 허용 형식(예: ^T-\d+$)만 받고, 경로를 id로 조합하지 말고 목록에서 찾아 쓴다. body는 마크다운이므로 renderer가 sanitize한다. */
   getTicket: (id: string) => Promise<ApiResult<Ticket>>
@@ -68,6 +71,7 @@ export const IPC_CHANNELS = {
   // 아래 채널은 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
   companyGet: 'company:get',
   employeeList: 'employee:list',
+  orgGet: 'org:get',
   ticketList: 'ticket:list',
   ticketGet: 'ticket:get',
   decisionList: 'decision:list',
