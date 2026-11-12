@@ -1,5 +1,4 @@
 import type { WindowApi } from '../../shared/api'
-import type { Decision } from '../../shared/decision'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
@@ -9,14 +8,19 @@ import {
 } from './mock-onboarding'
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario } from './mock-org'
-import { mockCompany, mockDecisions, mockOrg, mockTickets } from './mock-data'
+import { mockCompany, mockOrg, mockTickets } from './mock-data'
+import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
-let decisions: Decision[] = structuredClone(mockDecisions)
+const mockDecisionApi = createMockDecisionApi(
+  parseDecisionScenario(typeof location === 'undefined' ? '' : location.search),
+  // 두 번 클릭 방지 같은 처리 중 상태를 브라우저에서 볼 수 있게 한다. 테스트(location 없음)에서는 지연하지 않는다.
+  typeof location === 'undefined' ? 0 : 400
+)
 
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
-  decisions = structuredClone(mockDecisions)
+  mockDecisionApi.reset()
   resetMockOnboarding()
 }
 
@@ -41,25 +45,7 @@ export const mockApi: WindowApi = {
       ? { ok: true, value: structuredClone(t) }
       : { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
   },
-  listDecisions: async (status) => ({
-    ok: true,
-    value: {
-      items: structuredClone(decisions.filter((d) => !status || d.status === status)),
-      unreadable: []
-    }
-  }),
-  resolveDecision: async (req) => {
-    const d = decisions.find((x) => x.id === req.id)
-    if (!d) return { ok: false, code: 'not-found', message: '결정 카드를 찾을 수 없습니다.' }
-    if (d.status === 'done')
-      return { ok: false, code: 'conflict', message: '이미 처리된 결정입니다.' }
-    if (!d.options.some((o) => o.key === req.choice))
-      return { ok: false, code: 'invalid-request', message: '알 수 없는 선택지입니다.' }
-    d.status = 'done'
-    d.chosen = req.choice
-    d.memo = req.memo ?? ''
-    return { ok: true, value: structuredClone(d) }
-  },
+  ...mockDecisionApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,
