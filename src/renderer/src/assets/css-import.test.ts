@@ -1,11 +1,9 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import mainCss from './main.css?raw'
 
 // @import가 다른 규칙 뒤에 있으면 브라우저가 무시해 스타일이 통째로 사라진다.
 describe('main.css', () => {
-  const css = readFileSync(join(__dirname, 'main.css'), 'utf8')
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const stripped = mainCss.replace(/\/\*[\s\S]*?\*\//g, '')
 
   it('keeps every @import before any rule', () => {
     const lastImport = stripped.lastIndexOf('@import')
