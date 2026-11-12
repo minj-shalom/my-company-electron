@@ -26,6 +26,6 @@
 
 | 패키지  | 버전   | 라이선스 | 용도                              | 확인                                                                                                                            |
 | ------- | ------ | -------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| pixi.js | 8.23.0 | MIT      | 가상 사무실 렌더링 (WebGL/canvas) | npm 레지스트리 메타데이터(`license: MIT`, 2026-11-11 갱신, 활발히 유지), `npm audit`에서 이 패키지 및 하위 의존성의 취약점 없음 |
+| pixi.js | 8.23.0 | MIT      | 가상 사무실 렌더링 (WebGL/canvas) | `npm view pixi.js license time.modified`(2026-11-12 실행): MIT, 2026-11-11 갱신. `npm audit`(2026-11-12): 8건(moderate)이며 모두 기존 eslint/typescript-eslint 계열 개발 의존성으로 pixi.js와 무관(추가 전에도 8건) |
 
-- CSP(`default-src 'self'; script-src 'self'`)는 바꾸지 않았다. 기본 PixiJS는 셰이더 유니폼 동기화에 `new Function`(unsafe-eval)을 요구해 CSP에서 초기화가 실패한다 (dev 서버에서 확인). `import 'pixi.js/unsafe-eval'`(공식 제공 eval 없는 구현)을 쓰면 CSP 그대로 동작한다.
+- CSP(`default-src 'self'; script-src 'self'`)는 바꾸지 않았다. 기본 PixiJS는 셰이더 유니폼 동기화에 `new Function`(unsafe-eval)을 요구해 CSP에서 초기화가 실패한다 (2026-11-12 브라우저 dev 서버의 meta CSP 아래에서 `import 'pixi.js/unsafe-eval'`을 임시로 주석 처리하고 로드해 렌더러 생성이 실패하는 것을 확인했다. Electron 실행으로는 확인하지 않았다). `import 'pixi.js/unsafe-eval'`(공식 제공 eval 없는 구현)을 쓰면 CSP 그대로 동작한다.
