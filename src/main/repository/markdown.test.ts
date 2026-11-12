@@ -19,7 +19,9 @@ describe('splitFrontmatter', () => {
     expect(() => splitFrontmatter(bomb)).toThrow()
   })
   it('does not execute js tags', () => {
-    expect(() => splitFrontmatter('---\na: !!js/function "function(){}"\n---\n')).not.toThrow()
+    const r = splitFrontmatter('---\na: !!js/function "function(){}"\n---\n')
+    expect(typeof r.data.a === 'string' || r.data.a === null || r.data.a === undefined).toBe(true)
+    expect(typeof r.data.a).not.toBe('function')
   })
 })
 

@@ -76,7 +76,7 @@ export class FileCompanyRepository implements CompanyRepository {
   async listEmployees(): Promise<{ org: OrgChart; issues: LoadIssue[] }> {
     const issues: LoadIssue[] = []
     const agents: Array<Pick<Employee, 'id' | 'name' | 'description' | 'model'>> = []
-    const { files, skipped } = await this.fs.listMarkdown(AGENTS_DIR)
+    const { files, skipped } = await this.scan(AGENTS_DIR, issues)
     for (const s of skipped)
       issues.push({ path: relPath(AGENTS_DIR, s), message: '일반 파일이 아니어서 건너뜀' })
     for (const f of files) {
@@ -113,18 +113,21 @@ export class FileCompanyRepository implements CompanyRepository {
     if (bad) return fail('invalid-request', bad)
     const path = relPath(AGENTS_DIR, `${input.id}.md`)
     try {
-      let body = input.body
-      if (body === undefined) {
-        try {
-          body = splitFrontmatter(await this.fs.readText(path)).body
-        } catch (e) {
-          if (!(e instanceof FsGuardError && e.kind === 'missing')) body = ''
-        }
+      // 기존 파일을 읽을 수 없거나 깨져 있으면 덮어쓰지 않고 실패시킨다 (본문 유실 방지).
+      let existing: { data: Record<string, unknown>; body: string } | null = null
+      try {
+        existing = splitFrontmatter(await this.fs.readText(path))
+      } catch (e) {
+        if (!(e instanceof FsGuardError && e.kind === 'missing')) return toFailure(e)
       }
-      const data: Record<string, string> = { name: input.name, description: input.description }
+      // 앱이 모르는 frontmatter 키(다른 도구가 넣은 값)는 보존하고 넘겨받은 필드만 갱신한다.
+      const data: Record<string, unknown> = { ...existing?.data }
+      data.name = input.name
+      data.description = input.description
       if (input.tools) data.tools = input.tools
       if (input.model) data.model = input.model
-      const text = `---\n${stringifyYaml(data, { lineWidth: 0 })}---\n\n${(body ?? `# ${input.name}`).trim()}\n`
+      const body = input.body ?? existing?.body ?? `# ${input.name}`
+      const text = `---\n${stringifyYaml(data, { lineWidth: 0 })}---\n\n${body.trim()}\n`
       await this.fs.writeText(path, text)
     } catch (e) {
       return toFailure(e)
@@ -140,7 +143,7 @@ export class FileCompanyRepository implements CompanyRepository {
     for (const st of status ? [status] : TICKET_STATUSES) {
       if (!TICKET_STATUSES.includes(st)) continue
       const dir = TICKET_DIRS[st]
-      const { files, skipped } = await this.fs.listMarkdown(dir)
+      const { files, skipped } = await this.scan(dir, issues)
       for (const s of skipped)
         issues.push({ path: relPath(dir, s), message: '일반 파일이 아니어서 건너뜀' })
       for (const f of files) {
@@ -177,8 +180,7 @@ export class FileCompanyRepository implements CompanyRepository {
       if (file.path === target) return this.getTicket(id)
       const text = withTicketStatus(await this.fs.readText(file.path), status)
       // 새 위치에 먼저 쓰고 성공한 뒤 옛 파일을 지운다 (중간 실패 시 티켓이 사라지지 않는다).
-      await this.fs.writeText(target, text, false)
-      await this.fs.remove(file.path)
+      await this.relocate(file.path, target, text)
     } catch (e) {
       return toFailure(e)
     }
@@ -193,7 +195,7 @@ export class FileCompanyRepository implements CompanyRepository {
     for (const st of status ? [status] : DECISION_STATUSES) {
       if (!DECISION_STATUSES.includes(st)) continue
       const dir = DECISION_DIRS[st]
-      const { files, skipped } = await this.fs.listMarkdown(dir)
+      const { files, skipped } = await this.scan(dir, issues)
       for (const s of skipped)
         issues.push({ path: relPath(dir, s), message: '일반 파일이 아니어서 건너뜀' })
       for (const f of files) {
@@ -238,8 +240,7 @@ export class FileCompanyRepository implements CompanyRepository {
       if (!card.options.some((o) => o.key === choice))
         return fail('invalid-request', '카드에 없는 선택지입니다.')
       const target = relPath(DECISION_DIRS.done, file.name)
-      await this.fs.writeText(target, withDecisionResolved(text, choice, memo ?? ''), false)
-      await this.fs.remove(file.path)
+      await this.relocate(file.path, target, withDecisionResolved(text, choice, memo ?? ''))
     } catch (e) {
       return toFailure(e)
     }
@@ -251,7 +252,7 @@ export class FileCompanyRepository implements CompanyRepository {
   async listReports(): Promise<Listing<Report>> {
     const issues: LoadIssue[] = []
     const items: Report[] = []
-    const { files, skipped } = await this.fs.listMarkdown(REPORTS_DIR)
+    const { files, skipped } = await this.scan(REPORTS_DIR, issues)
     for (const s of skipped)
       issues.push({ path: relPath(REPORTS_DIR, s), message: '일반 파일이 아니어서 건너뜀' })
     for (const f of files) {
@@ -291,13 +292,47 @@ export class FileCompanyRepository implements CompanyRepository {
     return this.getReport(id)
   }
 
+  /** 디렉터리 단위 오류(링크 디렉터리, 권한 등)는 예외 대신 오류 항목으로 바꾼다. */
+  private async scan(
+    dir: string,
+    issues: LoadIssue[]
+  ): Promise<{ files: string[]; skipped: string[] }> {
+    try {
+      return await this.fs.listMarkdown(dir)
+    } catch (e) {
+      issues.push({ path: dir, message: issueMessage(e) })
+      return { files: [], skipped: [] }
+    }
+  }
+
+  /**
+   * 새 위치에 먼저 쓰고 옛 파일을 지운다. 이전 시도가 중간에 끊겨 같은 내용의 새 파일이 이미 있으면
+   * 옛 파일만 지워 복구하고, 내용이 다르면 conflict로 둔다. 옛 파일 삭제가 실패하면 새 파일을 되돌린다.
+   */
+  private async relocate(from: string, to: string, text: string): Promise<void> {
+    let created = true
+    try {
+      await this.fs.writeText(to, text, false)
+    } catch (e) {
+      if (!(e instanceof FsGuardError && e.kind === 'exists')) throw e
+      if ((await this.fs.readText(to)) !== text) throw e
+      created = false
+    }
+    try {
+      await this.fs.remove(from)
+    } catch (e) {
+      if (created) await this.fs.remove(to).catch(() => undefined)
+      throw e
+    }
+  }
+
   /** 여러 폴더에서 이름 조건에 맞는 첫 일반 파일을 찾는다. 경로는 항상 디렉터리 목록에서 나온 것만 쓴다. */
   private async findFile(
     dirs: string[],
     match: (name: string) => boolean
   ): Promise<{ path: string; name: string } | null> {
     for (const dir of dirs) {
-      const { files } = await this.fs.listMarkdown(dir)
+      const { files } = await this.scan(dir, [])
       const name = files.find(match)
       if (name) return { path: relPath(dir, name), name }
     }
