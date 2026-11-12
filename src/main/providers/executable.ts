@@ -9,6 +9,8 @@ export interface ExecEnv {
   env: Readonly<Record<string, string | undefined>>
   /** 일반 파일이며 (POSIX는) 실행 가능한지. */
   isExecutable: (file: string) => boolean
+  /** 일반 파일인지(권한 무관). 없으면 isExecutable과 같게 취급한다. 권한 없는 파일을 미설치와 구분하는 데 쓴다. */
+  isFile?: (file: string) => boolean
   homeDir: string
 }
 
@@ -25,6 +27,13 @@ export function defaultExecEnv(): ExecEnv {
         return false
       }
     },
+    isFile: (file) => {
+      try {
+        return statSync(file).isFile()
+      } catch {
+        return false
+      }
+    },
     homeDir: homedir()
   }
 }
@@ -32,6 +41,7 @@ export function defaultExecEnv(): ExecEnv {
 /** Windows에서 실행을 허용하는 확장자. 선호 순서다 (.exe는 셸 없이 직접 실행 가능). */
 const WIN_EXTENSIONS = ['.exe', '.cmd', '.bat'] as const
 /** GUI로 띄운 macOS 앱은 PATH가 최소라서 CLI가 흔히 설치되는 위치를 추가로 본다. */
+const WIN_DRIVE_ABSOLUTE = /^[A-Za-z]:\\/
 const POSIX_EXTRA_DIRS = ['/opt/homebrew/bin', '/usr/local/bin']
 
 export function isAllowedProvider(name: unknown): name is ProviderCliId {
@@ -55,33 +65,48 @@ export function windowsExtensions(pathext: string | undefined): string[] {
   return WIN_EXTENSIONS.filter((e) => pool.includes(e))
 }
 
+export type Resolution =
+  | { kind: 'found'; path: string }
+  | { kind: 'not-executable' } // 파일은 있으나 실행 권한이 없다
+  | { kind: 'missing' }
+
 /**
  * 허용 목록의 CLI 이름을 PATH(Windows는 PATHEXT 포함)에서 찾아 실제 파일 경로를 돌려준다.
  * 현재 작업 디렉터리는 탐색하지 않는다 (CreateProcess가 하는 cwd 우선 탐색을 피한다).
- * 없으면 null.
+ * Windows는 `X:\`로 시작하는 드라이브 절대 경로만 허용한다 (UNC `\\host\share`, 드라이브 없는 `\foo` 거부).
+ *
+ * 한계: PATH와 `~/.local/bin`은 사용자가 쓸 수 있는 디렉터리라 같은 이름의 바이너리를 심을 수 있다.
+ * 허용 목록은 이름만 제한하며 파일의 진위(서명 등)는 검증하지 않는다.
  */
-export function resolveExecutable(name: ProviderCliId, ctx: ExecEnv): string | null {
-  if (!isAllowedProvider(name)) return null
+export function resolveExecutableDetailed(name: ProviderCliId, ctx: ExecEnv): Resolution {
+  if (!isAllowedProvider(name)) return { kind: 'missing' }
   const win = ctx.platform === 'win32'
   const p = win ? path.win32 : path.posix
   const delimiter = win ? ';' : ':'
   const dirs = (getEnv(ctx.env, 'PATH', ctx.platform) ?? '')
     .split(delimiter)
     .map((d) => (win ? d.trim().replace(/^"(.*)"$/, '$1') : d))
-    .filter((d) => d !== '' && p.isAbsolute(d))
+    .filter((d) => d !== '' && (win ? WIN_DRIVE_ABSOLUTE.test(d) : p.isAbsolute(d)))
   if (!win) {
     dirs.push(...POSIX_EXTRA_DIRS, p.join(ctx.homeDir, '.local', 'bin'))
   }
   const fileNames = win
     ? windowsExtensions(getEnv(ctx.env, 'PATHEXT', ctx.platform)).map((e) => name + e)
     : [name]
+  let sawNonExecutable = false
   for (const dir of dirs) {
     for (const fileName of fileNames) {
       const candidate = p.join(dir, fileName)
-      if (ctx.isExecutable(candidate)) return candidate
+      if (ctx.isExecutable(candidate)) return { kind: 'found', path: candidate }
+      if (!win && ctx.isFile?.(candidate)) sawNonExecutable = true
     }
   }
-  return null
+  return sawNonExecutable ? { kind: 'not-executable' } : { kind: 'missing' }
+}
+
+export function resolveExecutable(name: ProviderCliId, ctx: ExecEnv): string | null {
+  const r = resolveExecutableDetailed(name, ctx)
+  return r.kind === 'found' ? r.path : null
 }
 
 export interface LaunchSpec {
@@ -95,8 +120,7 @@ export interface LaunchSpec {
  * cmd.exe의 명령줄 안에서 따옴표로 감싸도 안전하지 않은 문자.
  * `"`는 따옴표를 닫고, `%`는 따옴표 안에서도 변수 확장되며, `^ & | < >`와 `!`는 보수적으로 차단한다.
  */
-// eslint-disable-next-line no-control-regex
-const UNSAFE_FOR_CMD = /["%!^&|<>\u0000-\u001f]/
+const UNSAFE_FOR_CMD = /["%!^&|<>]|[^\x20-\x7e]/
 
 /**
  * 실행 파일 경로와 고정 인자로 spawn 명세를 만든다. 사용자 입력은 여기에 들어오지 않는다.
@@ -105,6 +129,8 @@ const UNSAFE_FOR_CMD = /["%!^&|<>\u0000-\u001f]/
  *   명령줄은 `/d /s /c ""<경로>" <고정 인자>"` 형태다. 인자는 호출 측의 상수(예: --version)이고
  *   경로는 위 위험 문자를 하나도 포함하지 않는 것만 허용하므로 따옴표 탈출이나 변수 확장이 불가능하다.
  * 안전하지 않은 경로면 null.
+ * 한계: 비ASCII(전각 `＂ ＆` 포함)·제어 문자를 막기 위해 ASCII 인쇄 문자만 허용하므로, 사용자명에 비ASCII나
+ * `& ! ^ %` 등이 있으면 `.cmd`는 exec-failed가 된다. 안전을 우선한 의도적 한계다.
  */
 export function buildLaunch(
   executable: string,
@@ -122,18 +148,22 @@ export function buildLaunch(
   if (!/^[A-Za-z]:\\/.test(executable) || UNSAFE_FOR_CMD.test(executable)) return null
   // 고정 인자도 같은 검사를 통과해야 한다 (공백 구분 토큰만 허용).
   if (fixedArgs.some((a) => !/^[A-Za-z0-9._=-]+$/.test(a))) return null
+  const cmd = windowsSystem32Path('cmd.exe', ctx)
+  if (cmd === null) return null
   const inner = `"${executable}" ${fixedArgs.join(' ')}`.trimEnd()
   return {
-    file: cmdExePath(ctx),
+    file: cmd,
     args: ['/d', '/s', '/c', `"${inner}"`],
     windowsVerbatimArguments: true
   }
 }
 
-function cmdExePath(ctx: ExecEnv): string {
+/**
+ * `%SystemRoot%\System32\<file>`의 절대 경로. SystemRoot가 없거나 안전하지 않으면 null이다.
+ * 맨 이름(`cmd.exe`)으로 폴백하지 않는다: libuv가 cwd부터 찾아 바이너리 심기에 노출되기 때문이다.
+ */
+export function windowsSystem32Path(file: 'cmd.exe' | 'taskkill.exe', ctx: ExecEnv): string | null {
   const root = getEnv(ctx.env, 'SystemRoot', 'win32')
-  if (root && /^[A-Za-z]:\\[^"%!^&|<>]*$/.test(root)) {
-    return path.win32.join(root, 'System32', 'cmd.exe')
-  }
-  return 'cmd.exe'
+  if (!root || !WIN_DRIVE_ABSOLUTE.test(root) || UNSAFE_FOR_CMD.test(root)) return null
+  return path.win32.join(root, 'System32', file)
 }

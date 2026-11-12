@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildLaunch, resolveExecutable, windowsExtensions, type ExecEnv } from './executable'
+import {
+  buildLaunch,
+  resolveExecutable,
+  resolveExecutableDetailed,
+  windowsSystem32Path,
+  windowsExtensions,
+  type ExecEnv
+} from './executable'
 
 function ctx(platform: NodeJS.Platform, env: Record<string, string>, files: string[]): ExecEnv {
   const set = new Set(files)
@@ -53,6 +60,15 @@ describe('resolveExecutable (win32)', () => {
     expect(windowsExtensions('.Cmd;.EXE;.vbs')).toEqual(['.exe', '.cmd'])
   })
 
+  it('rejects UNC and drive-less PATH entries so remote/rooted .exe is never spawned', () => {
+    const c = ctx('win32', { PATH: '\\\\host\\share;\\foo;//host/share' }, [
+      '\\\\host\\share\\claude.exe',
+      '\\foo\\claude.exe',
+      '//host/share\\claude.exe'
+    ])
+    expect(resolveExecutable('claude', c)).toBeNull()
+  })
+
   it('rejects names outside the allow list', () => {
     const c = ctx('win32', env, ['C:\\Windows\\evil.exe'])
     expect(resolveExecutable('evil' as never, c)).toBeNull()
@@ -73,6 +89,14 @@ describe('resolveExecutable (darwin)', () => {
   it('is case-sensitive and ignores Windows extensions', () => {
     const c = ctx('darwin', { PATH: '/a', Path: '/b' }, ['/a/Claude', '/a/claude.exe', '/b/claude'])
     expect(resolveExecutable('claude', c)).toBeNull()
+  })
+
+  it('distinguishes a file without execute permission from a missing one', () => {
+    const c = { ...ctx('darwin', { PATH: '/a' }, []), isFile: (f: string) => f === '/a/claude' }
+    expect(resolveExecutableDetailed('claude', c)).toEqual({ kind: 'not-executable' })
+    expect(resolveExecutableDetailed('codex', c)).toEqual({ kind: 'missing' })
+    const both = { ...ctx('darwin', { PATH: '/a:/b' }, ['/b/claude']), isFile: () => true }
+    expect(resolveExecutableDetailed('claude', both)).toEqual({ kind: 'found', path: '/b/claude' })
   })
 
   it('returns null when nothing is found', () => {
@@ -124,9 +148,32 @@ describe('buildLaunch', () => {
     expect(buildLaunch('C:\\a\\claude.ps1', ['--version'], win)).toBeNull()
   })
 
-  it('falls back to bare cmd.exe when SystemRoot is missing or suspicious', () => {
-    const c = ctx('win32', { SystemRoot: 'C:\\a&b' }, [])
-    expect(buildLaunch('C:\\a\\x.cmd', ['--version'], c)?.file).toBe('cmd.exe')
+  it('refuses to run .cmd when SystemRoot is missing or unsafe (no bare cmd.exe fallback)', () => {
+    for (const env of [
+      {} as Record<string, string>,
+      { SystemRoot: 'C:\\a&b' },
+      { SystemRoot: '\\\\host\\share' },
+      { SystemRoot: 'Windows' }
+    ]) {
+      expect(buildLaunch('C:\\a\\x.cmd', ['--version'], ctx('win32', env, []))).toBeNull()
+    }
+  })
+
+  it('refuses non-ASCII and control characters in .cmd paths', () => {
+    for (const bad of [
+      'C:\\u\uFF06x\\claude.cmd',
+      'C:\\u\uFF02x\\claude.cmd',
+      'C:\\h\u00e9\\claude.cmd',
+      'C:\\a\u007f\\claude.cmd',
+      'C:\\a\u0085\\claude.cmd'
+    ]) {
+      expect(buildLaunch(bad, ['--version'], win), bad).toBeNull()
+    }
+  })
+
+  it('windowsSystem32Path validates SystemRoot', () => {
+    expect(windowsSystem32Path('taskkill.exe', win)).toBe('C:\\Windows\\System32\\taskkill.exe')
+    expect(windowsSystem32Path('taskkill.exe', ctx('win32', {}, []))).toBeNull()
   })
 
   it('passes through unchanged on darwin', () => {
