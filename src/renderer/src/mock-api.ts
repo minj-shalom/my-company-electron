@@ -8,7 +8,8 @@ import {
   resetMockOnboarding
 } from './mock-onboarding'
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
-import { mockGetOrg, parseOrgScenario } from './mock-org'
+import { mockGetOrg, parseOrgScenario, resetMockOrgState } from './mock-org'
+import { createMockHireApi, parseHireScenario } from './mock-hire'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
@@ -31,11 +32,17 @@ const mockRunApi = createMockRunApi(
   typeof location === 'undefined' ? 0 : 700
 )
 
+const mockHireApi = createMockHireApi(
+  parseHireScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 500
+)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
   mockTicketApi.reset()
   mockDecisionApi.reset()
   resetMockOnboarding()
+  resetMockOrgState()
 }
 
 const mockNotImplemented = async (): Promise<ApiResult<never>> => ({
@@ -56,29 +63,11 @@ export const mockApi: WindowApi = {
     mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
   ...mockTicketApi.api,
   ...mockDecisionApi.api,
-  // 직원 변경 화면은 T-039. 그 전까지 mock은 템플릿 목록만 돌려주고 쓰기는 not-implemented다.
-  listEmployeeTemplates: async () => ({
-    ok: true,
-    value: [
-      {
-        id: 'developer',
-        title: '개발자',
-        department: '개발팀',
-        role: '범용 구현',
-        description: '범용 구현 담당 (mock).',
-        model: 'sonnet',
-        tools: ['Read', 'Grep', 'Glob'],
-        body: '# 개발자\n'
-      }
-    ]
-  }),
-  createEmployee: mockNotImplemented,
+  // 직원 변경 화면은 T-039. 그 전까지 채용 계열(템플릿 목록, hr 추가, 첫 채용)만 시나리오 mock이고 나머지 쓰기는 not-implemented다.
+  ...mockHireApi.api,
   updateEmployee: mockNotImplemented,
   moveEmployee: mockNotImplemented,
   retireEmployee: mockNotImplemented,
-  // 첫 채용 화면은 T-051 2단계(ui-dev)가 시나리오 mock으로 바꾼다.
-  hirePm: mockNotImplemented,
-  firstHire: mockNotImplemented,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,
