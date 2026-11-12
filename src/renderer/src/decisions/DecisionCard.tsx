@@ -1,10 +1,18 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Decision, DecisionResolveRequest } from '../../../shared/decision'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { KindBadge } from './KindBadge'
-import { KIND_META, kindOf, MEMO_MAX, proposerLabel, sanitizeMemo } from './decision-view'
+import {
+  KIND_META,
+  kindOf,
+  MEMO_MAX,
+  proposerLabel,
+  resolveErrorText,
+  runExclusive,
+  sanitizeMemo
+} from './decision-view'
 
 interface Props {
   decision: Decision
@@ -120,20 +128,42 @@ function ResolveForm({
   const memoId = useId()
   const picked = d.options.find((o) => o.key === choice)
 
+  const mounted = useRef(true)
+  const confirmRef = useRef<HTMLButtonElement>(null)
+  const checkRef = useRef<HTMLButtonElement>(null)
+  const firstRender = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  // 단계가 바뀌면 방금 누른 버튼이 사라지므로 다음 단계의 주 버튼으로 포커스를 옮긴다.
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      return
+    }
+    ;(confirming ? confirmRef : checkRef).current?.focus()
+  }, [confirming])
+
   const confirm = async (): Promise<void> => {
-    if (guard.current || !picked) return
-    guard.current = true
+    if (!picked) return
     setBusy(true)
     setError(null)
-    try {
-      const failure = await onResolve({ id: d.id, choice: picked.key, memo: memo || undefined })
-      if (failure) {
-        setError(failure)
-        setConfirming(false)
+    const r = await runExclusive(guard, async () => {
+      try {
+        return await onResolve({ id: d.id, choice: picked.key, memo: memo || undefined })
+      } catch {
+        return resolveErrorText('unknown')
       }
-    } finally {
-      guard.current = false
-      setBusy(false)
+    })
+    // 성공하면 카드가 목록에서 사라져 언마운트되므로 그때는 상태를 건드리지 않는다.
+    if (!r.ran || !mounted.current) return
+    setBusy(false)
+    if (r.value) {
+      setError(r.value)
+      setConfirming(false)
     }
   }
 
@@ -146,11 +176,12 @@ function ResolveForm({
       className="dform"
       onSubmit={(e) => {
         e.preventDefault()
-        if (confirming) void confirm()
-        else if (picked) setConfirming(true)
+        if (confirming) {
+          if (!busy) void confirm()
+        } else if (picked) setConfirming(true)
       }}
     >
-      <fieldset className="dform__options" disabled={busy || confirming}>
+      <fieldset className="dform__options" disabled={busy}>
         <legend id={groupId}>선택지</legend>
         {d.options.map((o) => (
           <label key={o.key} className="dopt dopt--pick" data-checked={choice === o.key}>
@@ -159,7 +190,10 @@ function ResolveForm({
               name={`${d.id}-choice`}
               value={o.key}
               checked={choice === o.key}
-              onChange={() => setChoice(o.key)}
+              onChange={() => {
+                setChoice(o.key)
+                setConfirming(false)
+              }}
             />
             <OptionText option={o} recommended={o.key === d.recommended} />
           </label>
@@ -172,9 +206,12 @@ function ResolveForm({
           extraClass="dform__memo"
           value={memo}
           maxLength={MEMO_MAX}
-          disabled={busy || confirming}
+          disabled={busy}
           autoComplete="off"
-          onChange={(e) => setMemo(sanitizeMemo(e.target.value))}
+          onChange={(e) => {
+            setMemo(sanitizeMemo(e.target.value))
+            setConfirming(false)
+          }}
         />
       </div>
       {error && (
@@ -191,17 +228,17 @@ function ResolveForm({
             (으)로 확정할까요? 확정하면 처리됨으로 옮겨지고 되돌릴 수 없어요.
           </p>
           <div className="dform__actions">
-            <Button variant="primary" type="submit" disabled={busy}>
+            <Button ref={confirmRef} variant="primary" type="submit" aria-disabled={busy}>
               {busy ? '처리 중…' : '결정 확정'}
             </Button>
-            <Button disabled={busy} onClick={() => setConfirming(false)}>
+            <Button aria-disabled={busy} onClick={() => !busy && setConfirming(false)}>
               돌아가기
             </Button>
           </div>
         </div>
       ) : (
         <div className="dform__actions">
-          <Button variant="primary" type="submit" disabled={!picked}>
+          <Button ref={checkRef} variant="primary" type="submit" disabled={!picked}>
             선택 확인
           </Button>
         </div>

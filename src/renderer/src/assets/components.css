@@ -38,14 +38,15 @@
   box-shadow: 3px 3px 0 var(--shadow-color);
   cursor: pointer;
 }
-.btn:hover:not(:disabled) {
+.btn:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--bg-inset);
 }
 .btn:active:not(:disabled) {
   box-shadow: none;
   transform: translate(3px, 3px);
 }
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled='true'] {
   color: var(--text-muted);
   border-style: dashed;
   box-shadow: none;
