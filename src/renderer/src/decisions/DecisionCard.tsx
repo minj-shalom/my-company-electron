@@ -5,6 +5,7 @@ import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { KindBadge } from './KindBadge'
 import {
+  focusAfterTransition,
   KIND_META,
   kindOf,
   MEMO_MAX,
@@ -131,21 +132,25 @@ function ResolveForm({
   const mounted = useRef(true)
   const confirmRef = useRef<HTMLButtonElement>(null)
   const checkRef = useRef<HTMLButtonElement>(null)
-  const firstRender = useRef(true)
+  // 버튼으로 단계가 바뀐 경우에만 값이 채워지고 effect가 소비한다 (입력 중 포커스를 뺏지 않기 위해).
+  const focusTarget = useRef<'confirm' | 'check' | null>(null)
   useEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
     }
   }, [])
-  // 단계가 바뀌면 방금 누른 버튼이 사라지므로 다음 단계의 주 버튼으로 포커스를 옮긴다.
   useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false
-      return
-    }
-    ;(confirming ? confirmRef : checkRef).current?.focus()
+    const target = focusTarget.current
+    focusTarget.current = null
+    if (target === 'confirm') confirmRef.current?.focus()
+    else if (target === 'check') checkRef.current?.focus()
   }, [confirming])
+
+  const setStep = (open: boolean, t: Parameters<typeof focusAfterTransition>[0]): void => {
+    focusTarget.current = focusAfterTransition(t)
+    setConfirming(open)
+  }
 
   const confirm = async (): Promise<void> => {
     if (!picked) return
@@ -163,7 +168,7 @@ function ResolveForm({
     setBusy(false)
     if (r.value) {
       setError(r.value)
-      setConfirming(false)
+      setStep(false, 'failure')
     }
   }
 
@@ -178,10 +183,10 @@ function ResolveForm({
         e.preventDefault()
         if (confirming) {
           if (!busy) void confirm()
-        } else if (picked) setConfirming(true)
+        } else if (picked) setStep(true, 'open')
       }}
     >
-      <fieldset className="dform__options" disabled={busy}>
+      <fieldset className="dform__options">
         <legend id={groupId}>선택지</legend>
         {d.options.map((o) => (
           <label key={o.key} className="dopt dopt--pick" data-checked={choice === o.key}>
@@ -191,8 +196,9 @@ function ResolveForm({
               value={o.key}
               checked={choice === o.key}
               onChange={() => {
+                if (busy) return
                 setChoice(o.key)
-                setConfirming(false)
+                setStep(false, 'edit')
               }}
             />
             <OptionText option={o} recommended={o.key === d.recommended} />
@@ -206,11 +212,11 @@ function ResolveForm({
           extraClass="dform__memo"
           value={memo}
           maxLength={MEMO_MAX}
-          disabled={busy}
+          readOnly={busy}
           autoComplete="off"
           onChange={(e) => {
             setMemo(sanitizeMemo(e.target.value))
-            setConfirming(false)
+            setStep(false, 'edit')
           }}
         />
       </div>
@@ -231,7 +237,7 @@ function ResolveForm({
             <Button ref={confirmRef} variant="primary" type="submit" aria-disabled={busy}>
               {busy ? '처리 중…' : '결정 확정'}
             </Button>
-            <Button aria-disabled={busy} onClick={() => !busy && setConfirming(false)}>
+            <Button aria-disabled={busy} onClick={() => !busy && setStep(false, 'back')}>
               돌아가기
             </Button>
           </div>

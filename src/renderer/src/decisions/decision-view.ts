@@ -291,3 +291,15 @@ export async function runExclusive<T>(
     lock.current = false
   }
 }
+
+export type ConfirmTransition = 'open' | 'back' | 'failure' | 'edit'
+
+/**
+ * 확정 단계가 바뀔 때 포커스를 옮길 곳. 버튼으로 단계가 바뀔 때만 옮기고,
+ * 입력·라디오 변경으로 확정이 풀리는 경우(edit)는 사용자가 입력 중이므로 옮기지 않는다.
+ */
+export function focusAfterTransition(t: ConfirmTransition): 'confirm' | 'check' | null {
+  if (t === 'open') return 'confirm'
+  if (t === 'back' || t === 'failure') return 'check'
+  return null
+}

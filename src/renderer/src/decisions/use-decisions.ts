@@ -76,8 +76,10 @@ export function useDecisions(): UseDecisions {
       guard.invalidate()
       inflight.current = null
       setState((prev) => applyResolved(prev, d))
+      // 첫 로딩 중이었다면 위 반영이 무시되고 응답도 버려졌으므로, 다음 폴링까지 로딩에 머물지 않게 바로 다시 읽는다.
+      void refresh({ force: true })
     },
-    [guard]
+    [guard, refresh]
   )
 
   return { state, refresh, markResolved }

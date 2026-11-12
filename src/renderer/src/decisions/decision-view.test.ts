@@ -6,6 +6,7 @@ import {
   createRefreshGuard,
   runExclusive,
   filterByKind,
+  focusAfterTransition,
   filterUnreadable,
   KIND_META,
   loadDecisionState,
@@ -248,5 +249,14 @@ describe('runExclusive', () => {
       })
     ).rejects.toThrow()
     expect(lock.current).toBe(false)
+  })
+})
+
+describe('focusAfterTransition', () => {
+  it('moves focus only for button-driven step changes', () => {
+    expect(focusAfterTransition('open')).toBe('confirm')
+    expect(focusAfterTransition('back')).toBe('check')
+    expect(focusAfterTransition('failure')).toBe('check')
+    expect(focusAfterTransition('edit')).toBeNull()
   })
 })
