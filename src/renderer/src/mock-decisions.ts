@@ -124,10 +124,10 @@ const SAMPLES: Decision[] = [
 ]
 
 const UNREADABLE: UnreadableDecision[] = [
-  { path: 'decisions/pending/D-020-broken.md', reason: 'unreadable' },
-  { path: 'decisions/pending/D-003-copy.md', reason: 'duplicate' },
-  { path: 'decisions/pending/D-021-huge.md', reason: 'too-large' },
-  { path: 'decisions/done/D-004-old.md', reason: 'duplicate' }
+  { path: 'company/decisions/pending/D-020-broken.md', reason: 'unreadable' },
+  { path: 'company/decisions/pending/D-003-copy.md', reason: 'duplicate' },
+  { path: 'company/decisions/pending/D-021-huge.md', reason: 'too-large' },
+  { path: 'company/decisions/done/D-004-old.md', reason: 'duplicate' }
 ]
 
 function seed(scenario: DecisionScenario): { items: Decision[]; unreadable: UnreadableDecision[] } {

@@ -44,14 +44,14 @@ describe('DecisionInbox states', () => {
       kind: 'ready',
       items: [card(), card({ id: 'D-002', kind: undefined })],
       unreadable: [
-        { path: 'decisions/pending/x.md', reason: 'duplicate' },
-        { path: 'decisions/done/y.md', reason: 'too-large' }
+        { path: 'company/decisions/pending/x.md', reason: 'duplicate' },
+        { path: 'company/decisions/done/y.md', reason: 'too-large' }
       ],
       stale: false
     })
     expect(html).toContain('읽지 못한 카드 1건 (파일 확인 필요)')
-    expect(html).toContain('decisions/pending/x.md')
-    expect(html).not.toContain('decisions/done/y.md')
+    expect(html).toContain('company/decisions/pending/x.md')
+    expect(html).not.toContain('company/decisions/done/y.md')
     expect(html).toContain('data-slot="auto-mode"></div>')
     expect(html).toContain('유형 필터')
   })

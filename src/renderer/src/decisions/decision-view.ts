@@ -133,14 +133,17 @@ export function unreadableSummary(count: number): string {
   return `읽지 못한 카드 ${count}건 (파일 확인 필요)`
 }
 
-/** status 필터 없이 받으면 두 폴더의 항목이 섞여 있으므로 경로 접두어로 해당 폴더 것만 남긴다. 접두어를 모르는 경로는 숨기지 않는다. */
+/**
+ * status 필터 없이 받으면 두 폴더의 항목이 섞여 있으므로 경로로 해당 폴더 것만 남긴다.
+ * main은 `company/decisions/<status>/...`를 주므로 접두어가 아니라 세그먼트 포함 여부로 판정한다. 폴더를 알 수 없는 경로는 숨기지 않는다.
+ */
 export function filterUnreadable(
   list: readonly UnreadableDecision[],
   status: DecisionStatus
 ): UnreadableDecision[] {
   const other = status === 'pending' ? 'done' : 'pending'
-  const norm = (p: string): string => p.replaceAll('\\', '/').replace(/^\.?\//, '')
-  return list.filter((u) => !norm(u.path).startsWith(`decisions/${other}/`))
+  const needle = `/decisions/${other}/`
+  return list.filter((u) => !`/${u.path.replaceAll('\\', '/')}`.includes(needle))
 }
 
 // ---- 오류 문구 ----
@@ -186,7 +189,11 @@ export const MEMO_MAX = 2000
 /** 제어문자(개행·탭 포함, 한 줄 입력이므로)를 제거하고 길이를 자른다. 최종 검증은 main이 한다. */
 export function sanitizeMemo(raw: string): string {
   // eslint-disable-next-line no-control-regex
-  return raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, '').slice(0, MEMO_MAX)
+  const clean = raw.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, '')
+  if (clean.length <= MEMO_MAX) return clean
+  // 서로게이트 쌍 한가운데를 자르면 깨진 문자가 남으므로 앞 절반이 걸리면 한 칸 줄인다.
+  const cut = /[\ud800-\udbff]/.test(clean[MEMO_MAX - 1]) ? MEMO_MAX - 1 : MEMO_MAX
+  return clean.slice(0, cut)
 }
 
 // ---- 새로고침 정책 ----
@@ -248,4 +255,39 @@ export function applyResolved(prev: DecisionsState, resolved: Decision): Decisio
 
 export function pendingCount(state: DecisionsState): number {
   return state.kind === 'ready' ? state.items.filter((d) => d.status === 'pending').length : 0
+}
+
+/**
+ * 조회 응답의 세대 가드. 조회를 시작한 뒤 resolve가 끝나거나 강제 재조회가 시작되면 그 이전 응답은 낡은 것이므로 버린다
+ * (낡은 응답이 방금 처리한 카드를 pending으로 되살리는 것을 막는다).
+ */
+export interface RefreshGuard {
+  begin: () => number
+  invalidate: () => void
+  isCurrent: (token: number) => boolean
+}
+
+export function createRefreshGuard(): RefreshGuard {
+  let gen = 0
+  return {
+    begin: () => gen,
+    invalidate: () => {
+      gen += 1
+    },
+    isCurrent: (token) => token === gen
+  }
+}
+
+/** 연타 방지. state 반영 전에도 즉시 잠그도록 ref 객체로 잠금을 받는다. 이미 실행 중이면 fn을 호출하지 않는다. */
+export async function runExclusive<T>(
+  lock: { current: boolean },
+  fn: () => Promise<T>
+): Promise<{ ran: true; value: T } | { ran: false }> {
+  if (lock.current) return { ran: false }
+  lock.current = true
+  try {
+    return { ran: true, value: await fn() }
+  } finally {
+    lock.current = false
+  }
 }
