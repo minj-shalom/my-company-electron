@@ -33,34 +33,56 @@ export function asString(v: unknown): string | null {
 export function firstHeading(body: string): string | null {
   let fence = false
   for (const line of body.split(/\r?\n/)) {
-    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    if (/^[ \t]*(```|~~~)/.test(line)) fence = !fence
     if (fence) continue
-    const m = /^#\s+(.+?)\s*#*\s*$/.exec(line)
-    if (m) return m[1]
+    const m = /^#[ \t]+(\S.*)$/.exec(line.trimEnd())
+    if (m) return m[1].replace(/[ \t]+#+$/, '')
   }
   return null
 }
 
-/** `- **키:** 값` 형식의 메타 줄에서 값을 읽는다. 첫 H1 이전~전체에서 첫 일치. */
+/**
+ * `- **키:** 값` 형식의 메타 줄에서 값을 읽는다. 첫 일치.
+ * `m` 플래그 정규식 대신 줄 단위로 훑는다: `\s`가 개행을 삼켜 공백/빈 줄만 이어진 큰 파일에서 O(n²)가 되고,
+ * 단독 `\r`이 줄 경계로 취급되어 줄을 위조할 수 있기 때문이다 (줄 경계는 `\n`, `\r\n`만).
+ */
 export function metaValue(body: string, key: string): string | null {
-  const re = new RegExp(`^\\s*[-*]\\s+\\*\\*${escapeRe(key)}:\\*\\*[ \\t]*(.*)$`, 'm')
-  const m = re.exec(body)
-  return m ? m[1].trim() : null
+  const re = new RegExp(`^[ \\t]*[-*][ \\t]+\\*\\*${escapeRe(key)}:\\*\\*[ \\t]*(.*)$`)
+  for (const line of body.split(/\r?\n/)) {
+    const m = re.exec(line)
+    if (m) return m[1].trim()
+  }
+  return null
+}
+
+/** `- 라벨: 값` 불릿 줄에서 값을 읽는다 (콜론은 `:` 또는 `：`). 첫 일치. */
+export function bulletValue(text: string, label: string): string | null {
+  const re = new RegExp(`^[ \\t]*[-*][ \\t]+${escapeRe(label)}[ \\t]*[:：][ \\t]*(.*)$`)
+  for (const line of text.split(/\r?\n/)) {
+    const m = re.exec(line)
+    if (m) return m[1].trim()
+  }
+  return null
 }
 
 /** `## 제목` 아래 본문(다음 `##` 전까지). 제목은 접두어 일치. 코드 펜스를 존중한다. */
 export function section(body: string, headingPrefix: string): string | null {
+  return sectionWhere(body, (title) => title.startsWith(headingPrefix))
+}
+
+/** 제목 문자열 조건으로 섹션을 찾는다. `section`의 접두어 일치가 `## 결정 근거` 같은 제목까지 잡는 것을 피할 때 쓴다. */
+export function sectionWhere(body: string, matchTitle: (title: string) => boolean): string | null {
   const lines = body.split(/\r?\n/)
   let fence = false
   let start = -1
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    if (/^\s*(```|~~~)/.test(line)) fence = !fence
+    if (/^[ \t]*(```|~~~)/.test(line)) fence = !fence
     if (fence) continue
     if (start < 0) {
-      const m = /^##\s+(.+?)\s*$/.exec(line)
-      if (m && m[1].startsWith(headingPrefix)) start = i + 1
-    } else if (/^##\s+/.test(line)) {
+      const m = /^##[ \t]+(\S.*)$/.exec(line.trimEnd())
+      if (m && matchTitle(m[1])) start = i + 1
+    } else if (/^##[ \t]/.test(line)) {
       return lines.slice(start, i).join('\n').trim()
     }
   }
