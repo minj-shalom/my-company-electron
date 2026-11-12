@@ -227,20 +227,36 @@ describe('watcher', () => {
     await until(async () => !(await c.repository.getTicket('T-003')).ok)
   })
 
-  it('coalesces a burst of writes into few refreshes', async () => {
-    await seed()
-    const calls: string[][] = []
+  /**
+   * 감시자를 시작하고 셋업 중 쓴 파일의 뒤늦은 이벤트를 소진한다. macOS는 start 직전에 쓴 파일/링크
+   * 이벤트를 ready 이후에 전달하기도 한다 (ignoreInitial은 초기 스캔만 거른다). 이벤트는 순서대로 오므로
+   * 보초 파일의 이벤트가 도착하면 그 이전 이벤트는 모두 지나간 것이다.
+   */
+  async function startDrained(
+    debounceMs: number
+  ): Promise<{ calls: string[][]; w: import('./company-watcher').CompanyWatcher }> {
     const { CompanyWatcher } = await import('./company-watcher')
     const { realpath } = await import('node:fs/promises')
+    const calls: string[][] = []
     const w = new CompanyWatcher({
       root: await realpath(dir),
-      debounceMs: 200,
+      debounceMs,
       onChange: async (k) => void calls.push(k)
     })
     await w.start()
+    await put('company/reports/SENTINEL-START.md', '# s\n')
+    await until(async () => calls.some((k) => k.includes('report')))
+    calls.length = 0
+    return { calls, w }
+  }
+
+  it('coalesces a burst of writes into few refreshes', async () => {
+    await seed()
+    const { calls, w } = await startDrained(200)
     for (let i = 0; i < 10; i++) await put(`company/reports/R-${i}.md`, `# R ${i}\n`)
     await until(async () => calls.length > 0)
-    await new Promise((r) => setTimeout(r, 500))
+    // 늦게 오는 추가 flush가 없는지 보는 상한 검사라, 대기가 짧아도 거짓 실패는 나지 않는다.
+    await new Promise((r) => setTimeout(r, 450))
     await w.stop()
     expect(calls.length).toBeLessThanOrEqual(2)
     expect(calls.flat()).toContain('report')
@@ -248,23 +264,17 @@ describe('watcher', () => {
 
   it('ignores files outside the watched tree and does not follow symlinks out', async () => {
     await seed()
-    const calls: string[][] = []
-    const { CompanyWatcher } = await import('./company-watcher')
-    const { realpath } = await import('node:fs/promises')
     await mkdir(join(outside, 'ext'), { recursive: true })
     await symlink(join(outside, 'ext'), join(dir, 'company/reports/linked'))
-    const w = new CompanyWatcher({
-      root: await realpath(dir),
-      debounceMs: 50,
-      onChange: async (k) => void calls.push(k)
-    })
-    await w.start()
+    const { calls, w } = await startDrained(50)
     await writeFile(join(outside, 'ext', 'X.md'), '# x\n') // 링크 너머(밖)
     await put('src/note.md', '# n\n') // 관심 밖 폴더
     await put('company/tickets/backlog/T-004.md.tmp', 'x') // 임시 파일
-    await new Promise((r) => setTimeout(r, 600))
+    // 위 변경이 새어 나온다면 이 보초보다 먼저 도착한다. 보초가 보이면 검사 끝.
+    await put('company/decisions/pending/SENTINEL-END.md', '# s\n')
+    await until(async () => calls.some((k) => k.includes('decision')))
     await w.stop()
-    expect(calls).toEqual([])
+    expect(calls.flat().filter((k) => k !== 'decision')).toEqual([])
   })
 
   it('keeps cache consistent after rebuild when edits happened while closed', async () => {
