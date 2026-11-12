@@ -106,7 +106,8 @@ const NORMAL: OrgSnapshot = {
     chart: [],
     issues: []
   },
-  agents: AGENTS
+  agents: AGENTS,
+  missingBaseRoles: []
 }
 
 /** 직원 20명, 부서 6개. 맵 성능과 방 배치가 부서/직원 수에 따라 늘어나는지 확인하는 시나리오. */
@@ -138,7 +139,8 @@ function manySnapshot(): OrgSnapshot {
       chart: [],
       issues: []
     },
-    agents: []
+    agents: [],
+    missingBaseRoles: []
   }
 }
 
@@ -146,7 +148,11 @@ function scenarioSnapshot(s: OrgScenario): OrgSnapshot {
   if (s === 'many') return manySnapshot()
   const snap = structuredClone(NORMAL)
   if (s === 'empty')
-    return { org: { ...snap.org, members: [], departments: [], tree: [] }, agents: [] }
+    return {
+      org: { ...snap.org, members: [], departments: [], tree: [] },
+      agents: [],
+      missingBaseRoles: []
+    }
   if (s === 'issues')
     snap.org.issues = [
       { code: 'missing-agent-file', message: 'x', line: 18 },

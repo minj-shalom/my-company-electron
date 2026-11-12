@@ -76,6 +76,9 @@ export const mockApi: WindowApi = {
   updateEmployee: mockNotImplemented,
   moveEmployee: mockNotImplemented,
   retireEmployee: mockNotImplemented,
+  // 첫 채용 화면은 T-051 2단계(ui-dev)가 시나리오 mock으로 바꾼다.
+  hirePm: mockNotImplemented,
+  firstHire: mockNotImplemented,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,

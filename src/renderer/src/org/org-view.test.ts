@@ -50,7 +50,8 @@ describe('toOrgStatus / loadOrgStatus', () => {
         chart: [],
         issues: [{ code: 'missing-org', message: '' }]
       },
-      agents: []
+      agents: [],
+      missingBaseRoles: []
     })
     expect(withIssue.kind === 'empty' && withIssue.issues[0].blocking).toBe(true)
   })
