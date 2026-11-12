@@ -26,6 +26,7 @@
 }
 
 .stepper {
+  list-style: none;
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
@@ -219,4 +220,34 @@ input[aria-invalid='true'] {
 .wizard :focus-visible {
   outline: 2px solid #8ab4ff;
   outline-offset: 2px;
+}
+
+.stepper__num {
+  margin-right: 4px;
+}
+.os-select label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.copy-command code {
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  main {
+    padding: 16px;
+  }
+  .card {
+    padding: 12px;
+  }
+  .copy-command__row {
+    flex-direction: column;
+  }
+  input[type='text'] {
+    width: 100%;
+  }
+  .stepper {
+    gap: 8px 12px;
+    font-size: 14px;
+  }
 }

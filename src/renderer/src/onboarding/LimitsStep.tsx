@@ -132,7 +132,7 @@ export function LimitsStep({ onBack, onSaved }: Props): React.JSX.Element {
         )
       })}
       <p className="hint">
-        0보다 크고 {WEEKLY_LIMIT_MAX.toLocaleString('en-US')} 이하의 숫자만 쓸 수 있어요.
+        0.01 이상 {WEEKLY_LIMIT_MAX.toLocaleString('en-US')} 이하의 숫자만 쓸 수 있어요.
       </p>
       {saveError && (
         <p role="alert" className="error">
