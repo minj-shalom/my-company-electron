@@ -224,7 +224,11 @@ export class FileCompanyRepository implements CompanyRepository {
     // 앱이 resolve 도중 종료되면 같은 카드가 양쪽에 남을 수 있다. 결정이 기록된 done을 우선하고 나머지는 숨긴다.
     const rank = (d: Decision): number => (d.status === 'done' ? 0 : 1)
     const ordered = [...found].sort(
-      (a, b) => numOf(a.item.id) - numOf(b.item.id) || rank(a.item) - rank(b.item)
+      (a, b) =>
+        numOf(a.item.id) - numOf(b.item.id) ||
+        rank(a.item) - rank(b.item) ||
+        // 같은 폴더의 같은 id는 파일명순으로 고정해 어느 쪽이 보일지 호출마다 바뀌지 않게 한다.
+        (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
     )
     const items: Decision[] = []
     let lastId = ''
@@ -286,7 +290,12 @@ export class FileCompanyRepository implements CompanyRepository {
       if (!card.options.some((o) => o.key === choice))
         return fail('invalid-request', '카드에 없는 선택지입니다.')
       const target = relPath(DECISION_DIRS.done, pending.name)
-      await this.relocate(pending.path, target, withDecisionResolved(text, choice, cleanMemo))
+      const next = withDecisionResolved(text, choice, cleanMemo)
+      // 닫히지 않은 코드 펜스 등으로 `## 결정`을 못 찾는 카드는 쓴 결과가 읽히지 않는다. 쓰기 전에 다시 파싱해 확인한다.
+      const check = parseDecision(pending.name, next, 'done')
+      if (check.chosen !== choice || check.memo !== roundTripMemo(cleanMemo))
+        return fail('invalid-request', '카드 형식 때문에 결정을 기록할 수 없습니다.')
+      await this.relocate(pending.path, target, next)
     } catch (e) {
       return toFailure(e)
     }
@@ -387,6 +396,15 @@ export class FileCompanyRepository implements CompanyRepository {
     }
     return null
   }
+}
+
+/** 쓸 때 줄 단위로 trim되므로 읽어서 돌아오는 메모는 각 줄의 앞뒤 공백이 없는 형태다. */
+function roundTripMemo(memo: string): string {
+  return memo
+    .trim()
+    .split('\n')
+    .map((l) => l.trim())
+    .join('\n')
 }
 
 function reasonOf(e: unknown): 'unreadable' | 'too-large' {

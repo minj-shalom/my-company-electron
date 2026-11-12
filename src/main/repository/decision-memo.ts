@@ -14,7 +14,10 @@ export function normalizeMemo(memo: string): string | null {
 /** 줄머리에 오면 마크다운 구조(제목, 펜스, 목록, 인용, 표)로 읽힐 수 있는 문자. 백슬래시는 이스케이프 표지라 함께 둔다. */
 const STRUCTURAL_START = /^[#`~\-*+>|\\]/
 
-/** 이어지는 메모 줄이 구조로 읽히지 않도록 줄머리에 `\`를 붙인다. 빈 줄은 `\` 하나로 표시한다 (들여쓰기 목록이 끊기지 않게). */
+/**
+ * 이어지는 메모 줄이 구조로 읽히지 않도록 줄머리에 `\`를 붙인다. 빈 줄은 `\` 하나로 표시한다 (들여쓰기 목록이 끊기지 않게).
+ * 한계: 줄머리 들여쓰기는 저장 시 `trim`되어 왕복에서 사라진다 (메모는 줄 내용만 보존한다).
+ * `=`(setext 제목)나 `<!--`는 이스케이프하지 않는다: 들여쓴 이어지는 줄이라 이 앱의 파서에서는 구조로 읽히지 않는다. */
 export function escapeMemoLine(line: string): string {
   if (line === '') return '\\'
   return STRUCTURAL_START.test(line) ? `\\${line}` : line
