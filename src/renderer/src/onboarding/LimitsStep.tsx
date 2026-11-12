@@ -61,7 +61,11 @@ export function LimitsStep({ onBack, onSaved }: Props): React.JSX.Element {
       else if (p.amount !== null) limits.push({ provider: id, amount: p.amount, unit: 'usd' })
     }
     setErrors(nextErrors)
-    if (Object.keys(nextErrors).length > 0) return
+    const firstInvalid = PROVIDER_CLI_IDS.find((id) => nextErrors[id])
+    if (firstInvalid) {
+      document.getElementById(`limit-${firstInvalid}`)?.focus()
+      return
+    }
     setSaving(true)
     setSaveError('')
     try {

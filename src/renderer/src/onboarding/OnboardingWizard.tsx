@@ -18,8 +18,11 @@ export function OnboardingWizard(): React.JSX.Element {
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   // 단계가 바뀌면 제목으로 포커스를 옮겨 키보드/스크린리더 사용자가 새 화면을 알 수 있게 한다.
+  // 첫 화면에서는 페이지 로드 포커스를 빼앗지 않도록 건너뛴다.
+  const mountedRef = useRef(false)
   useEffect(() => {
-    headingRef.current?.focus()
+    if (mountedRef.current) headingRef.current?.focus()
+    mountedRef.current = true
   }, [step])
 
   return (
