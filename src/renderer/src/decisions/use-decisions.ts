@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Decision } from '../../../shared/decision'
 import {
   applyResolved,
+  createRefreshGuard,
   loadDecisionState,
   mergeRefresh,
   POLL_INTERVAL_MS,
@@ -11,7 +12,8 @@ import {
 
 export interface UseDecisions {
   state: DecisionsState
-  refresh: () => Promise<void>
+  /** force: 낡은 진행 중 요청을 버리고 새로 조회한다 (처리 충돌 뒤 등). */
+  refresh: (opts?: { force?: boolean }) => Promise<void>
   markResolved: (d: Decision) => void
 }
 
@@ -25,20 +27,31 @@ export function useDecisions(): UseDecisions {
   const alive = useRef(true)
   const lastAt = useRef<number | null>(null)
 
-  const refresh = useCallback((): Promise<void> => {
-    // 진행 중인 요청이 있으면 새로 보내지 않고 그 결과를 기다린다.
-    if (inflight.current) return inflight.current
-    const p = loadDecisionState(window.api)
-      .then((next) => {
-        lastAt.current = Date.now()
-        if (alive.current) setState((prev) => mergeRefresh(prev, next))
-      })
-      .finally(() => {
+  const guard = useMemo(() => createRefreshGuard(), [])
+
+  const refresh = useCallback(
+    (opts?: { force?: boolean }): Promise<void> => {
+      if (opts?.force) {
+        guard.invalidate()
         inflight.current = null
-      })
-    inflight.current = p
-    return p
-  }, [])
+      }
+      // 진행 중인 요청이 있으면 새로 보내지 않고 그 결과를 기다린다.
+      if (inflight.current) return inflight.current
+      const token = guard.begin()
+      const p: Promise<void> = loadDecisionState(window.api)
+        .then((next) => {
+          if (!alive.current || !guard.isCurrent(token)) return
+          lastAt.current = Date.now()
+          setState((prev) => mergeRefresh(prev, next))
+        })
+        .finally(() => {
+          if (inflight.current === p) inflight.current = null
+        })
+      inflight.current = p
+      return p
+    },
+    [guard]
+  )
 
   useEffect(() => {
     alive.current = true
@@ -57,9 +70,15 @@ export function useDecisions(): UseDecisions {
     }
   }, [refresh])
 
-  const markResolved = useCallback((d: Decision): void => {
-    setState((prev) => applyResolved(prev, d))
-  }, [])
+  const markResolved = useCallback(
+    (d: Decision): void => {
+      // 이미 날아간 조회는 처리 전 상태를 담고 있으므로 버린다.
+      guard.invalidate()
+      inflight.current = null
+      setState((prev) => applyResolved(prev, d))
+    },
+    [guard]
+  )
 
   return { state, refresh, markResolved }
 }

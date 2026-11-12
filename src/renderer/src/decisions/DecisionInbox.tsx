@@ -48,7 +48,7 @@ export function DecisionInbox({ state, refresh, markResolved }: UseDecisions): R
       const text = resolveErrorText(r.code)
       if (shouldRefreshAfterError(r.code)) {
         setNotice({ tone: 'warn', text })
-        await refresh()
+        await refresh({ force: true })
       }
       return text
     } catch {
@@ -87,7 +87,7 @@ interface BodyProps {
   setOpenId: (id: string | null) => void
   notice: Notice | null
   dismissNotice: () => void
-  refresh: () => Promise<void>
+  refresh: UseDecisions['refresh']
   resolve: (req: DecisionResolveRequest) => Promise<string | null>
 }
 
