@@ -3,6 +3,10 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './window'
 import { registerIpcHandlers } from './ipc'
 import { checkSqlite } from './db'
+import { registerRunHandlers } from './run-ipc'
+import { ClaudeRunner } from './runner/runner'
+
+let runner: ClaudeRunner | undefined
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.mycompany.app')
@@ -11,6 +15,9 @@ app.whenReady().then(() => {
   // 네이티브 모듈 로드 실패를 시작 시점에 드러낸다.
   checkSqlite()
   registerIpcHandlers()
+  // 회사 폴더 설정은 후속 티켓에서 도입한다. 그 전까지는 앱 실행 디렉터리를 cwd로 쓴다.
+  runner = new ClaudeRunner({ cwd: process.cwd() })
+  registerRunHandlers(runner)
   createMainWindow()
 
   app.on('activate', () => {
@@ -21,3 +28,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+app.on('before-quit', () => runner?.cancelAll())
