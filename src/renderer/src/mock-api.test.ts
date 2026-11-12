@@ -42,3 +42,45 @@ describe('mockApi', () => {
     expect(r).toMatchObject({ ok: false, code: 'invalid-request' })
   })
 })
+
+describe('mockApi onboarding', () => {
+  beforeEach(() => resetMockApi())
+
+  it('changes detection results between checks and keeps the last one', async () => {
+    const first = await mockApi.detectProviders()
+    expect(first.ok && first.value.find((d) => d.provider === 'codex')?.state).toBe('not-installed')
+    await mockApi.detectProviders()
+    const third = await mockApi.detectProviders()
+    expect(third.ok && third.value.every((d) => d.state === 'ok')).toBe(true)
+  })
+
+  it('saves, replaces and reads back weekly limits', async () => {
+    const saved = await mockApi.saveWeeklyLimits({
+      limits: [{ provider: 'claude', amount: 20, unit: 'usd' }]
+    })
+    expect(saved).toMatchObject({ ok: true })
+    const got = await mockApi.getWeeklyLimits()
+    expect(got.ok && got.value).toEqual([{ provider: 'claude', amount: 20, unit: 'usd' }])
+  })
+
+  it('rejects invalid or duplicate limits', async () => {
+    const bad = await mockApi.saveWeeklyLimits({
+      limits: [{ provider: 'claude', amount: -1, unit: 'usd' }]
+    })
+    expect(bad).toMatchObject({ ok: false, code: 'invalid-request' })
+    const dup = await mockApi.saveWeeklyLimits({
+      limits: [
+        { provider: 'claude', amount: 1, unit: 'usd' },
+        { provider: 'claude', amount: 2, unit: 'usd' }
+      ]
+    })
+    expect(dup).toMatchObject({ ok: false, code: 'invalid-request' })
+  })
+
+  it('only supports the connection test for claude', async () => {
+    const c = await mockApi.testProviderConnection('claude')
+    expect(c.ok && c.value.state).toBe('ok')
+    const g = await mockApi.testProviderConnection('gemini')
+    expect(g.ok && g.value.state).toBe('unsupported')
+  })
+})
