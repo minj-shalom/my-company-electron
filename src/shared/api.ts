@@ -29,9 +29,10 @@ export interface WindowApi {
   getCompany: () => Promise<ApiResult<CompanyInfo | null>>
   listEmployees: () => Promise<ApiResult<OrgChart>>
   listTickets: (status?: TicketStatus) => Promise<ApiResult<Ticket[]>>
+  /** main은 id를 허용 형식(예: ^T-\d+$)만 받고, 경로를 id로 조합하지 말고 목록에서 찾아 쓴다. body는 마크다운이므로 renderer가 sanitize한다. */
   getTicket: (id: string) => Promise<ApiResult<Ticket>>
   listDecisions: (status?: Decision['status']) => Promise<ApiResult<Decision[]>>
-  /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것 하나뿐이다. */
+  /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것 하나뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
   resolveDecision: (req: DecisionResolveRequest) => Promise<ApiResult<Decision>>
   /** run 이벤트 구독. 반환된 함수로 해제한다. */
   onRunEvent: (listener: (event: RunEvent) => void) => () => void
