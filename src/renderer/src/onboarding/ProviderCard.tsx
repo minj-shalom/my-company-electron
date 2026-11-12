@@ -1,8 +1,15 @@
 import { useState } from 'react'
 import type { ConnectionTestResult, ProviderDetection } from '../../../shared/provider'
+import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
 import { InstallSafety } from './InstallSafety'
 import { CopyCommand } from './CopyCommand'
-import { NOT_FOUND_AFTER_INSTALL_HELP, connectionTestView, detectView } from './detection-view'
+import {
+  NOT_FOUND_AFTER_INSTALL_HELP,
+  connectionTestView,
+  detectView,
+  providerBadge
+} from './detection-view'
 import { OS_LABELS, type OsKind, type ProviderGuide } from './provider-guide'
 
 type TestStatus =
@@ -23,6 +30,7 @@ export function ProviderCard({ guide, os, detection, detectionLoading }: Props):
   const [test, setTest] = useState<TestStatus>({ kind: 'idle' })
   const headingId = `provider-${guide.id}`
   const view = detection ? detectView(detection.state) : null
+  const badge = providerBadge(detection, detectionLoading)
   const installed = detection?.state === 'ok'
 
   // 사용자가 버튼을 눌렀을 때만 실행된다. 자동 호출 경로 없음.
@@ -50,20 +58,11 @@ export function ProviderCard({ guide, os, detection, detectionLoading }: Props):
   }
 
   return (
-    <section className="card" aria-labelledby={headingId}>
-      <header className="card__header">
+    <section className="provider" aria-labelledby={headingId}>
+      <header className="provider__header">
         <h3 id={headingId}>{guide.name}</h3>
-        <span className="card__service">{guide.service}</span>
-        {detectionLoading ? (
-          <span className="badge badge--neutral">확인 중…</span>
-        ) : view ? (
-          <span className={`badge badge--${view.tone}`}>
-            {view.label}
-            {detection?.state === 'ok' && detection.version ? ` (${detection.version})` : ''}
-          </span>
-        ) : (
-          <span className="badge badge--neutral">확인 못 함</span>
-        )}
+        <span className="provider__service">{guide.service}</span>
+        <Badge tone={badge.tone}>{badge.label}</Badge>
       </header>
       {view && <p>{view.help}</p>}
       {detection?.state === 'not-installed' && (
@@ -100,9 +99,9 @@ export function ProviderCard({ guide, os, detection, detectionLoading }: Props):
         버튼을 누르면 AI에게 짧은 질문을 한 번 보내 로그인이 되었는지 확인해요. 사용량이 아주 조금
         쓰이고, 누르기 전에는 실행되지 않아요.
       </p>
-      <button type="button" onClick={runTest} disabled={!installed || test.kind === 'running'}>
+      <Button onClick={runTest} disabled={!installed || test.kind === 'running'}>
         {test.kind === 'running' ? '테스트 중…' : '연결 테스트'}
-      </button>
+      </Button>
       {!installed && !detectionLoading && (
         <p className="hint">설치된 것이 확인되면 누를 수 있어요.</p>
       )}
@@ -110,9 +109,9 @@ export function ProviderCard({ guide, os, detection, detectionLoading }: Props):
         {test.kind === 'running' && '연결을 확인하고 있어요. 최대 1분쯤 걸릴 수 있어요.'}
         {test.kind === 'done' && (
           <p>
-            <span className={`badge badge--${connectionTestView(test.result.state).tone}`}>
+            <Badge tone={connectionTestView(test.result.state).tone}>
               {connectionTestView(test.result.state).label}
-            </span>{' '}
+            </Badge>{' '}
             {connectionTestView(test.result.state).help}
           </p>
         )}

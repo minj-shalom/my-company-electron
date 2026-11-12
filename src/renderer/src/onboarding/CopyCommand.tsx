@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '../ui/Button'
 
 type CopyState = 'idle' | 'copied' | 'failed'
 
@@ -25,12 +26,10 @@ export function CopyCommand({
     <div className="copy-command">
       <p className="copy-command__label">{label}</p>
       <div className="copy-command__row">
-        <code tabIndex={0} aria-label={`명령: ${command}`}>
+        <code className="code-box" tabIndex={0} aria-label={`명령: ${command}`}>
           {command}
         </code>
-        <button type="button" onClick={copy}>
-          복사
-        </button>
+        <Button onClick={copy}>복사</Button>
       </div>
       <p role="status" className="copy-command__status">
         {state === 'copied' && '복사했어요. 터미널에 붙여넣으세요.'}

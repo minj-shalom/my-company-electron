@@ -11,10 +11,11 @@ describe('main.css', () => {
     const lastImport = stripped.lastIndexOf('@import')
     const firstRule = stripped.search(/[^\s@][^{;]*\{/)
     expect(lastImport).toBeGreaterThanOrEqual(0)
-    expect(firstRule).toBeGreaterThan(lastImport)
+    // main.css에 규칙이 없으면(-1) 순서 문제도 없다.
+    if (firstRule !== -1) expect(firstRule).toBeGreaterThan(lastImport)
   })
 
-  it('imports onboarding.css', () => {
-    expect(stripped).toContain("@import './onboarding.css'")
+  it.each(['tokens', 'base', 'components', 'shell', 'onboarding'])('imports %s.css', (name) => {
+    expect(stripped).toContain(`@import './${name}.css'`)
   })
 })

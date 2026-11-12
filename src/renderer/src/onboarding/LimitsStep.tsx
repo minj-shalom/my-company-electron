@@ -5,6 +5,8 @@ import {
   type ProviderCliId,
   type WeeklyLimit
 } from '../../../shared/provider'
+import { Button } from '../ui/Button'
+import { Input } from '../ui/Input'
 import { PROVIDER_GUIDES } from './provider-guide'
 import { parseLimitInput } from './weekly-limit'
 
@@ -110,7 +112,8 @@ export function LimitsStep({ onBack, onSaved }: Props): React.JSX.Element {
             <label htmlFor={inputId}>{g.name} 주간 한도 (달러, 선택)</label>
             <div className="field__row">
               <span aria-hidden="true">$</span>
-              <input
+              <Input
+                extraClass="limit-input"
                 id={inputId}
                 type="text"
                 inputMode="decimal"
@@ -140,12 +143,12 @@ export function LimitsStep({ onBack, onSaved }: Props): React.JSX.Element {
         </p>
       )}
       <div className="toolbar">
-        <button type="button" onClick={onBack} disabled={saving}>
+        <Button onClick={onBack} disabled={saving}>
           이전
-        </button>
-        <button type="submit" className="primary" disabled={saving}>
+        </Button>
+        <Button type="submit" variant="primary" disabled={saving}>
           {saving ? '저장 중…' : '저장하고 마치기'}
-        </button>
+        </Button>
       </div>
     </form>
   )

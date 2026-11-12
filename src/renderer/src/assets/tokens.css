@@ -1,0 +1,128 @@
+/*
+ * 디자인 토큰의 원본. 색상 hex는 이 파일에만 둔다 (tokens.test.ts가 검사).
+ * 기본값은 다크, 라이트는 [data-theme='light']. 테마 선택은 theme.ts가 data-theme을 설정한다.
+ */
+
+@font-face {
+  font-family: 'Pretendard';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('./fonts/Pretendard-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Pretendard';
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url('./fonts/Pretendard-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Galmuri11';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('./fonts/Galmuri11.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Galmuri11';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('./fonts/Galmuri11-Bold.woff2') format('woff2');
+}
+
+:root {
+  color-scheme: dark;
+
+  /* 색: 다크 (해 질 녘 아늑한 사무실) */
+  --bg-app: #1f1a2b;
+  --bg-panel: #2a2438;
+  --bg-panel-raised: #352e47;
+  --bg-inset: #17131f;
+  --border: #4a4161;
+  --border-strong: #8b7fae;
+  --text: #f4ecd8;
+  --text-muted: #c4bad6;
+  --text-faint: #8b81a1; /* 장식 전용. 본문 금지 */
+  --accent: #ffc857;
+  --accent-ink: #2a1f00;
+  --accent-hover: #ffd47d;
+  --link: #8ab4ff;
+  --focus: #8ab4ff;
+  --ok: #7bd88f;
+  --warn: #f0b429;
+  --bad: #ff8a80;
+  --info: #8ab4ff;
+  --working: #6ee7b7;
+  --shadow-color: #0e0b14;
+  --floor-a: #3a3150;
+  --floor-b: #342c48;
+  --dept-exec: #c792ea;
+  --dept-rnd: #6fb7ff;
+  --dept-fin: #ffb86b;
+  --dept-plan: #7be0b0;
+
+  /* 글꼴 */
+  --font-body:
+    'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
+    sans-serif;
+  --font-pixel: 'Galmuri11', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-code: ui-monospace, Menlo, Consolas, monospace;
+  --fs-1: 12px;
+  --fs-2: 14px;
+  --fs-3: 16px;
+  --fs-4: 20px;
+  --fs-5: 28px;
+  --lh-body: 1.6;
+
+  /* 간격 (4px 배수) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 테두리, 그림자 (블러 없는 단색) */
+  --bw: 2px;
+  --radius: 0;
+  --radius-sm: 2px;
+  --shadow-offset: 4px;
+  --shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--shadow-color);
+  --focus-ring: 3px solid var(--focus);
+  --control-height: 40px;
+  --statusbar-height: 40px;
+  --side-width: 360px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-app: #f1e6cf;
+  --bg-panel: #fffaf0;
+  --bg-panel-raised: #f7ebd1;
+  --bg-inset: #efe2c4;
+  --border: #c2ad82;
+  --border-strong: #7a6a4a;
+  --text: #2b2236;
+  --text-muted: #5a4d6b;
+  --text-faint: #9a8c70;
+  --accent: #ffc857;
+  --accent-ink: #2a1f00;
+  --accent-hover: #ffb92a;
+  --link: #1a47b8;
+  --focus: #1a47b8;
+  --ok: #1b6b34;
+  --warn: #7a4f00;
+  --bad: #a8231a;
+  --info: #1a47b8;
+  --working: #0b5f58;
+  --shadow-color: #cdb98c;
+  --floor-a: #f6e9c8;
+  --floor-b: #efdfb8;
+  --dept-exec: #8e44ad;
+  --dept-rnd: #1f6fb8;
+  --dept-fin: #b8620a;
+  --dept-plan: #1f8a62;
+}

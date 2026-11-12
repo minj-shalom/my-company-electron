@@ -1,0 +1,248 @@
+/* 공용 컴포넌트. 색은 tokens.css의 변수만 쓴다. */
+
+.panel {
+  background: var(--bg-panel);
+  border: var(--bw) solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--space-4);
+}
+.panel__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-panel-raised);
+  border-bottom: var(--bw) solid var(--border);
+}
+.panel__title > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-4);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-2);
+  color: var(--text);
+  background: var(--bg-panel-raised);
+  border: var(--bw) solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: 3px 3px 0 var(--shadow-color);
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-inset);
+}
+.btn:active:not(:disabled) {
+  box-shadow: none;
+  transform: translate(3px, 3px);
+}
+.btn:disabled {
+  color: var(--text-muted);
+  border-style: dashed;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.btn--primary {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent-ink);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.btn--primary:disabled {
+  color: var(--accent-ink);
+  opacity: 0.6;
+}
+.btn--small {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--fs-1);
+}
+
+.input {
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--fs-3);
+  color: var(--text);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border-strong);
+  border-radius: var(--radius);
+}
+.input::placeholder {
+  color: var(--text-muted);
+}
+.input:focus {
+  border-color: var(--accent);
+}
+.input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-1);
+  line-height: 20px;
+  white-space: nowrap;
+  color: var(--badge-color, var(--text-muted));
+  background: color-mix(in srgb, var(--badge-color, var(--text-muted)) 15%, var(--bg-panel));
+  border: 1px solid var(--badge-color, var(--text-muted));
+  border-radius: var(--radius-sm);
+}
+/* 색만으로 상태를 전달하지 않도록 모양이 다른 표식을 함께 둔다. */
+.badge::before {
+  content: '●';
+  font-size: 8px;
+}
+.badge--good {
+  --badge-color: var(--ok);
+}
+.badge--good::before {
+  content: '✓';
+}
+.badge--warn {
+  --badge-color: var(--warn);
+}
+.badge--warn::before {
+  content: '▲';
+}
+.badge--bad {
+  --badge-color: var(--bad);
+}
+.badge--bad::before {
+  content: '✕';
+}
+.badge--info {
+  --badge-color: var(--info);
+}
+.badge--neutral::before {
+  content: '○';
+}
+
+.notice code {
+  overflow-wrap: anywhere;
+}
+.notice {
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  background: var(--bg-inset);
+  border-left: 4px solid var(--warn);
+}
+.hint {
+  color: var(--text-muted);
+  font-size: var(--fs-2);
+}
+.error {
+  color: var(--bad);
+}
+
+.field {
+  margin: var(--space-4) 0;
+}
+.field label {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+.field__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.code-box {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-2);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  border-bottom: var(--bw) solid var(--border-strong);
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+  background: transparent;
+  border: var(--bw) solid transparent;
+  border-bottom: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab[aria-selected='true'] {
+  color: var(--text);
+  background: var(--bg-panel-raised);
+  border-color: var(--border-strong);
+  margin-bottom: calc(var(--bw) * -1);
+  padding-bottom: calc(var(--space-1) + var(--bw));
+}
+.tabpanel {
+  padding-top: var(--space-4);
+}
+
+.segmented {
+  display: inline-flex;
+  border: var(--bw) solid var(--border-strong);
+}
+.segmented button {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-1);
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.segmented button + button {
+  border-left: var(--bw) solid var(--border-strong);
+}
+.segmented button[aria-pressed='true'] {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+@media (max-width: 480px) {
+  .badge--compact .badge__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* 탭 줄은 overflow-x가 있어 바깥 링이 잘리므로 링을 안쪽으로 둔다. */
+.tab:focus-visible {
+  outline-offset: -5px;
+}
