@@ -113,7 +113,7 @@ my-company-electron/
   docs/          # 제품 문서
 ```
 
-- `src/main/company/`: 회사 폴더 생성 (`scaffold.ts` 검증·생성, `templates.ts` 기본 마크다운). IPC는 `src/main/company-ipc.ts`.
+- `src/main/company/`: 회사 폴더 생성 (`scaffold.ts` 검증·생성, `templates.ts` 기본 마크다운). IPC는 `src/main/company-ipc.ts`. 열린 회사 1개는 `company-context.ts`가 보관하고(핸들러는 `requireOpenCompany().fs`로만 SafeFs를 얻는다), 마지막 회사 경로는 userData의 `last-company.json`에 기억한다. `company-service.ts`가 `company:select-folder`/`create`/`open`/`current`를 다이얼로그 경로 허용 방식(D-005 B)으로 처리한다.
 - TODO: 나머지 모듈(스케줄러, 폴더 감시, Repository)이 추가되면 구조를 갱신
 
 ## 패키징과 배포
