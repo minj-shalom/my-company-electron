@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CompanyInfo } from '../../../shared/company'
+import { validateCompanyName } from '../../../shared/company-name'
 import {
   createAndOpenCompany,
   loadCompanyOnStartup,
+  openErrorMessage,
   openExistingCompany,
   stateToGate,
-  validateCompanyName
+  applyAction,
+  applyRecheck,
+  screenFor
 } from './company-flow'
 
 const company: CompanyInfo = { name: 'Acme', dir: '/x/Acme', mission: '' }
@@ -83,7 +87,10 @@ describe('createAndOpenCompany', () => {
   it('rejects bad names before opening a dialog', async () => {
     const a = api()
     expect(await createAndOpenCompany(a, '  ')).toMatchObject({ kind: 'error' })
-    expect(await createAndOpenCompany(a, '../x')).toMatchObject({ kind: 'error' })
+    expect(await createAndOpenCompany(a, '../x')).toMatchObject({ kind: 'error', field: 'name' })
+    expect(await createAndOpenCompany(a, 'con')).toMatchObject({ kind: 'error' })
+    expect(await createAndOpenCompany(a, 'a'.repeat(51))).toMatchObject({ kind: 'error' })
+    expect(await createAndOpenCompany(a, 'acme.')).toMatchObject({ kind: 'error' })
     expect(a.selectCompanyFolder).not.toHaveBeenCalled()
   })
   it('maps contract codes to Korean messages without server text', async () => {
@@ -113,7 +120,7 @@ describe('openExistingCompany', () => {
     const r = await openExistingCompany(a)
     expect(r).toMatchObject({ kind: 'error' })
     expect(JSON.stringify(r)).toContain('회사 폴더가 아니에요')
-    expect(JSON.stringify(r)).not.toContain('/p"')
+    expect(r).toEqual({ kind: 'error', message: openErrorMessage('not-company') })
   })
   it('handles thrown errors', async () => {
     const a = api({ selectCompanyFolder: vi.fn().mockRejectedValue(new Error('boom')) })
@@ -121,14 +128,57 @@ describe('openExistingCompany', () => {
   })
 })
 
-describe('validateCompanyName', () => {
+describe('validateCompanyName (shared with main)', () => {
   it('accepts normal names including Korean', () => {
     expect(validateCompanyName('내 회사')).toBeNull()
+    expect(validateCompanyName('a'.repeat(50))).toBeNull()
   })
-  it('rejects empty, long and path characters', () => {
+  it('rejects empty, 51 chars, trailing dot, reserved and control chars', () => {
     expect(validateCompanyName('')).not.toBeNull()
-    expect(validateCompanyName('a'.repeat(61))).not.toBeNull()
+    expect(validateCompanyName('a'.repeat(51))).not.toBeNull()
+    expect(validateCompanyName('acme.')).not.toBeNull()
+    expect(validateCompanyName('con')).not.toBeNull()
+    expect(validateCompanyName('LPT1')).not.toBeNull()
+    expect(validateCompanyName('a\u0007b')).not.toBeNull()
     expect(validateCompanyName('a/b')).not.toBeNull()
     expect(validateCompanyName('..')).not.toBeNull()
+  })
+})
+
+describe('screenFor', () => {
+  it('shows onboarding only for a freshly created company', () => {
+    const fresh = { kind: 'open', company, fresh: true } as const
+    expect(screenFor(fresh, false)).toBe('onboarding')
+    expect(screenFor(fresh, true)).toBe('shell')
+    expect(screenFor({ ...fresh, fresh: false }, false)).toBe('shell')
+    expect(screenFor({ kind: 'loading' }, false)).toBe('loading')
+    expect(screenFor({ kind: 'start' }, false)).toBe('start')
+    expect(screenFor({ kind: 'notice', reason: 'missing', name: 'a' }, false)).toBe('start')
+  })
+})
+
+describe('applyAction', () => {
+  const start = { kind: 'start' } as const
+  it('moves to open after opening', () => {
+    const r = applyAction(start, { kind: 'opened', company, fresh: false })
+    expect(screenFor(r.gate, false)).toBe('shell')
+  })
+  it('keeps the screen on error and cancel, passing the field', () => {
+    expect(applyAction(start, { kind: 'error', message: 'm', field: 'name' })).toEqual({
+      gate: start,
+      error: { message: 'm', field: 'name' }
+    })
+    expect(applyAction(start, { kind: 'cancelled' })).toEqual({ gate: start })
+  })
+})
+
+describe('applyRecheck', () => {
+  it('explains when there is still no company', () => {
+    expect(applyRecheck({ kind: 'start' }).info).toBe('저장된 회사가 없어요.')
+    expect(applyRecheck({ kind: 'notice', reason: 'missing', name: 'a' }).info).toBeTruthy()
+  })
+  it('opens when found and keeps the screen on a failed lookup', () => {
+    expect(applyRecheck({ kind: 'open', company, fresh: false }).gate?.kind).toBe('open')
+    expect(applyRecheck({ kind: 'error', message: 'x' })).toEqual({ gate: null, error: 'x' })
   })
 })

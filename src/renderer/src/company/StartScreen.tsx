@@ -1,4 +1,5 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { MAX_COMPANY_NAME_LENGTH } from '../../../shared/company-name'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Panel } from '../ui/Panel'
@@ -9,6 +10,10 @@ export interface StartScreenProps {
   notice?: { reason: 'missing' | 'invalid'; name: string }
   /** 동작 실패 메시지 (사용자 문구). */
   error?: string
+  /** 'name'이면 이름 입력과 오류를 연결한다. */
+  errorField?: 'name'
+  /** 재확인 결과 같은 중립 안내 (role=status). */
+  info?: string
   busy: boolean
   onCreate: (name: string) => void
   onOpen: () => void
@@ -23,6 +28,8 @@ const NOTICE_TEXT: Record<'missing' | 'invalid', string> = {
 export function StartScreen({
   notice,
   error,
+  errorField,
+  info,
   busy,
   onCreate,
   onOpen,
@@ -31,12 +38,21 @@ export function StartScreen({
   const [name, setName] = useState('')
   const nameId = useId()
   const errorId = useId()
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const nameError = error !== undefined && errorField === 'name'
+
+  // 화면이 바뀌면(로딩 뒤 등장) 제목으로 포커스를 옮겨 스크린리더가 화면 전환을 알게 한다.
+  useEffect(() => {
+    headingRef.current?.focus()
+  }, [])
 
   return (
     <div className="onboarding start">
       <main className="wizard start__main" aria-busy={busy}>
         <div className="wizard__top">
-          <h1>My Company 시작하기</h1>
+          <h1 ref={headingRef} tabIndex={-1}>
+            My Company 시작하기
+          </h1>
           <ThemeToggle />
         </div>
 
@@ -68,10 +84,11 @@ export function StartScreen({
                 <Input
                   id={nameId}
                   value={name}
-                  maxLength={60}
+                  maxLength={MAX_COMPANY_NAME_LENGTH}
                   autoComplete="off"
                   disabled={busy}
-                  aria-describedby={error ? errorId : undefined}
+                  aria-invalid={nameError || undefined}
+                  aria-describedby={nameError ? errorId : undefined}
                   onChange={(e) => setName(e.target.value)}
                 />
                 <p className="hint">이 이름으로 폴더가 만들어져요. 다음에 위치를 골라요.</p>
@@ -95,8 +112,8 @@ export function StartScreen({
           </Button>
           <span className="hint"> 마지막으로 열었던 회사를 다시 찾아봐요.</span>
         </p>
-        <p className="visually-hidden" role="status">
-          {busy ? '처리 중이에요.' : ''}
+        <p className="start__info hint" role="status">
+          {busy ? '처리 중이에요.' : (info ?? '')}
         </p>
       </main>
     </div>

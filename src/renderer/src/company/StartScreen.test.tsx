@@ -26,10 +26,20 @@ describe('StartScreen', () => {
     expect(html).toContain('회사 폴더를 찾을 수 없어요')
     expect(html).toContain('Acme')
   })
-  it('shows an error message and links it to the name field', () => {
-    const html = render({ error: '같은 이름의 폴더가 이미 있어요.' })
-    expect(html).toContain('같은 이름의 폴더가 이미 있어요.')
-    expect(html).toContain('aria-describedby')
+  it('links only name errors to the name field', () => {
+    const named = render({ error: '이름 문제', errorField: 'name' })
+    expect(named).toContain('이름 문제')
+    expect(named).toContain('aria-describedby')
+    expect(named).toContain('aria-invalid="true"')
+    const general = render({ error: '열기 문제' })
+    expect(general).toContain('열기 문제')
+    expect(general).not.toContain('aria-describedby')
+    expect(general).not.toContain('aria-invalid')
+  })
+  it('limits the name to 50 characters and shows info in a status region', () => {
+    const html = render({ info: '저장된 회사가 없어요.' })
+    expect(html).toContain('maxLength="50"')
+    expect(html).toMatch(/role="status"[^>]*>저장된 회사가 없어요\./)
   })
   it('disables actions and marks busy while working', () => {
     const html = render({ busy: true })

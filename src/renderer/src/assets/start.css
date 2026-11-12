@@ -34,3 +34,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.start__info {
+  min-height: 1.6em;
+  margin: var(--space-2) 0 0;
+}
+.start__main h1:focus {
+  outline: none;
+}

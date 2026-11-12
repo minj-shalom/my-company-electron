@@ -1,10 +1,6 @@
+import { validateCompanyName } from '../../../shared/company-name'
 import type { WindowApi } from '../../../shared/api'
-import type {
-  CompanyCreateResult,
-  CompanyInfo,
-  CompanyOpenResult,
-  CompanyState
-} from '../../../shared/company'
+import type { CompanyInfo, CompanyOpenResult, CompanyState } from '../../../shared/company'
 
 type CompanyApi = Pick<
   WindowApi,
@@ -22,7 +18,7 @@ export type GateState =
 export type ActionResult =
   | { kind: 'opened'; company: CompanyInfo; fresh: boolean }
   | { kind: 'cancelled' }
-  | { kind: 'error'; message: string }
+  | { kind: 'error'; message: string; field?: 'name' }
 
 const OPEN_MESSAGES: Record<string, string> = {
   'invalid-request': '요청이 올바르지 않아요. 다시 시도해 주세요.',
@@ -99,33 +95,25 @@ function fromOpen(r: CompanyOpenResult, fresh: boolean): ActionResult {
     : { kind: 'error', message: openErrorMessage(r.code) }
 }
 
-function fromCreate(r: CompanyCreateResult): string | null {
-  return r.ok ? null : createErrorMessage(r.code)
-}
-
-/** 회사 이름 검사 (편의용. 최종 검증은 main). 폴더 이름이 되므로 경로 문자를 막는다. */
-export function validateCompanyName(raw: string): string | null {
-  const name = raw.trim()
-  if (name.length === 0) return '회사 이름을 입력해 주세요.'
-  if (name.length > 60) return '회사 이름은 60자 이하로 입력해 주세요.'
-  if (/[\\/:*?"<>|\0]/.test(name) || name === '.' || name === '..')
-    return '회사 이름에 \\ / : * ? " < > | 문자는 쓸 수 없어요.'
-  return null
-}
-
 export async function createAndOpenCompany(
   api: CompanyApi,
   rawName: string
 ): Promise<ActionResult> {
-  const invalid = validateCompanyName(rawName)
-  if (invalid) return { kind: 'error', message: invalid }
+  const name = rawName.trim()
+  const invalid = name.length === 0 ? '회사 이름을 입력해 주세요.' : validateCompanyName(name)
+  if (invalid) return { kind: 'error', message: invalid, field: 'name' }
   try {
     const location = await api.selectCompanyFolder('create-location')
     if (location === null) return { kind: 'cancelled' }
-    const created = await api.createCompany({ name: rawName.trim(), path: location })
-    const createError = fromCreate(created)
-    if (createError || !created.ok)
-      return { kind: 'error', message: createError ?? UNKNOWN_MESSAGE }
+    const created = await api.createCompany({ name, path: location })
+    if (!created.ok) {
+      const nameProblem = created.code === 'invalid-name' || created.code === 'already-exists'
+      return {
+        kind: 'error',
+        message: createErrorMessage(created.code),
+        ...(nameProblem ? { field: 'name' as const } : {})
+      }
+    }
     return fromOpen(await api.openCompany({ path: created.companyDir }), true)
   } catch {
     return { kind: 'error', message: UNKNOWN_MESSAGE }
@@ -140,4 +128,35 @@ export async function openExistingCompany(api: CompanyApi): Promise<ActionResult
   } catch {
     return { kind: 'error', message: UNKNOWN_MESSAGE }
   }
+}
+
+/** 화면 종류. 열린 회사는 새로 만든 경우에만 온보딩을 거친다. */
+export type Screen = 'loading' | 'start' | 'onboarding' | 'shell'
+
+export function screenFor(gate: GateState, onboarded: boolean): Screen {
+  if (gate.kind === 'loading') return 'loading'
+  if (gate.kind === 'open') return gate.fresh && !onboarded ? 'onboarding' : 'shell'
+  return 'start'
+}
+
+/** 만들기/열기 결과를 화면 상태에 반영한다. 취소는 아무것도 바꾸지 않는다. */
+export function applyAction(
+  gate: GateState,
+  r: ActionResult
+): { gate: GateState; error?: { message: string; field?: 'name' } } {
+  if (r.kind === 'opened') return { gate: { kind: 'open', company: r.company, fresh: r.fresh } }
+  if (r.kind === 'error') return { gate, error: { message: r.message, field: r.field } }
+  return { gate }
+}
+
+/** "마지막 회사 확인" 결과. 여전히 열 회사가 없으면 안내 문구를 함께 돌려준다. */
+export function applyRecheck(g: GateState): {
+  gate: GateState | null
+  error?: string
+  info?: string
+} {
+  if (g.kind === 'error') return { gate: null, error: g.message }
+  if (g.kind === 'start') return { gate: g, info: '저장된 회사가 없어요.' }
+  if (g.kind === 'notice') return { gate: g, info: '아직 회사 폴더를 찾을 수 없어요.' }
+  return { gate: g }
 }
