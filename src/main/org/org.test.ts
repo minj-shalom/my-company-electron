@@ -1,0 +1,329 @@
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { OrgIssueCode, OrgModel } from '../../shared/org'
+import type { ApiResult } from '../../shared/result'
+import { SafeFs } from '../repository/safe-fs'
+import { addDepartment, addMember, loadOrg } from './org-store'
+import { MAX_ORG_BYTES, parseOrgDocument } from './parse-org-doc'
+
+const REAL = await readFile(new URL('./fixtures/real-org.md', import.meta.url), 'utf8')
+const REAL_AGENTS = [
+  'cto',
+  'cfo',
+  'pm',
+  'developer',
+  'electron-main-dev',
+  'ui-dev',
+  'devops',
+  'web-frontend-dev',
+  'reviewer-qa'
+]
+
+const codes = (m: OrgModel): OrgIssueCode[] => m.issues.map((i) => i.code)
+const parse = (text: string, agents: string[] = []): OrgModel =>
+  parseOrgDocument(text, new Set(agents))
+
+const HEAD = `## 직원 목록
+| 직급 | 직원 파일 | 부서 | 보고 대상 | 역할 |
+|---|---|---|---|---|
+`
+
+describe('parseOrgDocument (real company/org.md fixture)', () => {
+  const m = parse(REAL, REAL_AGENTS)
+
+  it('parses without issues', () => {
+    expect(m.issues).toEqual([])
+    expect(m.members.map((x) => x.title)).toEqual([
+      'CEO',
+      'COO',
+      'CTO',
+      'CFO',
+      'PM',
+      '개발자',
+      'Main 개발자',
+      'UI 개발자',
+      'DevOps',
+      '웹 프론트엔드',
+      'QA'
+    ])
+  })
+
+  it('classifies non-file entries', () => {
+    expect(m.members.find((x) => x.title === 'CEO')).toMatchObject({
+      kind: 'human',
+      fileExists: true
+    })
+    expect(m.members.find((x) => x.title === 'COO')).toMatchObject({
+      kind: 'main-session',
+      agentId: null
+    })
+    expect(m.members.find((x) => x.title === 'CTO')).toMatchObject({
+      kind: 'agent',
+      agentId: 'cto',
+      reportsTo: 'COO'
+    })
+  })
+
+  it('builds the reporting tree and departments', () => {
+    expect(m.tree).toHaveLength(1)
+    expect(m.tree[0].member.title).toBe('CEO')
+    const coo = m.tree[0].children[0]
+    expect(coo.children.map((c) => c.member.title)).toEqual(['CTO', 'CFO', 'PM'])
+    expect(coo.children[0].children.map((c) => c.member.title)).toContain('QA')
+    expect(m.departments.find((d) => d.name === '개발팀')?.members).toHaveLength(6)
+  })
+
+  it('parses the chart block', () => {
+    expect(m.chart[0]).toEqual({ label: 'CEO', parent: null, detail: '(사용자)' })
+    const cto = m.chart.find((l) => l.label.startsWith('CTO'))
+    expect(cto?.parent).toBe('COO')
+    expect(cto?.detail).toContain('개발팀')
+  })
+
+  it('reports missing agent files', () => {
+    const r = parse(
+      REAL,
+      REAL_AGENTS.filter((a) => a !== 'pm')
+    )
+    expect(codes(r)).toEqual(['missing-agent-file'])
+    expect(r.members.find((x) => x.title === 'PM')?.fileExists).toBe(false)
+  })
+})
+
+describe('parseOrgDocument (bad input)', () => {
+  it('empty file', () => {
+    const r = parse('')
+    expect(codes(r)).toEqual(['no-table'])
+    expect(r.members).toEqual([])
+  })
+
+  it('broken table rows are skipped, the rest is parsed', () => {
+    const r = parse(
+      `${HEAD}| CEO | (사용자) | 경영 | - | 최고 |\n| 깨진 | \`cto\` |\n| | \`pm\` | 기획 | CEO | x |\n| CTO | \`cto\` | R&D | CEO | 기술 |\n`,
+      ['cto']
+    )
+    expect(codes(r)).toEqual(['malformed-row', 'malformed-row'])
+    expect(r.members.map((x) => x.title)).toEqual(['CEO', 'CTO'])
+    expect(r.issues[0].line).toBe(5)
+  })
+
+  it('missing required columns', () => {
+    expect(codes(parse('## 직원 목록\n| 이름 | 역할 |\n|---|---|\n| a | b |\n'))).toEqual([
+      'missing-columns'
+    ])
+  })
+
+  it('handles escaped pipes and ignores tables inside code fences', () => {
+    const r = parse(`${HEAD}| CEO | (사용자) | 경영 | - | 보고 \\| 결정 |\n`)
+    expect(r.members[0].role).toBe('보고 | 결정')
+    expect(codes(parse('```\n' + HEAD + '| CEO | (사용자) | a | - | b |\n```\n'))).toEqual([
+      'no-table'
+    ])
+  })
+
+  it('duplicate employees and multiple departments', () => {
+    const r = parse(
+      `${HEAD}| CEO | (사용자) | 경영 | - | a |\n| CTO | \`cto\` | R&D | CEO | a |\n| CTO2 | \`cto\` | 기획 | CEO | a |\n| CTO | \`pm\` | R&D | CEO | a |\n| 겸직 | \`pm\` | 개발팀, 기획팀 | CEO | a |\n`,
+      ['cto', 'pm']
+    )
+    expect(codes(r)).toEqual([
+      'duplicate-employee',
+      'multiple-departments',
+      'duplicate-employee',
+      'multiple-departments'
+    ])
+    expect(r.members.map((x) => x.title)).toEqual(['CEO', 'CTO', '겸직'])
+    expect(r.members[2].department).toBe('개발팀')
+  })
+
+  it('cycles are reported and broken', () => {
+    const r = parse(
+      `${HEAD}| A | \`a\` | d | C | x |\n| B | \`b\` | d | A | x |\n| C | \`c\` | d | B | x |\n| S | \`s\` | d | S | x |\n`,
+      ['a', 'b', 'c', 's']
+    )
+    expect(codes(r)).toEqual(['cycle', 'cycle'])
+    expect(r.issues[0].message).toContain('→')
+    const count = (n: (typeof r.tree)[number]): number =>
+      1 + n.children.reduce((s, c) => s + count(c), 0)
+    expect(r.tree.reduce((s, n) => s + count(n), 0)).toBe(4)
+  })
+
+  it('unknown and multiple reports-to', () => {
+    const r = parse(`${HEAD}| A | \`a\` | d | 없는사람 | x |\n| B | \`b\` | d | A, A | x |\n`, [
+      'a',
+      'b'
+    ])
+    expect(codes(r)).toEqual(['unknown-reports-to', 'multiple-reports-to'])
+    expect(r.tree.map((n) => n.member.title)).toEqual(['A', 'B'])
+  })
+
+  it('rejects path-escape file references', () => {
+    const r = parse(
+      `${HEAD}| A | \`../../etc/passwd\` | d | - | x |\n| B | \`a/b\` | d | - | x |\n| C | \`..\` | d | - | x |\n| D | cto | d | - | x |\n`,
+      ['cto']
+    )
+    expect(codes(r)).toEqual([
+      'invalid-file-ref',
+      'invalid-file-ref',
+      'invalid-file-ref',
+      'invalid-file-ref'
+    ])
+    expect(r.members.every((x) => x.kind === 'invalid' && x.agentId === null)).toBe(true)
+  })
+
+  it('rejects oversized input', () => {
+    expect(codes(parse('x'.repeat(MAX_ORG_BYTES + 1)))).toEqual(['file-too-large'])
+  })
+})
+
+describe('loadOrg / addMember / addDepartment', () => {
+  let dir: string
+  let fs: SafeFs
+  const put = async (rel: string, text: string): Promise<void> => {
+    await mkdir(dirname(join(dir, rel)), { recursive: true })
+    await writeFile(join(dir, rel), text)
+  }
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'mc-org-'))
+    await put('company/org.md', REAL)
+    for (const a of [...REAL_AGENTS, 'qa-two', 'ops'])
+      await put(`.claude/agents/${a}.md`, '---\nname: x\n---\n')
+    fs = await SafeFs.open(dir)
+  })
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+
+  it('loads the real file against the agents folder', async () => {
+    expect((await loadOrg(fs)).issues).toEqual([])
+  })
+
+  it('reports a missing or non-regular org.md without throwing', async () => {
+    await rm(join(dir, 'company/org.md'))
+    expect(codes(await loadOrg(fs))).toEqual(['missing-org'])
+    await mkdir(join(dir, 'company/org.md'))
+    expect(codes(await loadOrg(fs))).toEqual(['unreadable'])
+  })
+
+  it('does not follow a symlinked org.md', async () => {
+    await rm(join(dir, 'company/org.md'))
+    await symlink(join(dir, 'CLAUDE.md'), join(dir, 'company/org.md'))
+    expect(codes(await loadOrg(fs))).toEqual(['unreadable'])
+  })
+
+  it('reports agent files that are absent on disk', async () => {
+    await rm(join(dir, '.claude/agents/cfo.md'))
+    expect(codes(await loadOrg(fs))).toEqual(['missing-agent-file'])
+  })
+
+  it('addMember appends a row, preserves the rest and round-trips', async () => {
+    const r = await addMember(fs, {
+      title: 'QA2',
+      agentId: 'qa-two',
+      department: '개발팀',
+      reportsTo: 'CTO',
+      role: '검수 | 보조'
+    })
+    expect(r.ok).toBe(true)
+    const text = await readFile(join(dir, 'company/org.md'), 'utf8')
+    const after = REAL.split('\n')
+    const expectedRow = text.split('\n').find((l) => l.startsWith('| QA2'))
+    expect(expectedRow).toMatch(/^\| QA2 +\| `qa-two` +\| 개발팀 \| CTO +\| 검수 \\\| 보조 +\|$/)
+    const rowIdx = after.findIndex((l) => l.startsWith('| QA '))
+    after.splice(rowIdx + 1, 0, expectedRow ?? '')
+    expect(text).toBe(after.join('\n'))
+    const re = await loadOrg(fs)
+    expect(re.issues).toEqual([])
+    expect(re.members.find((m) => m.title === 'QA2')).toMatchObject({
+      agentId: 'qa-two',
+      reportsTo: 'CTO',
+      role: '검수 | 보조'
+    })
+    if (r.ok) expect(r.value).toEqual(re)
+  })
+
+  it('addDepartment creates the department with its lead and rejects a repeat', async () => {
+    const input = {
+      name: '운영팀',
+      lead: { title: '운영', agentId: 'ops', reportsTo: 'COO', role: '운영' }
+    }
+    const r = await addDepartment(fs, input)
+    expect(r.ok && r.value.departments.find((d) => d.name === '운영팀')?.members).toEqual(['운영'])
+    const again = await addDepartment(fs, {
+      ...input,
+      lead: { ...input.lead, title: '운영2', agentId: 'qa-two' }
+    })
+    expect(again).toMatchObject({ ok: false, code: 'conflict' })
+  })
+
+  it('rejects duplicates, unknown targets, missing files and unsafe input', async () => {
+    const base = {
+      title: 'N',
+      agentId: 'qa-two',
+      department: '개발팀',
+      reportsTo: 'CTO',
+      role: 'r'
+    }
+    const before = await readFile(join(dir, 'company/org.md'), 'utf8')
+    expect(await addMember(fs, { ...base, title: 'CTO' })).toMatchObject({ code: 'conflict' })
+    expect(await addMember(fs, { ...base, agentId: 'cto' })).toMatchObject({ code: 'conflict' })
+    expect(await addMember(fs, { ...base, reportsTo: '유령' })).toMatchObject({
+      code: 'invalid-request'
+    })
+    expect(await addMember(fs, { ...base, agentId: 'nofile' })).toMatchObject({
+      code: 'invalid-request'
+    })
+    for (const agentId of ['../x', 'a/b', '..', 'A B', '']) {
+      expect(await addMember(fs, { ...base, agentId })).toMatchObject({ code: 'invalid-request' })
+    }
+    expect(await addMember(fs, { ...base, title: 'a|b' })).toMatchObject({
+      code: 'invalid-request'
+    })
+    expect(await addMember(fs, { ...base, department: 'a\nb' })).toMatchObject({
+      code: 'invalid-request'
+    })
+    expect(await addMember(fs, { ...base, role: 'a\nb' })).toMatchObject({
+      code: 'invalid-request'
+    })
+    expect(await addMember(fs, { ...base, department: '두,부서' })).toMatchObject({
+      code: 'invalid-request'
+    })
+    expect(await readFile(join(dir, 'company/org.md'), 'utf8')).toBe(before)
+  })
+
+  it('preserves CRLF line endings and refuses when there is no table', async () => {
+    await put('company/org.md', REAL.replace(/\n/g, '\r\n'))
+    expect(
+      (
+        await addMember(fs, {
+          title: 'N',
+          agentId: 'qa-two',
+          department: '개발팀',
+          reportsTo: 'CTO',
+          role: 'r'
+        })
+      ).ok
+    ).toBe(true)
+    const text = await readFile(join(dir, 'company/org.md'), 'utf8')
+    expect(text.replace(/\r\n/g, '')).not.toContain('\n')
+    await put('company/org.md', '')
+    expect(
+      await addMember(fs, {
+        title: 'N',
+        agentId: 'qa-two',
+        department: 'd',
+        reportsTo: 'CTO',
+        role: 'r'
+      })
+    ).toMatchObject({ ok: false })
+  })
+
+  it('serializes concurrent additions without losing rows', async () => {
+    const mk = (title: string, agentId: string): Promise<ApiResult<OrgModel>> =>
+      addMember(fs, { title, agentId, department: '개발팀', reportsTo: 'CTO', role: 'r' })
+    const rs = await Promise.all([mk('N1', 'qa-two'), mk('N2', 'ops')])
+    expect(rs.every((r) => r.ok)).toBe(true)
+    const re = await loadOrg(fs)
+    expect(re.members.map((m) => m.title)).toEqual(expect.arrayContaining(['N1', 'N2']))
+  })
+})
