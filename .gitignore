@@ -1,0 +1,23 @@
+# 비밀값
+.env
+.env.*
+
+# 의존성/빌드
+node_modules/
+dist/
+out/
+release/
+*.log
+
+# 캐시/DB (재생성 가능)
+*.sqlite
+*.sqlite-journal
+*.db
+
+# OS/에디터
+.DS_Store
+.vscode/
+.idea/
+
+# Claude Code 로컬 설정
+.claude/settings.local.json
