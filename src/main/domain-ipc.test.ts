@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectionTestResult } from '../shared/provider'
 import { CompanyContext } from './company/company-context'
-import { createDomainHandlers } from './domain-ipc'
+import { createDomainHandlers, trustedHandler } from './domain-ipc'
 import { ProviderService } from './providers/provider-service'
 import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
 
@@ -60,8 +60,12 @@ describe('provider handlers', () => {
     expect(signal?.aborted).toBe(true)
     release(ok('claude'))
     await a
-    // 완료 후에는 다시 시작할 수 있다 (같은 signal이라 실제 실행은 즉시 중단된다).
-    expect(svc.testConnection('claude')).not.toBe(a)
+    // 완료 후에는 새 실행으로 시작된다.
+    const c = svc.testConnection('claude')
+    expect(c).not.toBe(a)
+    expect(test).toHaveBeenCalledTimes(2)
+    release(ok('claude'))
+    await c
   })
 
   it('returns an opaque internal error when the probe throws', async () => {
@@ -132,5 +136,18 @@ describe('weekly limits', () => {
     expect(r).toEqual({ ok: true, value: [{ provider: 'codex', amount: 5, unit: 'usd' }] })
     await writeFile(join(dir, 'weekly-limits.json'), '{not json', 'utf8')
     expect(await h.getWeeklyLimits()).toEqual({ ok: true, value: [] })
+  })
+})
+
+describe('trustedHandler', () => {
+  it('rejects untrusted senders without calling the handler', async () => {
+    const fn = vi.fn(async () => 'x')
+    const h = trustedHandler(() => false, fn)
+    await expect(h({}, 1)).rejects.toThrow('Untrusted sender')
+    expect(fn).not.toHaveBeenCalled()
+  })
+  it('passes the argument for trusted senders', async () => {
+    const fn = vi.fn(async (a: unknown) => a)
+    expect(await trustedHandler(() => true, fn)({}, 7)).toBe(7)
   })
 })

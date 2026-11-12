@@ -29,12 +29,31 @@ async function readAgent(fs: SafeFs, id: string): Promise<OrgAgentDetail> {
   }
 }
 
+const READ_CONCURRENCY = 8
+
+async function mapLimited<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = new Array<R>(items.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
 /** `org:get` 본문. 조직 모델과, 직원 파일이 있는 에이전트의 frontmatter 상세를 합친다. */
 export async function buildOrgSnapshot(fs: SafeFs): Promise<OrgSnapshot> {
   const org = await loadOrg(fs)
   const ids = org.members
     .filter((m) => m.kind === 'agent' && m.fileExists && m.agentId !== null)
     .map((m) => m.agentId as string)
-  const agents = await Promise.all([...new Set(ids)].map((id) => readAgent(fs, id)))
+  const agents = await mapLimited([...new Set(ids)], READ_CONCURRENCY, (id) => readAgent(fs, id))
   return { org, agents }
 }

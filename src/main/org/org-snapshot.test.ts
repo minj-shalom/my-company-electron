@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -108,5 +108,33 @@ describe('org:get', () => {
     if (!r.ok) throw new Error('expected ok')
     expect(r.value.org.issues.some((i) => i.code === 'missing-agent-file')).toBe(true)
     expect(r.value.agents.map((a) => a.id)).toEqual(['cto'])
+  })
+
+  it('does not follow a symlinked agent file (falls back to defaults, no leak)', async () => {
+    const agents = Object.fromEntries(ALL.map((id) => [id, agentFile(id)]))
+    delete (agents as Record<string, string>)['hr']
+    const dir = await makeCompany(agents)
+    const secret = join(base, 'secret.md')
+    await writeFile(secret, '---\nname: LEAKED\ndescription: LEAKED\n---\n', 'utf8')
+    await symlink(secret, join(dir, '.claude', 'agents', 'hr.md'))
+    const ctx = new CompanyContext({ store: noStore })
+    await ctx.open(dir)
+    const r = await handlers(ctx).getOrg()
+    if (!r.ok) throw new Error('expected ok')
+    expect(JSON.stringify(r)).not.toContain('LEAKED')
+    const hr = r.value.agents.find((a) => a.id === 'hr')
+    if (hr) expect(hr).toMatchObject({ name: 'hr', description: '', tools: [] })
+  })
+
+  it('reads more agents than the concurrency limit', async () => {
+    const dir = await makeCompany(Object.fromEntries(ALL.map((id) => [id, agentFile(id)])))
+    const ctx = new CompanyContext({ store: noStore })
+    await ctx.open(dir)
+    const r = await handlers(ctx).getOrg()
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.value.agents).toHaveLength(ALL.length)
+    expect(r.value.agents.map((a) => a.id)).toEqual(
+      r.value.org.members.filter((m) => m.agentId).map((m) => m.agentId)
+    )
   })
 })

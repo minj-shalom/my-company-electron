@@ -24,6 +24,7 @@ export class ProviderService {
   private readonly detectFn: NonNullable<ProviderServiceDeps['detect']>
   private readonly testFn: NonNullable<ProviderServiceDeps['test']>
   private readonly inFlight = new Map<ProviderCliId, Promise<ConnectionTestResult>>()
+  private detecting: Promise<ProviderDetection[]> | null = null
   private readonly abort = new AbortController()
 
   constructor(deps: ProviderServiceDeps = {}) {
@@ -31,8 +32,14 @@ export class ProviderService {
     this.testFn = deps.test ?? runConnectionTest
   }
 
+  /** 진행 중인 감지가 있으면 합친다 (화면 반복 진입으로 프로세스가 쌓이지 않게). */
   detect(): Promise<ProviderDetection[]> {
-    return this.detectFn()
+    if (this.detecting) return this.detecting
+    const task = this.detectFn().finally(() => {
+      this.detecting = null
+    })
+    this.detecting = task
+    return task
   }
 
   testConnection(provider: ProviderCliId): Promise<ConnectionTestResult> {
