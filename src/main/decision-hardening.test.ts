@@ -72,6 +72,9 @@ const CARD = HEAD() + BODY
 const P = 'company/decisions/pending/D-020-t.md'
 const D = 'company/decisions/done/D-020-t.md'
 
+// 선형 처리는 1MB에 수백 ms(병렬 테스트 부하 시 1초 안팎)이고 O(n²)는 수 분이라, 부하로 흔들리지 않게 3초를 상한으로 둔다.
+const LIMIT_MS = 3000
+
 describe('parser performance on whitespace-only bodies', () => {
   const pad = (unit: string): string => unit.repeat(Math.ceil((1024 * 1024) / unit.length))
   const shapes: Record<string, string> = {
@@ -99,13 +102,13 @@ describe('parser performance on whitespace-only bodies', () => {
       parseDecision('D-021-t.md', HEAD() + BODY + junk, 'done')
       parseDecision('D-022-t.md', `# D-022: x\n${junk}`, 'pending')
       parseDecision('D-023-t.md', `# D-023: x\n\n## 선택지\n${junk}\n`, 'pending')
-      expect(performance.now() - t).toBeLessThan(1000)
+      expect(performance.now() - t).toBeLessThan(LIMIT_MS)
     })
     it(`parses tickets and reports with the same shared helpers (${name})`, () => {
       const t = performance.now()
       parseTicket('T-005-x.md', `# T-005: x\n- **상태:** backlog\n${junk}`, 'backlog')
       parseReport('R-x.md', `# 보고서: x\n${junk}`)
-      expect(performance.now() - t).toBeLessThan(1000)
+      expect(performance.now() - t).toBeLessThan(LIMIT_MS)
     })
   }
 })
