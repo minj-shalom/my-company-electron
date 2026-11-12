@@ -176,7 +176,7 @@
 .tabs {
   display: flex;
   gap: var(--space-1);
-  overflow-x: auto;
+  flex-wrap: wrap;
   border-bottom: var(--bw) solid var(--border-strong);
 }
 .tab {

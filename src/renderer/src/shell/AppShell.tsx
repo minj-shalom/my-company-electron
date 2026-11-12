@@ -43,7 +43,7 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
           </div>
         </main>
         <aside className="side-panel" id={panelId} hidden={!panelOpen} aria-label="업무 패널">
-          <Tabs label="업무 패널" tabs={SIDE_TABS} selectedId={tab} onSelect={setTab}>
+          <Tabs label="업무 종류" tabs={SIDE_TABS} selectedId={tab} onSelect={setTab}>
             <p className="empty-state">{current.empty}</p>
           </Tabs>
         </aside>

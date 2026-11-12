@@ -45,6 +45,12 @@ for (const fg of ['--text', '--text-muted', '--link']) {
 for (const fg of ['--ok', '--warn', '--bad', '--info', '--working']) {
   TEXT_ON.push([fg, '--bg-panel'], [fg, '--bg-inset'])
 }
+TEXT_ON.push(
+  ['--ok', '--bg-app'],
+  ['--ok', '--bg-panel-raised'],
+  ['--bad', '--bg-panel-raised'],
+  ['--warn', '--bg-panel-raised']
+)
 TEXT_ON.push(['--accent-ink', '--accent'], ['--accent-ink', '--accent-hover'])
 
 const NON_TEXT_ON: [string, string][] = [
@@ -83,6 +89,10 @@ describe('token discipline', () => {
     const css = read(file).replace(/\/\*[\s\S]*?\*\//g, '')
     expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(css).not.toContain('--ev-')
+  })
+  it('light theme overrides every dark color token', () => {
+    const lightOnly = block(":root[data-theme='light']")
+    expect(Object.keys(lightOnly).sort()).toEqual(Object.keys(dark).sort())
   })
   it('defines both themes', () => {
     expect(Object.keys(dark).length).toBeGreaterThan(10)

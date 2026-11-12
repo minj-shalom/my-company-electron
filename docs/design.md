@@ -27,7 +27,7 @@
   - `--accent` #ffc857 (주 버튼, 선택) / `--accent-ink` #2a1f00 (accent 위 글씨) / `--accent-2` #6ee7b7 (민트, 작업 중)
   - `--ok` #7bd88f / `--warn` #f0b429 / `--bad` #ff8a80 / `--info` #8ab4ff
   - 부서 색(맵 구역, 배지): `--dept-exec` #c792ea, `--dept-rnd` #6fb7ff, `--dept-fin` #ffb86b, `--dept-plan` #7be0b0
-- 폰트: 본문 Pretendard (알려진 바 SIL OFL 1.1, 한글 지원, 가변 폰트). 제목/라벨 강조는 둥근모꼴 또는 Galmuri11 같은 한글 픽셀 폰트 (알려진 바 둘 다 OFL. 둘 중 하나만 선택). 코드는 시스템 monospace. 픽셀 폰트는 제목과 짧은 라벨에만 쓴다. 긴 본문에 쓰면 가독성이 떨어진다.
+- 폰트(확정): 본문 Pretendard 정적 woff2 Regular/SemiBold, 제목/라벨 Galmuri11 Regular/Bold (모두 SIL OFL 1.1, 출처는 `docs/assets-licenses.md`). 코드는 시스템 monospace. 픽셀 폰트는 제목과 짧은 라벨에만 쓴다. 긴 본문에 쓰면 가독성이 떨어진다.
 - 크기 스케일: 12/14/16/20/28. 간격은 4px 배수 (4/8/12/16/24/32). 반경은 거의 쓰지 않는다 (0 또는 4px, 모서리를 깎은 픽셀 느낌은 `clip-path`/border-image로 선택 적용).
 - 컴포넌트 원칙:
   - 패널: `--bg-panel` + 2px `--border` + 4px 오프셋 단색 그림자(`4px 4px 0 #0e0b14`). 제목 줄은 `--bg-panel-raised`.

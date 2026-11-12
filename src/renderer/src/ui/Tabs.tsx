@@ -60,6 +60,7 @@ export function Tabs({ label, tabs, selectedId, onSelect, children }: Props): Re
         className="tabpanel"
         role="tabpanel"
         id={`${base}-panel`}
+        tabIndex={0}
         aria-labelledby={`${base}-tab-${tabs[selectedIndex]?.id}`}
       >
         {children}
