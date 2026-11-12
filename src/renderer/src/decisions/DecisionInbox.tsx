@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Decision, DecisionResolveRequest } from '../../../shared/decision'
 import { DECISION_KINDS } from '../../../shared/decision'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Tabs } from '../ui/Tabs'
+import { UnreadableNotice } from '../ui/UnreadableNotice'
 import { DecisionCard } from './DecisionCard'
 import {
   countByKind,
@@ -140,7 +141,11 @@ function InboxBody(p: BodyProps): React.JSX.Element {
           p.setOpenId(null)
         }}
       >
-        <Unreadable items={filterUnreadable(state.unreadable, p.tab)} />
+        <UnreadableNotice
+          items={filterUnreadable(state.unreadable, p.tab)}
+          summary={unreadableSummary}
+          reasonText={unreadableReasonText}
+        />
         <KindFilters items={list} filter={p.filter} setFilter={p.setFilter} />
         <CardList
           items={filterByKind(list, p.filter)}
@@ -173,38 +178,6 @@ function NoticeBar({
       <Button size="small" onClick={onDismiss}>
         닫기
       </Button>
-    </div>
-  )
-}
-
-function Unreadable({
-  items
-}: {
-  items: ReturnType<typeof filterUnreadable>
-}): React.JSX.Element | null {
-  const listId = useId()
-  const [open, setOpen] = useState(false)
-  if (items.length === 0) return null
-  return (
-    <div className="notice dunread" role="status">
-      <div className="dunread__head">
-        <strong>{unreadableSummary(items.length)}</strong>
-        <Button
-          size="small"
-          aria-expanded={open}
-          aria-controls={listId}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? '접기' : '목록 보기'}
-        </Button>
-      </div>
-      <ul id={listId} hidden={!open} className="dunread__list">
-        {items.map((u) => (
-          <li key={`${u.path}:${u.reason}`}>
-            <code>{u.path}</code> - {unreadableReasonText(u.reason)}
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }

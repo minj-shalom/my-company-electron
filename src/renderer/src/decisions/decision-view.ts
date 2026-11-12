@@ -10,7 +10,18 @@ import {
   type UnreadableReason
 } from '../../../shared/decision'
 import type { DomainErrorCode } from '../../../shared/result'
+import { unreadableReasonTextFor, unreadableTexts } from '../lib/refresh'
 import type { BadgeTone } from '../ui/Badge'
+
+// 결재함과 티켓 보드가 공유하는 로직. 기존 import 경로를 유지하려고 다시 내보낸다.
+export {
+  createRefreshGuard,
+  FOCUS_MIN_GAP_MS,
+  POLL_INTERVAL_MS,
+  runExclusive,
+  shouldRefetchOnFocus,
+  type RefreshGuard
+} from '../lib/refresh'
 
 export interface KindMeta {
   label: string
@@ -115,18 +126,10 @@ export function splitDecisions(items: readonly Decision[]): {
 
 // ---- unreadable ----
 
-export const UNREADABLE_TEXT: Record<UnreadableReason, string> = {
-  unreadable: '읽을 수 없는 파일이에요',
-  duplicate: '같은 번호의 카드가 둘 이상 있어 숨겼어요',
-  'too-large': '파일이 너무 커서 읽지 않았어요'
-}
+export const UNREADABLE_TEXT: Record<UnreadableReason, string> = unreadableTexts('카드가')
 
 export function unreadableReasonText(reason: unknown): string {
-  return (
-    (typeof reason === 'string' && Object.hasOwn(UNREADABLE_TEXT, reason)
-      ? UNREADABLE_TEXT[reason as UnreadableReason]
-      : undefined) ?? UNREADABLE_TEXT.unreadable
-  )
+  return unreadableReasonTextFor(UNREADABLE_TEXT, reason)
 }
 
 export function unreadableSummary(count: number): string {
@@ -198,15 +201,6 @@ export function sanitizeMemo(raw: string): string {
 
 // ---- 새로고침 정책 ----
 
-/** main 이벤트가 생기기 전까지 쓰는 임시 폴링 간격. */
-export const POLL_INTERVAL_MS = 30_000
-/** 포커스가 연달아 오갈 때 요청이 몰리지 않게 하는 최소 간격. */
-export const FOCUS_MIN_GAP_MS = 3_000
-
-export function shouldRefetchOnFocus(lastFetchAt: number | null, now: number): boolean {
-  return lastFetchAt === null || now - lastFetchAt >= FOCUS_MIN_GAP_MS
-}
-
 // ---- 불러오기 ----
 
 export type DecisionsState =
@@ -255,41 +249,6 @@ export function applyResolved(prev: DecisionsState, resolved: Decision): Decisio
 
 export function pendingCount(state: DecisionsState): number {
   return state.kind === 'ready' ? state.items.filter((d) => d.status === 'pending').length : 0
-}
-
-/**
- * 조회 응답의 세대 가드. 조회를 시작한 뒤 resolve가 끝나거나 강제 재조회가 시작되면 그 이전 응답은 낡은 것이므로 버린다
- * (낡은 응답이 방금 처리한 카드를 pending으로 되살리는 것을 막는다).
- */
-export interface RefreshGuard {
-  begin: () => number
-  invalidate: () => void
-  isCurrent: (token: number) => boolean
-}
-
-export function createRefreshGuard(): RefreshGuard {
-  let gen = 0
-  return {
-    begin: () => gen,
-    invalidate: () => {
-      gen += 1
-    },
-    isCurrent: (token) => token === gen
-  }
-}
-
-/** 연타 방지. state 반영 전에도 즉시 잠그도록 ref 객체로 잠금을 받는다. 이미 실행 중이면 fn을 호출하지 않는다. */
-export async function runExclusive<T>(
-  lock: { current: boolean },
-  fn: () => Promise<T>
-): Promise<{ ran: true; value: T } | { ran: false }> {
-  if (lock.current) return { ran: false }
-  lock.current = true
-  try {
-    return { ran: true, value: await fn() }
-  } finally {
-    lock.current = false
-  }
 }
 
 export type ConfirmTransition = 'open' | 'back' | 'failure' | 'edit'
