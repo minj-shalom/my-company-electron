@@ -23,7 +23,7 @@ type Fail = {
 }
 const fail = (code: Fail['code'], message: string): Fail => ({ ok: false, code, message })
 
-async function agentIdSet(fs: SafeFs): Promise<Set<string>> {
+export async function agentIdSet(fs: SafeFs): Promise<Set<string>> {
   const { files } = await fs.listMarkdown(AGENTS_DIR)
   return new Set(files.map((f) => f.slice(0, -3)))
 }
@@ -215,6 +215,177 @@ async function addRowOnce(
       added.role !== input.role
     )
       return fail('invalid-request', '추가한 행이 표에서 올바르게 읽히지 않아 취소했습니다.')
+
+    const current = await readOrgText(fs)
+    if (!current.ok || current.text !== read.text) continue
+
+    await fs.writeText(ORG_FILE, next)
+    return { ok: true, value: after }
+  }
+  return fail('conflict', 'org.md가 동시에 수정되고 있습니다. 다시 시도하세요.')
+}
+
+export interface OrgMemberPatch {
+  title?: string
+  department?: string
+  reportsTo?: string
+  role?: string
+}
+
+type RowEdit = { kind: 'update'; patch: OrgMemberPatch } | { kind: 'remove' }
+
+function validatePatch(patch: OrgMemberPatch): string | null {
+  if (typeof patch !== 'object' || patch === null) return '입력 형식이 올바르지 않습니다.'
+  const { title, department, reportsTo, role } = patch
+  if (
+    title === undefined &&
+    department === undefined &&
+    reportsTo === undefined &&
+    role === undefined
+  )
+    return '바꿀 값이 없습니다.'
+  const merged: OrgMemberInput = {
+    title: title ?? 'x',
+    department: department ?? 'x',
+    reportsTo: reportsTo ?? 'x',
+    role: role ?? '',
+    agentId: 'x'
+  }
+  return validate(merged)
+}
+
+/** 직원(agentId)의 표 행에서 직급, 부서, 보고 대상, 역할만 바꾼다. 다른 줄은 바이트 그대로 둔다. */
+export function updateMember(
+  fs: SafeFs,
+  agentId: string,
+  patch: OrgMemberPatch
+): Promise<ApiResult<OrgModel>> {
+  return editRow(fs, agentId, { kind: 'update', patch })
+}
+
+/** 직원(agentId)의 표 행을 지운다. 직원 파일은 건드리지 않는다. */
+export function removeMember(fs: SafeFs, agentId: string): Promise<ApiResult<OrgModel>> {
+  return editRow(fs, agentId, { kind: 'remove' })
+}
+
+function editRow(fs: SafeFs, agentId: string, edit: RowEdit): Promise<ApiResult<OrgModel>> {
+  return serialized(fs.root, async () => {
+    try {
+      return await editRowOnce(fs, agentId, edit)
+    } catch {
+      return fail('internal', 'org.md를 갱신하지 못했습니다.')
+    }
+  })
+}
+
+const issueKey = (i: { code: string; message: string }): string => `${i.code}:${i.message}`
+
+/** 직원 행 하나를 고치거나 지운다. 읽기-수정-재파싱 검증-재읽기 비교-쓰기 순서는 addRowOnce와 같다. */
+async function editRowOnce(
+  fs: SafeFs,
+  agentId: string,
+  edit: RowEdit
+): Promise<ApiResult<OrgModel>> {
+  if (typeof agentId !== 'string' || !EMPLOYEE_ID.test(agentId))
+    return fail('invalid-request', '직원 파일 id 형식이 올바르지 않습니다.')
+  if (edit.kind === 'update') {
+    const invalid = validatePatch(edit.patch)
+    if (invalid) return fail('invalid-request', invalid)
+  }
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const read = await readOrgText(fs)
+    if (!read.ok) return fail(read.code === 'missing-org' ? 'not-found' : 'internal', read.message)
+    if (Buffer.byteLength(read.text, 'utf8') > MAX_ORG_BYTES)
+      return fail('internal', 'org.md가 너무 큽니다.')
+
+    const agents = await agentIdSet(fs)
+    const model = parseOrgDocument(read.text, agents)
+    const member = model.members.find((m) => m.kind === 'agent' && m.agentId === agentId)
+    if (!member) return fail('not-found', '조직도에 없는 직원입니다.')
+
+    // 줄과 줄바꿈을 따로 들고 있어 고치지 않는 줄의 줄바꿈(CRLF 혼재 포함)을 그대로 보존한다.
+    const parts = read.text.split(/(\r?\n)/)
+    const lines: string[] = []
+    for (let i = 0; i < parts.length; i += 2) lines.push(parts[i])
+    const view = lines.map((l, i) => (i === 0 ? l.replace(/^\uFEFF/, '') : l))
+    const table = locateTable(view)
+    if (!table || table.headerIdx === null)
+      return fail('invalid-request', '직원 표를 찾지 못했습니다.')
+    const h = (name: string): number => table.headers.findIndex((x) => x.includes(name))
+    const [cTitle, cFile, cDept, cReports, cRole] = [
+      h('직급'),
+      h('직원 파일'),
+      h('부서'),
+      h('보고 대상'),
+      h('역할')
+    ]
+    if (cTitle < 0 || cFile < 0)
+      return fail('invalid-request', '직원 표 머리글이 올바르지 않습니다.')
+    const row = table.rows.find(
+      (r) => r.cells.length === table.headers.length && r.cells[cTitle] === member.title
+    )
+    if (!row) return fail('not-found', '조직도에 없는 직원입니다.')
+
+    const known = new Set(model.issues.map(issueKey))
+    const others = model.members.filter((m) => m !== member)
+    let expected: { title: string; department: string; reportsTo: string; role: string } | null =
+      null
+    if (edit.kind === 'update') {
+      const p = edit.patch
+      expected = {
+        title: p.title ?? member.title,
+        department: p.department ?? member.department ?? '',
+        reportsTo: p.reportsTo ?? member.reportsTo ?? '',
+        role: p.role ?? member.role
+      }
+      if (p.title !== undefined && p.title !== member.title) {
+        if (others.some((m) => m.title === p.title))
+          return fail('conflict', '이미 있는 직급 또는 직원입니다.')
+        if (others.some((m) => m.reportsTo === member.title))
+          return fail('conflict', '다른 직원의 보고 대상인 직급은 바꿀 수 없습니다.')
+      }
+      if (p.reportsTo !== undefined && !model.members.some((m) => m.title === p.reportsTo))
+        return fail('invalid-request', '보고 대상이 표에 없습니다.')
+      const cells = row.cells.map((c, i) => {
+        if (i === cTitle) return expected?.title ?? c
+        if (i === cDept && p.department !== undefined) return p.department
+        if (i === cReports && p.reportsTo !== undefined) return p.reportsTo
+        if (i === cRole && p.role !== undefined) return p.role
+        return c
+      })
+      const widths = table.headers.map((hd, i) =>
+        Math.max(displayWidth(hd), ...table.rows.map((r) => displayWidth(r.cells[i] ?? '')))
+      )
+      parts[2 * row.idx] = `| ${cells
+        .map(escapeCell)
+        .map((c, i) => c + ' '.repeat(Math.max(0, widths[i] - displayWidth(c))))
+        .join(' | ')} |`
+    } else if (parts[2 * row.idx + 1] !== undefined) {
+      parts.splice(2 * row.idx, 2)
+    } else {
+      // 마지막 줄이면 앞 줄의 줄바꿈까지 함께 지운다.
+      parts.splice(2 * row.idx - 1, 2)
+    }
+    const next = parts.join('')
+
+    const after = parseOrgDocument(next, agents)
+    const afterMember = after.members.find((m) => m.kind === 'agent' && m.agentId === agentId)
+    const sameOthers = (): boolean =>
+      JSON.stringify(after.members.filter((m) => m !== afterMember)) === JSON.stringify(others)
+    const hasNewIssue = after.issues.some((i) => !known.has(issueKey(i)))
+    const good =
+      !hasNewIssue &&
+      sameOthers() &&
+      (expected === null
+        ? afterMember === undefined && after.members.length === model.members.length - 1
+        : after.members.length === model.members.length &&
+          afterMember !== undefined &&
+          afterMember.title === expected.title &&
+          (afterMember.department ?? '') === expected.department &&
+          (afterMember.reportsTo ?? '') === expected.reportsTo &&
+          afterMember.role === expected.role)
+    if (!good) return fail('invalid-request', '바꾼 행이 표에서 올바르게 읽히지 않아 취소했습니다.')
 
     const current = await readOrgText(fs)
     if (!current.ok || current.text !== read.text) continue
