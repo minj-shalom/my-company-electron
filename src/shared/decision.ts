@@ -59,3 +59,19 @@ export interface DecisionResolveRequest {
   choice: string
   memo?: string
 }
+
+/** 목록에서 빠진 카드가 있다는 사실만 알린다. path는 회사 폴더 기준 상대 경로이고 오류 원문이나 절대 경로는 담지 않는다. */
+export const UNREADABLE_REASONS = ['unreadable', 'duplicate', 'too-large'] as const
+export type UnreadableReason = (typeof UNREADABLE_REASONS)[number]
+
+export interface UnreadableDecision {
+  path: string
+  /** `duplicate`: 같은 id의 카드가 pending/done 또는 같은 폴더에 둘 이상 있어 숨김. */
+  reason: UnreadableReason
+}
+
+/** `decision:list` 응답. 읽지 못한 카드가 있어도 나머지는 `items`로 돌려준다. */
+export interface DecisionList {
+  items: Decision[]
+  unreadable: UnreadableDecision[]
+}

@@ -1,11 +1,12 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC_CHANNELS } from '../shared/api'
-import type { Decision } from '../shared/decision'
+import type { Decision, DecisionList } from '../shared/decision'
 import type { OrgSnapshot } from '../shared/org'
 import type { ConnectionTestResult, ProviderDetection, WeeklyLimit } from '../shared/provider'
 import type { ApiResult } from '../shared/result'
 import { isTrustedSender } from './ipc-guard'
 import { NoCompanyError, type CompanyContext } from './company/company-context'
+import { normalizeMemo } from './repository/decision-memo'
 import { MAX_MEMO_LENGTH, DECISION_ID } from './repository/ids'
 import { FileCompanyRepository } from './repository/file-repository'
 import type { SafeFs } from './repository/safe-fs'
@@ -54,7 +55,7 @@ const DECISION_STATUS_VALUES: readonly unknown[] = ['pending', 'done']
 const MAX_CHOICE_LENGTH = 20
 const RESOLVE_INTERNAL: Parameters<typeof fail> = ['internal', '요청을 처리하지 못했습니다.']
 const RESOLVE_FAILURES: Record<string, Parameters<typeof fail>> = {
-  'invalid-request': ['invalid-request', '카드에 없는 선택지이거나 요청이 올바르지 않습니다.'],
+  'invalid-request': ['invalid-request', '카드에 없는 선택지이거나 허용되지 않는 대상입니다.'],
   'not-found': ['not-found', '결정 카드를 찾을 수 없습니다.'],
   conflict: ['conflict', '이미 처리된 결정입니다.']
 }
@@ -65,7 +66,7 @@ export function createDomainHandlers(deps: DomainDeps): {
   testProviderConnection: (provider: unknown) => Promise<ApiResult<ConnectionTestResult>>
   getWeeklyLimits: () => Promise<ApiResult<WeeklyLimit[]>>
   saveWeeklyLimits: (req: unknown) => Promise<ApiResult<WeeklyLimit[]>>
-  listDecisions: (status: unknown) => Promise<ApiResult<Decision[]>>
+  listDecisions: (status: unknown) => Promise<ApiResult<DecisionList>>
   resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
 } {
   return {
@@ -81,8 +82,14 @@ export function createDomainHandlers(deps: DomainDeps): {
       if (status !== undefined && !DECISION_STATUS_VALUES.includes(status))
         return fail('invalid-request', '결정 상태 값이 올바르지 않습니다.')
       return guarded(async () => {
-        const { items } = await repositoryFor(deps).listDecisions(status as Decision['status'])
-        return items
+        const { items, issues } = await repositoryFor(deps).listDecisions(
+          status as Decision['status']
+        )
+        // 오류 원문(message)은 버리고 상대 경로와 고정 분류만 renderer로 보낸다.
+        return {
+          items,
+          unreadable: issues.map((i) => ({ path: i.path, reason: i.reason ?? 'unreadable' }))
+        }
       })
     },
     resolveDecision: async (req) => {
@@ -93,7 +100,10 @@ export function createDomainHandlers(deps: DomainDeps): {
         return fail('invalid-request', '결정 id가 올바르지 않습니다.')
       if (typeof choice !== 'string' || choice.length === 0 || choice.length > MAX_CHOICE_LENGTH)
         return fail('invalid-request', '선택지가 올바르지 않습니다.')
-      if (memo !== undefined && (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH))
+      if (
+        memo !== undefined &&
+        (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH || normalizeMemo(memo) === null)
+      )
         return fail('invalid-request', '메모가 올바르지 않습니다.')
       // 필요한 필드만 복사해 넘긴다 (추가 필드 전달 차단).
       const r = await guarded(() => repositoryFor(deps).resolveDecision({ id, choice, memo }))

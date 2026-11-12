@@ -43,7 +43,10 @@ export const mockApi: WindowApi = {
   },
   listDecisions: async (status) => ({
     ok: true,
-    value: structuredClone(decisions.filter((d) => !status || d.status === status))
+    value: {
+      items: structuredClone(decisions.filter((d) => !status || d.status === status)),
+      unreadable: []
+    }
   }),
   resolveDecision: async (req) => {
     const d = decisions.find((x) => x.id === req.id)
