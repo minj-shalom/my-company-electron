@@ -18,7 +18,16 @@ export function parseTicket(fileName: string, text: string, status: TicketStatus
   const title = asString(data.title) ?? heading?.replace(/^T-\d+\s*[:：]\s*/, '') ?? null
   if (!title) throw new Error('제목(# T-번호: 제목)을 찾을 수 없습니다.')
   const rawAssignee = asString(data.assignee) ?? metaValue(body, '담당')
-  return { id, title, status, assignee: pickEmployeeId(rawAssignee), body }
+  const department = pickDepartment(asString(data.department) ?? metaValue(body, '부서'))
+  return { id, title, status, assignee: pickEmployeeId(rawAssignee), department, body }
+}
+
+const MAX_DEPARTMENT_LENGTH = 50
+
+/** 표시용 이름이라 길이만 제한하고 비어 있으면 null. 조직도에 없는 부서여도 오류가 아니다. */
+function pickDepartment(raw: string | null): string | null {
+  const v = raw?.trim().slice(0, MAX_DEPARTMENT_LENGTH).trim()
+  return v ? v : null
 }
 
 function pickEmployeeId(raw: string | null): string | null {

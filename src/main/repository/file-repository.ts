@@ -67,9 +67,15 @@ export class FileCompanyRepository implements CompanyRepository {
     return new FileCompanyRepository(fs, basename(fs.root))
   }
 
-  // 같은 프로세스의 resolve를 한 줄로 세운다. 두 번 클릭/동시 호출이 같은 카드를 겹쳐 쓰지 않게 하고,
-  // 뒤따르는 호출은 앞 호출이 끝난 뒤 다시 읽어 conflict로 판정된다.
-  private resolveQueue: Promise<unknown> = Promise.resolve()
+  // 같은 프로세스의 도메인 쓰기(결정 resolve, 티켓 이동)를 한 줄로 세운다. 두 번 클릭/동시 호출이 같은 파일을
+  // 겹쳐 쓰지 않게 하고, 뒤따르는 호출은 앞 호출이 끝난 뒤 다시 읽어 conflict(결정) 또는 멱등 ok(티켓)로 판정된다.
+  private writeQueue: Promise<unknown> = Promise.resolve()
+
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.writeQueue.then(task, task)
+    this.writeQueue = run.catch(() => undefined)
+    return run
+  }
 
   async getCompany(): Promise<ApiResult<CompanyInfo>> {
     let mission = ''
@@ -149,23 +155,45 @@ export class FileCompanyRepository implements CompanyRepository {
 
   async listTickets(status?: TicketStatus): Promise<Listing<Ticket>> {
     const issues: LoadIssue[] = []
-    const items: Ticket[] = []
-    for (const st of status ? [status] : TICKET_STATUSES) {
-      if (!TICKET_STATUSES.includes(st)) continue
+    const found: Array<{ item: Ticket; path: string }> = []
+    // 중복 판정을 위해 필터와 무관하게 모든 폴더를 읽고, 마지막에 상태로 거른다.
+    for (const st of TICKET_STATUSES) {
       const dir = TICKET_DIRS[st]
       const { files, skipped } = await this.scan(dir, issues)
       for (const s of skipped)
-        issues.push({ path: relPath(dir, s), message: '일반 파일이 아니어서 건너뜀' })
+        issues.push({
+          path: relPath(dir, s),
+          message: '일반 파일이 아니어서 건너뜀',
+          reason: 'unreadable'
+        })
       for (const f of files) {
         const path = relPath(dir, f)
         try {
-          items.push(parseTicket(f, await this.fs.readText(path), st))
+          found.push({ item: parseTicket(f, await this.fs.readText(path), st), path })
         } catch (e) {
-          issues.push({ path, message: issueMessage(e) })
+          issues.push({ path, message: issueMessage(e), reason: reasonOf(e) })
         }
       }
     }
-    items.sort((a, b) => numOf(a.id) - numOf(b.id))
+    // 이동 도중 앱이 종료되면 같은 티켓이 두 폴더에 남을 수 있다. 어느 쪽이 새 것인지 알 수 없으므로
+    // 호출마다 같은 결과가 나오도록 더 진행된 상태(done > in-progress > backlog)를 보이고 나머지는 숨긴다.
+    const rank = (t: Ticket): number => TICKET_STATUSES.length - TICKET_STATUSES.indexOf(t.status)
+    const ordered = [...found].sort(
+      (a, b) =>
+        numOf(a.item.id) - numOf(b.item.id) ||
+        rank(a.item) - rank(b.item) ||
+        (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+    )
+    const items: Ticket[] = []
+    let lastId = ''
+    for (const { item, path } of ordered) {
+      if (item.id === lastId) {
+        issues.push({ path, message: '같은 id의 티켓이 이미 있어 숨김', reason: 'duplicate' })
+        continue
+      }
+      lastId = item.id
+      if (!status || item.status === status) items.push(item)
+    }
     return { items, issues }
   }
 
@@ -176,7 +204,11 @@ export class FileCompanyRepository implements CompanyRepository {
     return found ? { ok: true, value: found } : fail('not-found', '티켓을 찾을 수 없습니다.')
   }
 
-  async moveTicket(id: string, status: TicketStatus): Promise<ApiResult<Ticket>> {
+  moveTicket(id: string, status: TicketStatus): Promise<ApiResult<Ticket>> {
+    return this.serialize(() => this.moveTicketNow(id, status))
+  }
+
+  private async moveTicketNow(id: string, status: TicketStatus): Promise<ApiResult<Ticket>> {
     if (typeof id !== 'string' || !TICKET_ID.test(id))
       return fail('invalid-request', '잘못된 티켓 id입니다.')
     if (!TICKET_STATUSES.includes(status)) return fail('invalid-request', '잘못된 티켓 상태입니다.')
@@ -187,8 +219,19 @@ export class FileCompanyRepository implements CompanyRepository {
       )
       if (!file) return fail('not-found', '티켓을 찾을 수 없습니다.')
       const target = relPath(TICKET_DIRS[status], file.name)
+      // 이미 그 상태면 아무것도 쓰지 않는다 (두 번 클릭, 동시 호출은 멱등 ok).
       if (file.path === target) return this.getTicket(id)
-      const text = withTicketStatus(await this.fs.readText(file.path), status)
+      const original = await this.fs.readText(file.path)
+      // 목록에서 빠지는 손상 티켓은 옮기지 않는다 (옮긴 뒤 읽을 수 없게 되는 일을 막는다).
+      const text = withTicketStatus(original, status)
+      // 쓰기 전에 결과를 다시 파싱해 같은 티켓으로 읽히는지 확인한다. 파서 오류(YAML 오류 포함)는 모두 입력 문제로 본다.
+      try {
+        const before = parseTicket(file.name, original, currentStatus(file.path))
+        const check = parseTicket(file.name, text, status)
+        if (check.id !== before.id || check.title !== before.title) throw new Error('mismatch')
+      } catch {
+        return fail('invalid-request', '읽을 수 없는 티켓은 이동할 수 없습니다.')
+      }
       // 새 위치에 먼저 쓰고 성공한 뒤 옛 파일을 지운다 (중간 실패 시 티켓이 사라지지 않는다).
       await this.relocate(file.path, target, text)
     } catch (e) {
@@ -251,12 +294,7 @@ export class FileCompanyRepository implements CompanyRepository {
   }
 
   resolveDecision(req: DecisionResolveRequest): Promise<ApiResult<Decision>> {
-    const run = this.resolveQueue.then(
-      () => this.resolveDecisionNow(req),
-      () => this.resolveDecisionNow(req)
-    )
-    this.resolveQueue = run.catch(() => undefined)
-    return run
+    return this.serialize(() => this.resolveDecisionNow(req))
   }
 
   private async resolveDecisionNow(req: DecisionResolveRequest): Promise<ApiResult<Decision>> {
@@ -409,6 +447,10 @@ function roundTripMemo(memo: string): string {
 
 function reasonOf(e: unknown): 'unreadable' | 'too-large' {
   return e instanceof FsGuardError && e.kind === 'too-large' ? 'too-large' : 'unreadable'
+}
+
+function currentStatus(path: string): TicketStatus {
+  return TICKET_STATUSES.find((s) => path.startsWith(`${TICKET_DIRS[s]}/`)) ?? 'backlog'
 }
 
 function numOf(id: string): number {
