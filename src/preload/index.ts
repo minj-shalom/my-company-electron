@@ -21,6 +21,10 @@ const api: WindowApi = {
   getTicket: notImplemented,
   listDecisions: notImplemented,
   resolveDecision: notImplemented,
+  detectProviders: notImplemented,
+  testProviderConnection: notImplemented,
+  getWeeklyLimits: notImplemented,
+  saveWeeklyLimits: notImplemented,
   onRunEvent: (listener) => {
     // IpcRendererEvent를 renderer에 넘기지 않고 payload만 전달한다.
     const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]): void =>
