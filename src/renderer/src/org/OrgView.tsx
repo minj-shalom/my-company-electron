@@ -7,6 +7,7 @@ import {
   groupByDepartment,
   memberDetail,
   nextListIndex,
+  splitIssues,
   toneByTitle,
   type DeptTone,
   type OrgIssueView,
@@ -17,13 +18,13 @@ import { useOrg } from './use-org'
 
 /** 조직도 화면. 상태(로딩/오류/빈/정상)를 나누고 정상일 때만 본문을 그린다. 직원 텍스트는 모두 React 텍스트로 렌더링한다. */
 export function OrgView(): React.JSX.Element {
-  const { status, refresh } = useOrg()
-  const loading = status.kind === 'loading'
+  const { status, refreshing, refresh } = useOrg()
+  const loading = status.kind === 'loading' || refreshing
   return (
     <section className="org" aria-labelledby="org-heading">
       <div className="org__head">
         <h2 id="org-heading">조직도</h2>
-        <Button size="small" onClick={refresh} disabled={loading}>
+        <Button size="small" aria-disabled={loading} onClick={() => !loading && refresh()}>
           다시 불러오기
         </Button>
       </div>
@@ -71,17 +72,34 @@ function OrgBody({
 }
 
 function IssueList({ issues }: { issues: OrgIssueView[] }): React.JSX.Element | null {
+  const { blocking, warnings } = splitIssues(issues)
   if (issues.length === 0) return null
   return (
-    <div className="notice org__issues" role="group" aria-label="조직도 문서 문제">
-      <p>
-        <Badge tone="warn">확인 필요 {issues.length}건</Badge>
-      </p>
-      <ul>
-        {issues.map((it, i) => (
-          <li key={i}>{it.text}</li>
-        ))}
-      </ul>
+    <div className="org__issues">
+      {blocking.length > 0 && (
+        <div className="notice org__issues--blocking" role="alert" aria-label="조직도 문서 오류">
+          <p>
+            <Badge tone="bad">고쳐야 해요 {blocking.length}건</Badge>
+          </p>
+          <ul>
+            {blocking.map((it, i) => (
+              <li key={i}>{it.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="notice" role="group" aria-label="조직도 문서 경고">
+          <p>
+            <Badge tone="warn">확인 필요 {warnings.length}건</Badge>
+          </p>
+          <ul>
+            {warnings.map((it, i) => (
+              <li key={i}>{it.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
@@ -110,6 +128,24 @@ function OrgReady({
     <>
       <IssueList issues={issues} />
       <div className="org__layout" data-selected={member ? 'true' : 'false'}>
+        <div
+          className="org__detail"
+          id={detailId}
+          ref={detailRef}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <Panel title="직원 상세" as="section">
+            {member ? (
+              <MemberDetail
+                detail={memberDetail(member, snapshot.agents)}
+                tone={tones.get(member.title) ?? null}
+              />
+            ) : (
+              <p className="hint">직원을 선택하면 역할, 모델, 도구가 여기에 보여요.</p>
+            )}
+          </Panel>
+        </div>
         <div className="org__lists">
           <Panel title="보고 라인">
             <RovingList titles={orderedTree} selected={selected}>
@@ -157,18 +193,6 @@ function OrgReady({
                 ))}
               </div>
             </RovingList>
-          </Panel>
-        </div>
-        <div className="org__detail" id={detailId} ref={detailRef}>
-          <Panel title="직원 상세" as="section">
-            {member ? (
-              <MemberDetail
-                detail={memberDetail(member, snapshot.agents)}
-                tone={tones.get(member.title) ?? null}
-              />
-            ) : (
-              <p className="hint">직원을 선택하면 역할, 모델, 도구가 여기에 보여요.</p>
-            )}
           </Panel>
         </div>
       </div>

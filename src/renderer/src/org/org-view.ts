@@ -203,3 +203,14 @@ export function nextListIndex(key: string, current: number, count: number): numb
       return null
   }
 }
+
+/** 문서를 못 읽는 수준의 문제(blocking)와 참고용 경고를 나눈다. */
+export function splitIssues(issues: readonly OrgIssueView[]): {
+  blocking: OrgIssueView[]
+  warnings: OrgIssueView[]
+} {
+  return {
+    blocking: issues.filter((i) => i.blocking),
+    warnings: issues.filter((i) => !i.blocking)
+  }
+}

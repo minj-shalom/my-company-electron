@@ -7,6 +7,7 @@ import {
   loadOrgStatus,
   memberDetail,
   nextListIndex,
+  splitIssues,
   NO_DEPARTMENT,
   toOrgStatus
 } from './org-view'
@@ -148,5 +149,20 @@ describe('parseOrgScenario', () => {
     expect(parseOrgScenario('?mock-org=empty')).toBe('empty')
     expect(parseOrgScenario('?mock-org=<script>')).toBe('normal')
     expect(parseOrgScenario('')).toBe('normal')
+  })
+})
+
+describe('splitIssues', () => {
+  it('separates blocking issues from warnings, even when members exist', async () => {
+    const snap = await normal()
+    snap.org.issues = [
+      { code: 'file-too-large', message: '' },
+      { code: 'cycle', message: '' }
+    ]
+    const s = toOrgStatus(snap)
+    expect(s.kind).toBe('ready')
+    const { blocking, warnings } = splitIssues(s.kind === 'ready' ? s.issues : [])
+    expect(blocking).toHaveLength(1)
+    expect(warnings).toHaveLength(1)
   })
 })

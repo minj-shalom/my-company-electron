@@ -46,7 +46,13 @@
   gap: var(--space-4);
   min-width: 0;
 }
+.org__lists {
+  grid-column: 1;
+  grid-row: 1;
+}
 .org__detail {
+  grid-column: 2;
+  grid-row: 1;
   position: sticky;
   top: 0;
   min-width: 0;
@@ -145,9 +151,11 @@
   .org__layout {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* 선택한 직원의 상세가 긴 목록 아래에 묻히지 않도록 위로 올린다. */
-  .org__layout[data-selected='true'] .org__detail {
-    order: -1;
+  /* 상세가 DOM에서 목록 앞에 있으므로 좁은 화면에서는 자연스럽게 위에 놓인다. */
+  .org__lists,
+  .org__detail {
+    grid-column: 1;
+    grid-row: auto;
   }
   .org__layout[data-selected='false'] .org__detail {
     display: none;
@@ -158,4 +166,16 @@
   .org-tree__children {
     margin-left: var(--space-2);
   }
+}
+
+.org__issues--blocking {
+  border-left-color: var(--bad);
+}
+
+/* disabled 대신 aria-disabled를 써서 포커스를 유지하므로 같은 모양을 직접 준다. */
+.org__head .btn[aria-disabled='true'] {
+  color: var(--text-muted);
+  border-style: dashed;
+  box-shadow: none;
+  cursor: not-allowed;
 }

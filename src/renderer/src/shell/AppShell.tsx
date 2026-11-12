@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { OrgView } from '../org/OrgView'
+import { shouldCollapsePanel } from './panel-rules'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
@@ -48,10 +49,10 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
             tabs={MAIN_VIEWS}
             selectedId={view}
             onSelect={(id) => {
-              setView(id)
+              const narrow = window.matchMedia?.('(max-width: 899px)').matches ?? false
               // 좁은 화면에서는 하단 시트가 조직도를 가리므로 접는다 (버튼으로 다시 열 수 있다).
-              if (id === 'org' && window.matchMedia?.('(max-width: 899px)').matches)
-                setPanelOpen(false)
+              if (shouldCollapsePanel(view, id, narrow)) setPanelOpen(false)
+              setView(id)
             }}
           >
             {view === 'org' ? (

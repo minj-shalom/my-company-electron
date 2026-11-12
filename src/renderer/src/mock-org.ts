@@ -2,8 +2,15 @@ import type { WindowApi } from '../../shared/api'
 import type { OrgAgentDetail, OrgMember, OrgSnapshot, OrgTreeNode } from '../../shared/org'
 
 /** 브라우저 개발 모드 전용. `?mock-org=empty|error|loading|issues`로 상태를 바꿔 화면을 확인한다. */
-export type OrgScenario = 'normal' | 'empty' | 'error' | 'loading' | 'issues'
-const SCENARIOS: readonly OrgScenario[] = ['normal', 'empty', 'error', 'loading', 'issues']
+export type OrgScenario = 'normal' | 'empty' | 'error' | 'loading' | 'issues' | 'blocking'
+const SCENARIOS: readonly OrgScenario[] = [
+  'normal',
+  'empty',
+  'error',
+  'loading',
+  'issues',
+  'blocking'
+]
 
 export function parseOrgScenario(search: string): OrgScenario {
   const v = new URLSearchParams(search).get('mock-org')
@@ -109,6 +116,11 @@ function scenarioSnapshot(s: OrgScenario): OrgSnapshot {
     snap.org.issues = [
       { code: 'missing-agent-file', message: 'x', line: 18 },
       { code: 'unknown-reports-to', message: 'x', line: 12 }
+    ]
+  if (s === 'blocking')
+    snap.org.issues = [
+      { code: 'file-too-large', message: 'x' },
+      { code: 'cycle', message: 'x', line: 9 }
     ]
   return snap
 }
