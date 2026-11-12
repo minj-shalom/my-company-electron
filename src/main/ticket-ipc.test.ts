@@ -454,12 +454,146 @@ describe('ticket:move', () => {
   })
 
   it('does not treat another id with the same prefix as the ticket (T-1 vs T-12)', async () => {
-    await put('company/tickets/backlog/T-012-x.md', ticket(12))
+    await put('company/tickets/backlog/T-12-x.md', ticket(12))
+    await put('company/tickets/backlog/T-1-y.md', ticket(1))
     const h = await handlers()
+    // T-12만 있을 때 T-1은 찾지 못하고, 반대로 T-1만 옮기면 T-12는 그대로다.
+    await rm(at('backlog', 'T-1-y.md'))
     expect(await h.moveTicket({ id: 'T-1', to: 'done' })).toMatchObject({
       ok: false,
       code: 'not-found'
     })
-    expect(existsSync(at('backlog', 'T-012-x.md'))).toBe(true)
+    await put('company/tickets/backlog/T-1-y.md', ticket(1))
+    await rm(at('backlog', 'T-12-x.md'))
+    expect(await h.moveTicket({ id: 'T-12', to: 'done' })).toMatchObject({
+      ok: false,
+      code: 'not-found'
+    })
+    expect(existsSync(at('backlog', 'T-1-y.md'))).toBe(true)
+    await put('company/tickets/backlog/T-12-x.md', ticket(12))
+    expect(await h.moveTicket({ id: 'T-1', to: 'done' })).toMatchObject({ ok: true })
+    expect(existsSync(at('backlog', 'T-12-x.md'))).toBe(true)
+  })
+
+  it('moves the copy that the list shows and refuses when duplicates differ', async () => {
+    await put('company/tickets/in-progress/T-020-x.md', ticket(20))
+    await put('company/tickets/done/T-020-x.md', ticket(20, '- **담당:** cto\n'))
+    const h = await handlers()
+    const shown = await list(h)
+    expect(shown.map((t) => t.status)).toEqual(['done'])
+    expect(await h.moveTicket({ id: 'T-020', to: 'backlog' })).toMatchObject({
+      ok: false,
+      code: 'conflict'
+    })
+    expect(existsSync(at('in-progress', 'T-020-x.md'))).toBe(true)
+    expect(existsSync(at('done', 'T-020-x.md'))).toBe(true)
+    // 내용이 같으면 낮은 순위 사본을 정리하고 보이는 사본을 옮긴다.
+    await put('company/tickets/done/T-020-x.md', ticket(20))
+    expect(await h.moveTicket({ id: 'T-020', to: 'backlog' })).toMatchObject({
+      ok: true,
+      value: { status: 'backlog' }
+    })
+    expect(await list(h)).toHaveLength(1)
+    expect(existsSync(at('in-progress', 'T-020-x.md'))).toBe(false)
+    expect(existsSync(at('done', 'T-020-x.md'))).toBe(false)
+  })
+
+  it('only rewrites the top-level status line in the meta area', async () => {
+    const text = [
+      '# T-021: 메타 영역',
+      '',
+      '```',
+      '- **상태:** 코드 예시',
+      '```',
+      '  - **상태:** 들여쓴 중첩',
+      '- **상태:** backlog (보류 메모)',
+      '- **담당:** cto',
+      '',
+      '## 목표',
+      '- **상태:** 본문 안의 줄',
+      ''
+    ].join('\n')
+    await put('company/tickets/backlog/T-021-x.md', text)
+    const h = await handlers()
+    expect((await h.moveTicket({ id: 'T-021', to: 'done' })).ok).toBe(true)
+    const out = await readFile(at('done', 'T-021-x.md'), 'utf8')
+    expect(out).toBe(
+      text.replace('- **상태:** backlog (보류 메모)', '- **상태:** done') // 줄 뒤 메모는 지워진다
+    )
+  })
+
+  it('keeps CRLF line endings when moving', async () => {
+    const text = '# T-022: crlf\r\n\r\n- **상태:** backlog\r\n- **담당:** cto\r\n'
+    await put('company/tickets/backlog/T-022-x.md', text)
+    const h = await handlers()
+    expect(await h.moveTicket({ id: 'T-022', to: 'in-progress' })).toMatchObject({
+      ok: true,
+      value: { assignee: 'cto' }
+    })
+    expect(await readFile(at('in-progress', 'T-022-x.md'), 'utf8')).toBe(
+      text.replace('backlog', 'in-progress')
+    )
+  })
+
+  it('moves a ticket that has no assignee and no department', async () => {
+    await put('company/tickets/backlog/T-023-x.md', ticket(23))
+    const h = await handlers()
+    expect(await h.moveTicket({ id: 'T-023', to: 'done' })).toMatchObject({
+      ok: true,
+      value: { assignee: null, department: null, status: 'done' }
+    })
+  })
+
+  it('does not delete the old file when it changed after it was read, and rolls back', async () => {
+    await put('company/tickets/backlog/T-024-x.md', ticket(24))
+    const h = await handlers()
+    const orig = SafeFs.prototype.writeText
+    vi.spyOn(SafeFs.prototype, 'writeText').mockImplementationOnce(async function (
+      this: SafeFs,
+      rel,
+      content,
+      overwrite
+    ) {
+      await orig.call(this, rel, content, overwrite)
+      // 읽은 뒤 에이전트가 원본을 고친 상황.
+      await put('company/tickets/backlog/T-024-x.md', ticket(24, '- **담당:** cto\n'))
+    })
+    expect(await h.moveTicket({ id: 'T-024', to: 'done' })).toMatchObject({
+      ok: false,
+      code: 'conflict'
+    })
+    expect(await readFile(at('backlog', 'T-024-x.md'), 'utf8')).toContain('cto')
+    expect(existsSync(at('done', 'T-024-x.md'))).toBe(false)
+  })
+
+  it('treats ENOENT on removing the old file as a conflict and rolls back', async () => {
+    await put('company/tickets/backlog/T-025-x.md', ticket(25))
+    const h = await handlers()
+    vi.spyOn(SafeFs.prototype, 'remove').mockRejectedValueOnce(
+      Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    )
+    expect(await h.moveTicket({ id: 'T-025', to: 'done' })).toMatchObject({
+      ok: false,
+      code: 'conflict'
+    })
+    expect(existsSync(at('done', 'T-025-x.md'))).toBe(false)
+  })
+
+  it('shares the write queue with decision resolve: a failure on one side does not block the other', async () => {
+    await put('company/tickets/backlog/T-026-x.md', ticket(26))
+    await put(
+      'company/decisions/pending/D-040-x.md',
+      '# D-040: 카드\n\n- **상태:** pending\n\n## 질문\n?\n\n## 선택지\n1. **A. 승인** — a\n2. **B. 거절** — b\n\n## 결정 (사람이 작성)\n- 선택:\n- 메모:\n'
+    )
+    const h = await handlers()
+    vi.spyOn(SafeFs.prototype, 'remove').mockRejectedValueOnce(new Error('EACCES'))
+    const [m1, d, m2] = await Promise.all([
+      h.moveTicket({ id: 'T-026', to: 'done' }),
+      h.resolveDecision({ id: 'D-040', choice: 'A' }),
+      h.moveTicket({ id: 'T-026', to: 'done' })
+    ])
+    expect(m1.ok).toBe(false)
+    expect(d.ok).toBe(true)
+    expect(m2.ok).toBe(true)
   })
 })
