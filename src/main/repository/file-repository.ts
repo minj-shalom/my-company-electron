@@ -61,6 +61,15 @@ export class FileCompanyRepository implements CompanyRepository {
     return new FileCompanyRepository(fs, basename(fs.root))
   }
 
+  /** 이미 열린 회사의 SafeFs로 만든다. 핸들러는 경로를 받지 않고 이 경로로만 접근한다. */
+  static fromSafeFs(fs: SafeFs): FileCompanyRepository {
+    return new FileCompanyRepository(fs, basename(fs.root))
+  }
+
+  // 같은 프로세스의 resolve를 한 줄로 세운다. 두 번 클릭/동시 호출이 같은 카드를 겹쳐 쓰지 않게 하고,
+  // 뒤따르는 호출은 앞 호출이 끝난 뒤 다시 읽어 conflict로 판정된다.
+  private resolveQueue: Promise<unknown> = Promise.resolve()
+
   async getCompany(): Promise<ApiResult<CompanyInfo>> {
     let mission = ''
     try {
@@ -218,14 +227,26 @@ export class FileCompanyRepository implements CompanyRepository {
     return found ? { ok: true, value: found } : fail('not-found', '결정 카드를 찾을 수 없습니다.')
   }
 
-  async resolveDecision(req: DecisionResolveRequest): Promise<ApiResult<Decision>> {
+  resolveDecision(req: DecisionResolveRequest): Promise<ApiResult<Decision>> {
+    const run = this.resolveQueue.then(
+      () => this.resolveDecisionNow(req),
+      () => this.resolveDecisionNow(req)
+    )
+    this.resolveQueue = run.catch(() => undefined)
+    return run
+  }
+
+  private async resolveDecisionNow(req: DecisionResolveRequest): Promise<ApiResult<Decision>> {
     if (typeof req !== 'object' || req === null)
       return fail('invalid-request', '잘못된 요청입니다.')
     const { id, choice, memo } = req
     if (typeof id !== 'string' || !DECISION_ID.test(id))
       return fail('invalid-request', '잘못된 결정 id입니다.')
     if (typeof choice !== 'string') return fail('invalid-request', '잘못된 선택입니다.')
-    if (memo !== undefined && (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH))
+    if (
+      memo !== undefined &&
+      (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH || memo.includes('\0'))
+    )
       return fail('invalid-request', `메모는 ${MAX_MEMO_LENGTH}자 이하여야 합니다.`)
     try {
       const file = await this.findFile(
@@ -322,6 +343,9 @@ export class FileCompanyRepository implements CompanyRepository {
       await this.fs.remove(from)
     } catch (e) {
       if (created) await this.fs.remove(to).catch(() => undefined)
+      // 원본이 이미 없다면 다른 프로세스(CLI 에이전트 등)가 먼저 옮긴 것이다.
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT')
+        throw new FsGuardError('exists', '이미 처리되었습니다.')
       throw e
     }
   }
