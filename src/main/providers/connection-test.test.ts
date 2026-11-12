@@ -110,3 +110,22 @@ describe('runConnectionTest', () => {
     expect(code).not.toMatch(/node:fs|readFile|\.claude|\.ssh|credentials|process\.env/)
   })
 })
+
+describe('runConnectionTest abort signal', () => {
+  it('terminates the child and settles when aborted', async () => {
+    const s = setup('darwin', { PATH: '/x' }, ['/x/claude'])
+    const ac = new AbortController()
+    const p = runConnectionTest('claude', { ...s, signal: ac.signal })
+    ac.abort()
+    expect((await p).state).toBe('failed')
+    expect(s.child.kill).toHaveBeenCalled()
+  })
+
+  it('does not spawn when already aborted', async () => {
+    const s = setup('darwin', { PATH: '/x' }, ['/x/claude'])
+    const ac = new AbortController()
+    ac.abort()
+    expect((await runConnectionTest('claude', { ...s, signal: ac.signal })).state).toBe('failed')
+    expect(s.calls).toHaveLength(0)
+  })
+})
