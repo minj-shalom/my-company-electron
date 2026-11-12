@@ -3,7 +3,12 @@ import type { Decision } from '../../shared/decision'
 import { mockCompany, mockDecisions, mockOrg, mockTickets } from './mock-data'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
-const decisions: Decision[] = structuredClone(mockDecisions)
+let decisions: Decision[] = structuredClone(mockDecisions)
+
+/** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
+export function resetMockApi(): void {
+  decisions = structuredClone(mockDecisions)
+}
 
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
@@ -11,21 +16,21 @@ export const mockApi: WindowApi = {
   cancelRun: async () => false,
   createCompany: async (req) => ({ ok: true, companyDir: `/mock/${req.name}` }),
   selectCompanyFolder: async () => '/mock',
-  getCompany: async () => ({ ok: true, value: mockCompany }),
+  getCompany: async () => ({ ok: true, value: structuredClone(mockCompany) }),
   listEmployees: async () => ({ ok: true, value: structuredClone(mockOrg) }),
   listTickets: async (status) => ({
     ok: true,
-    value: mockTickets.filter((t) => !status || t.status === status)
+    value: structuredClone(mockTickets.filter((t) => !status || t.status === status))
   }),
   getTicket: async (id) => {
     const t = mockTickets.find((x) => x.id === id)
     return t
-      ? { ok: true, value: t }
+      ? { ok: true, value: structuredClone(t) }
       : { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
   },
   listDecisions: async (status) => ({
     ok: true,
-    value: decisions.filter((d) => !status || d.status === status)
+    value: structuredClone(decisions.filter((d) => !status || d.status === status))
   }),
   resolveDecision: async (req) => {
     const d = decisions.find((x) => x.id === req.id)
@@ -37,7 +42,7 @@ export const mockApi: WindowApi = {
     d.status = 'done'
     d.chosen = req.choice
     d.memo = req.memo ?? ''
-    return { ok: true, value: d }
+    return { ok: true, value: structuredClone(d) }
   },
   onRunEvent: () => () => {}
 }
