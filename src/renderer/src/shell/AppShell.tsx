@@ -4,6 +4,8 @@ import { pendingCount } from '../decisions/decision-view'
 import { useDecisions } from '../decisions/use-decisions'
 import { OfficeView } from '../office/OfficeView'
 import { OrgView } from '../org/OrgView'
+import { RunLogView } from '../runs/RunLogView'
+import { useRunLog } from '../runs/use-run-log'
 import { TicketBoard } from '../tickets/TicketBoard'
 import { useTickets } from '../tickets/use-tickets'
 import { initialPanelOpen, shouldCollapsePanel } from './panel-rules'
@@ -12,10 +14,10 @@ import { Button } from '../ui/Button'
 import { Tabs, type TabItem } from '../ui/Tabs'
 import { ThemeToggle } from '../ui/ThemeToggle'
 
-const SIDE_TABS: readonly (TabItem & { empty: string })[] = [
-  { id: 'logs', label: '직원 로그', empty: '아직 일하는 직원이 없어요.' },
-  { id: 'tickets', label: '티켓', empty: '' },
-  { id: 'decisions', label: '결재함', empty: '' }
+const SIDE_TABS: readonly TabItem[] = [
+  { id: 'logs', label: '직원 로그' },
+  { id: 'tickets', label: '티켓' },
+  { id: 'decisions', label: '결재함' }
 ]
 
 const MAIN_VIEWS: readonly TabItem[] = [
@@ -23,7 +25,7 @@ const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'org', label: '조직도' }
 ]
 
-/** 앱 셸. 사이드 패널 탭 중 직원 로그는 후속 티켓에서 채우고, 지금은 자리와 빈 상태만 둔다. */
+/** 앱 셸. 사이드 패널 탭: 직원 로그(실행 이벤트), 티켓 보드, 결재함. */
 export function AppShell({ companyName }: { companyName: string }): React.JSX.Element {
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen(window.matchMedia?.('(max-width: 899px)').matches ?? false)
@@ -33,12 +35,12 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
   const panelId = useId()
   const decisions = useDecisions()
   const tickets = useTickets()
+  const runLog = useRunLog()
   const pending = pendingCount(decisions.state)
   // 새 카드가 있으면 탭에도 개수를 붙여, 다른 탭을 보고 있어도 알아차리게 한다.
   const sideTabs = SIDE_TABS.map((t) =>
     t.id === 'decisions' && pending > 0 ? { ...t, extra: <Badge tone="warn">{pending}</Badge> } : t
   )
-  const current = SIDE_TABS.find((t) => t.id === tab) ?? SIDE_TABS[0]
 
   return (
     <div className="app-shell">
@@ -85,7 +87,7 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
             ) : tab === 'tickets' ? (
               <TicketBoard {...tickets} />
             ) : (
-              <p className="empty-state">{current.empty}</p>
+              <RunLogView {...runLog} />
             )}
           </Tabs>
         </aside>
