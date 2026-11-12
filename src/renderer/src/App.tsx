@@ -1,14 +1,7 @@
-import { useState } from 'react'
-import { OnboardingWizard } from './onboarding/OnboardingWizard'
-import { AppShell } from './shell/AppShell'
+import { CompanyGate } from './company/CompanyGate'
 
 function App(): React.JSX.Element {
-  const [onboarded, setOnboarded] = useState(false)
-  return onboarded ? (
-    <AppShell companyName="My Company" />
-  ) : (
-    <OnboardingWizard onFinish={() => setOnboarded(true)} />
-  )
+  return <CompanyGate />
 }
 
 export default App
