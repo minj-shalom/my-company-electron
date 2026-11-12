@@ -62,7 +62,7 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - 쓰기는 마크다운 파일에 먼저 한 뒤 캐시를 갱신한다. 폴더 감시가 외부 변경을 반영한다.
 - **직원 파일 형식:** Claude Code 서브에이전트 형식(`name`, `description`, `tools`, `model`, 본문). 부서와 보고 라인은 `org.md`에만 둔다.
 - **회사 폴더 구조:** 개발 회사의 `company/` 구조와 같다 (`tickets/{backlog,in-progress,done}`, `decisions/{pending,done}`, `reports/`, `templates/`, `finance/`, `org.md`).
-  - 생성 결과 (`company:create`, `src/main/company/`): 루트에 `CLAUDE.md`, `.claude/agents/*.md`(기본 직원 cto, cfo, pm, developer), `company/{org.md, mission.md, schedule.md}`, `company/tickets/{backlog,in-progress,done}`, `company/decisions/{pending,done}`, `company/reports/`, `company/templates/`, `company/finance/{budget.md,usage/}`.
+  - 생성 결과 (`company:create`, `src/main/company/`): 루트에 `CLAUDE.md`, `.claude/agents/*.md`(기본 직원 cto, cfo, hr), `company/{org.md, mission.md, schedule.md}`, `company/tickets/{backlog,in-progress,done}`, `company/decisions/{pending,done}`, `company/reports/`, `company/templates/`, `company/finance/{budget.md,usage/}`.
   - 회사 폴더 표식: `CLAUDE.md`와 `company/org.md`가 모두 있으면 회사 폴더로 인식한다 (폴더 감시/캐시용).
   - 이름 규칙: 1~50자, 앞뒤 공백/`.` 시작·끝 금지, `<>:"/\|?*`와 제어 문자 금지, Windows 예약 이름 금지. 이름이 그대로 폴더 이름이다.
 - **서버 전환 대비:** 저장소 접근은 모두 Repository 인터페이스 뒤에 둔다. 지금은 파일 + SQLite 구현을 쓰고, 나중에 서버 구현으로 교체한다. 전환 설계는 별도 문서로 정리한다.
@@ -71,7 +71,7 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 ## 조직 모델
 
 - 조직(부서, 보고 라인)의 원본은 회사 폴더의 `org.md`(마크다운)다. 앱은 이를 읽어 조직도와 가상 사무실의 부서 공간을 만든다.
-- 기본 조직: CEO(사용자) → COO(메인 세션) → CTO(개발팀), CFO, 기획팀. 부서는 확장 가능하다.
+- 기본 조직: CEO(사용자) → COO(메인 세션) → CTO, CFO, 인사팀(hr). pm과 developer는 기본에 없고 인사팀(hr)을 통해 채용한다(앱의 "첫 채용"으로 바로 채용도 가능). 기획팀·개발팀은 그 직원이 들어오면 생긴다. pm이 없으면 COO가 직접 티켓을 작성한다. 부서는 확장 가능하다.
 - 실행은 COO만 배정한다. 임원급 직원은 계획·검토를 반환하고 COO가 개발팀에 배정한다 (Claude Code 서브에이전트는 다른 서브에이전트를 호출할 수 없음).
 
 ## 가상 사무실 UI (게더타운 스타일)
