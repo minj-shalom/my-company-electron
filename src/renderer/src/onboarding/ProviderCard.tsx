@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ConnectionTestResult, ProviderDetection } from '../../../shared/provider'
+import { InstallSafety } from './InstallSafety'
 import { CopyCommand } from './CopyCommand'
 import { NOT_FOUND_AFTER_INSTALL_HELP, connectionTestView, detectView } from './detection-view'
 import { OS_LABELS, type OsKind, type ProviderGuide } from './provider-guide'
@@ -70,6 +71,7 @@ export function ProviderCard({ guide, os, detection, detectionLoading }: Props):
       )}
 
       <h4>1. 설치하기 ({OS_LABELS[os]})</h4>
+      <InstallSafety commands={guide.install[os]} />
       {guide.install[os].map((c) => (
         <CopyCommand key={c.command} label={c.label} command={c.command} />
       ))}
