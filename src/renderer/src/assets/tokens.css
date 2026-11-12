@@ -101,6 +101,7 @@
   --control-height: 40px;
   --statusbar-height: 40px;
   --side-width: 360px;
+  --side-width-wide: 760px; /* 티켓 보드처럼 열이 여럿인 탭용 */
 }
 
 :root[data-theme='light'] {

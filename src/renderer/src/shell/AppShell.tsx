@@ -4,6 +4,8 @@ import { pendingCount } from '../decisions/decision-view'
 import { useDecisions } from '../decisions/use-decisions'
 import { OfficeView } from '../office/OfficeView'
 import { OrgView } from '../org/OrgView'
+import { TicketBoard } from '../tickets/TicketBoard'
+import { useTickets } from '../tickets/use-tickets'
 import { initialPanelOpen, shouldCollapsePanel } from './panel-rules'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
@@ -12,7 +14,7 @@ import { ThemeToggle } from '../ui/ThemeToggle'
 
 const SIDE_TABS: readonly (TabItem & { empty: string })[] = [
   { id: 'logs', label: '직원 로그', empty: '아직 일하는 직원이 없어요.' },
-  { id: 'tickets', label: '티켓', empty: '아직 티켓이 없어요.' },
+  { id: 'tickets', label: '티켓', empty: '' },
   { id: 'decisions', label: '결재함', empty: '' }
 ]
 
@@ -21,7 +23,7 @@ const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'org', label: '조직도' }
 ]
 
-/** 앱 셸. 사이드 패널 탭의 실제 내용은 후속 티켓에서 채우고, 여기서는 자리와 빈 상태만 둔다. */
+/** 앱 셸. 사이드 패널 탭 중 직원 로그는 후속 티켓에서 채우고, 지금은 자리와 빈 상태만 둔다. */
 export function AppShell({ companyName }: { companyName: string }): React.JSX.Element {
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen(window.matchMedia?.('(max-width: 899px)').matches ?? false)
@@ -30,6 +32,7 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
   const [view, setView] = useState(MAIN_VIEWS[0].id)
   const panelId = useId()
   const decisions = useDecisions()
+  const tickets = useTickets()
   const pending = pendingCount(decisions.state)
   // 새 카드가 있으면 탭에도 개수를 붙여, 다른 탭을 보고 있어도 알아차리게 한다.
   const sideTabs = SIDE_TABS.map((t) =>
@@ -55,7 +58,11 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
           {panelOpen ? '패널 접기' : '패널 열기'}
         </Button>
       </header>
-      <div className="shell__body" data-panel={panelOpen ? 'open' : 'closed'}>
+      <div
+        className="shell__body"
+        data-panel={panelOpen ? 'open' : 'closed'}
+        data-wide={tab === 'tickets'}
+      >
         <main className="map-area" aria-label="메인 화면">
           <Tabs
             label="화면 선택"
@@ -75,6 +82,8 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
           <Tabs label="업무 종류" tabs={sideTabs} selectedId={tab} onSelect={setTab}>
             {tab === 'decisions' ? (
               <DecisionInbox {...decisions} />
+            ) : tab === 'tickets' ? (
+              <TicketBoard {...tickets} />
             ) : (
               <p className="empty-state">{current.empty}</p>
             )}
