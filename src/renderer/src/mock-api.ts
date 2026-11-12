@@ -7,6 +7,7 @@ import {
   mockTestConnection,
   resetMockOnboarding
 } from './mock-onboarding'
+import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario } from './mock-org'
 import { mockCompany, mockDecisions, mockOrg, mockTickets } from './mock-data'
 
@@ -23,8 +24,9 @@ export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
   startRun: async () => ({ ok: false, code: 'cli-not-found', message: 'mock: runner unavailable' }),
   cancelRun: async () => false,
-  createCompany: async (req) => ({ ok: true, companyDir: `/mock/${req.name}` }),
-  selectCompanyFolder: async () => '/mock',
+  ...createMockCompanyApi(
+    parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)
+  ),
   getCompany: async () => ({ ok: true, value: structuredClone(mockCompany) }),
   listEmployees: async () => ({ ok: true, value: structuredClone(mockOrg) }),
   getOrg: (...args) =>

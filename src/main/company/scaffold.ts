@@ -1,14 +1,13 @@
 import { lstat, mkdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize, sep } from 'node:path'
 import type { CompanyCreateResult, CompanyErrorCode } from '../../shared/company'
+import { validateCompanyName } from '../../shared/company-name'
 import { COMPANY_DIRS, buildCompanyFiles } from './templates'
 
-const MAX_NAME_LENGTH = 50
+// 이름 규칙은 renderer와 공유한다 (src/shared/company-name.ts). 기존 import 경로를 유지한다.
+export { validateCompanyName }
+
 const MAX_PATH_LENGTH = 1024
-// Windows 파일명 금지 문자와 제어 문자. 두 OS 모두에서 같은 폴더가 만들어지도록 함께 막는다.
-// eslint-disable-next-line no-control-regex
-const FORBIDDEN_NAME_CHARS = /[<>:"/\\|?*\u0000-\u001f]/
-const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i
 
 class ScaffoldError extends Error {
   constructor(
@@ -17,19 +16,6 @@ class ScaffoldError extends Error {
   ) {
     super(message)
   }
-}
-
-/** 이름 규칙을 검사한다. 위반 시 이유를 돌려주고, 통과하면 null. */
-export function validateCompanyName(name: unknown): string | null {
-  if (typeof name !== 'string') return '이름은 문자열이어야 합니다.'
-  if (name.length === 0 || name.length > MAX_NAME_LENGTH)
-    return `이름은 1~${MAX_NAME_LENGTH}자여야 합니다.`
-  if (name !== name.trim()) return '이름 앞뒤에 공백을 둘 수 없습니다.'
-  if (name.startsWith('.')) return '이름은 .으로 시작할 수 없습니다.'
-  if (name.endsWith('.')) return '이름은 .으로 끝날 수 없습니다.'
-  if (FORBIDDEN_NAME_CHARS.test(name)) return '이름에 쓸 수 없는 문자가 있습니다.'
-  if (WINDOWS_RESERVED.test(name)) return '시스템 예약 이름은 쓸 수 없습니다.'
-  return null
 }
 
 /** 상위 디렉터리를 검증하고 실제(심볼릭 해소) 경로를 돌려준다. */

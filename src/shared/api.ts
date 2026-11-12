@@ -1,8 +1,12 @@
 import type {
   CompanyCreateRequest,
   CompanyCreateResult,
+  CompanyFolderPurpose,
   CompanyInfo,
-  CompanySelectFolderResult
+  CompanyOpenRequest,
+  CompanyOpenResult,
+  CompanySelectFolderResult,
+  CompanyState
 } from './company'
 import type { Decision, DecisionResolveRequest } from './decision'
 import type { OrgChart } from './employee'
@@ -28,8 +32,15 @@ export interface WindowApi {
   cancelRun: (runId: string) => Promise<boolean>
   /** 새 회사 폴더(구조 + 기본 템플릿)를 만든다. 기존 폴더는 덮어쓰지 않는다. */
   createCompany: (req: CompanyCreateRequest) => Promise<CompanyCreateResult>
-  /** 회사 폴더를 만들 위치를 main의 폴더 선택 다이얼로그로 고른다. 취소하면 null. */
-  selectCompanyFolder: () => Promise<CompanySelectFolderResult>
+  /**
+   * main의 폴더 선택 다이얼로그. 용도 기본값은 'create-location'. 취소하면 null.
+   * createCompany/openCompany는 여기서 돌려받은 경로만 받는다 (직접 입력 불가).
+   */
+  selectCompanyFolder: (purpose?: CompanyFolderPurpose) => Promise<CompanySelectFolderResult>
+  /** 기존 회사 폴더(또는 방금 만든 회사)를 연다. 표식이 없으면 거부하고 어떤 파일도 쓰지 않는다. 이미 다른 회사가 열려 있으면 `already-open`. */
+  openCompany: (req: CompanyOpenRequest) => Promise<CompanyOpenResult>
+  /** 열린 회사 상태. 앱 시작 시 마지막 회사를 자동으로 연 결과를 포함한다. */
+  getCurrentCompany: () => Promise<CompanyState>
   /**
    * 도메인 조회/쓰기. 열린 회사(main이 보관)를 대상으로 한다. 실패는 예외가 아니라 ApiResult로 돌려준다.
    * main 핸들러가 없는 환경에서는 `not-implemented`를 돌려준다.
@@ -68,6 +79,8 @@ export const IPC_CHANNELS = {
   runEvent: 'run:event',
   companyCreate: 'company:create',
   companySelectFolder: 'company:select-folder',
+  companyOpen: 'company:open',
+  companyCurrent: 'company:current',
   // 아래 채널은 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
   companyGet: 'company:get',
   employeeList: 'employee:list',
