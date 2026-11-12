@@ -116,7 +116,11 @@ function validate(input: OrgMemberInput): string | null {
     return '부서 이름 형식이 올바르지 않습니다.'
   if (!EMPLOYEE_ID.test(input.agentId)) return '직원 파일 id 형식이 올바르지 않습니다.'
   if (!isValidName(input.reportsTo)) return '보고 대상 형식이 올바르지 않습니다.'
-  if (input.role.length > MAX_ROLE || CONTROL_CHARS.test(input.role))
+  if (
+    input.role !== input.role.trim() ||
+    input.role.length > MAX_ROLE ||
+    CONTROL_CHARS.test(input.role)
+  )
     return '역할 설명 형식이 올바르지 않습니다.'
   return null
 }
@@ -198,9 +202,12 @@ async function addRowOnce(
     // (행 수 제한 초과처럼 파서가 조용히 무시하는 경우도 여기서 걸린다.)
     const after = parseOrgDocument(next, agents)
     const added = after.members[after.members.length - 1]
+    // 기존 오류를 해소하는 추가(예: 없던 보고 대상을 채움)는 허용하고, 새로 생긴 오류만 막는다.
+    const known = new Set(model.issues.map((i) => `${i.code}:${i.message}`))
+    const hasNewIssue = after.issues.some((i) => !known.has(`${i.code}:${i.message}`))
     if (
       after.members.length !== model.members.length + 1 ||
-      after.issues.length !== model.issues.length ||
+      hasNewIssue ||
       added?.title !== input.title ||
       added.agentId !== input.agentId ||
       added.department !== input.department ||

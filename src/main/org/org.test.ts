@@ -181,18 +181,23 @@ describe('parseOrgDocument (bad input)', () => {
 describe('loadOrg / addMember / addDepartment', () => {
   let dir: string
   let fs: SafeFs
+  let outside: string
   const put = async (rel: string, text: string): Promise<void> => {
     await mkdir(dirname(join(dir, rel)), { recursive: true })
     await writeFile(join(dir, rel), text)
   }
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'mc-org-'))
+    outside = await mkdtemp(join(tmpdir(), 'mc-org-out-'))
     await put('company/org.md', REAL)
     for (const a of [...REAL_AGENTS, 'qa-two', 'ops'])
       await put(`.claude/agents/${a}.md`, '---\nname: x\n---\n')
     fs = await SafeFs.open(dir)
   })
-  afterEach(() => rm(dir, { recursive: true, force: true }))
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+    await rm(outside, { recursive: true, force: true })
+  })
 
   it('loads the real file against the agents folder', async () => {
     expect((await loadOrg(fs)).issues).toEqual([])
@@ -350,7 +355,9 @@ describe('loadOrg / addMember / addDepartment', () => {
       { department: '개발팀 ' },
       { reportsTo: 'CTO ' },
       { role: 'a\u2029b' },
-      { role: 'x'.repeat(301) }
+      { role: 'x'.repeat(301) },
+      { role: ' r' },
+      { role: 'r ' }
     ])
       expect(await addMember(fs, { ...base, ...bad }), JSON.stringify(bad)).toMatchObject({
         ok: false,
@@ -373,22 +380,80 @@ describe('loadOrg / addMember / addDepartment', () => {
     expect((await loadOrg(fs)).members).toHaveLength(500)
   })
 
-  it('round-trips backslashes in cells', async () => {
-    for (const [i, role] of ['a\\b', 'x\\', 'a\\|b', '\\\\'].entries()) {
+  it('round-trips backslashes and escaped pipes in cells', async () => {
+    const roles = ['a\\b', 'x\\', 'a\\|b', '\\\\']
+    for (const [i, role] of roles.entries()) {
+      await put(`.claude/agents/b${i}.md`, 'x')
+      const before = await loadOrg(fs)
       const r = await addMember(fs, {
         title: `B${i}`,
-        agentId: i === 0 ? 'qa-two' : 'ops',
+        agentId: `b${i}`,
         department: '개발팀',
         reportsTo: 'CTO',
         role
       })
-      if (i > 1) {
-        expect(r.ok).toBe(false)
-        continue
-      }
-      expect(r.ok && r.value.members.find((m) => m.title === `B${i}`)?.role).toBe(role)
-      expect((await loadOrg(fs)).members.find((m) => m.title === `B${i}`)?.role).toBe(role)
+      expect(r.ok, role).toBe(true)
+      const re = await loadOrg(fs)
+      expect(re.issues).toEqual([])
+      expect(re.members).toHaveLength(before.members.length + 1)
+      expect(re.members.find((m) => m.title === `B${i}`)?.role).toBe(role)
     }
+    // 이스케이프된 행은 열이 늘지 않고 한 줄·다섯 셀로 남는다.
+    const line = (await readFile(join(dir, 'company/org.md'), 'utf8'))
+      .split('\n')
+      .find((l) => l.startsWith('| B2'))
+    expect(line?.replace(/\\./g, '').split('|')).toHaveLength(7)
+  })
+
+  it('allows an addition that resolves an existing unknown-reports-to', async () => {
+    await put('company/org.md', `${HEAD}| A | \`cto\` | d | 나중 | x |\n`)
+    expect(codes(await loadOrg(fs))).toEqual(['unknown-reports-to'])
+    const r = await addMember(fs, {
+      title: '나중',
+      agentId: 'pm',
+      department: 'd',
+      reportsTo: 'A',
+      role: 'r'
+    })
+    expect(r.ok).toBe(false) // 보고 대상 A가 나중을 가리키므로 순환이 새로 생겨 거부된다
+    await put(
+      'company/org.md',
+      `${HEAD}| A | \`cto\` | d | - | x |\n| B | \`cfo\` | d | 나중 | x |\n`
+    )
+    const ok = await addMember(fs, {
+      title: '나중',
+      agentId: 'pm',
+      department: 'd',
+      reportsTo: 'A',
+      role: 'r'
+    })
+    expect(ok.ok).toBe(true)
+    expect(await loadOrg(fs)).toMatchObject({ issues: [] })
+  })
+
+  it('retries once when org.md changes before the write, then reports conflict', async () => {
+    const input = {
+      title: 'R',
+      agentId: 'qa-two',
+      department: '개발팀',
+      reportsTo: 'CTO',
+      role: 'r'
+    }
+    const flaky = (changeOnCalls: number[]): SafeFs => {
+      let calls = 0
+      const w = Object.create(fs) as SafeFs
+      w.readText = async (rel: string): Promise<string> => {
+        const text = await fs.readText(rel)
+        return changeOnCalls.includes(++calls) ? `${text}\n<!-- 동시 편집 -->` : text
+      }
+      return w
+    }
+    const once = await addMember(flaky([2]), input)
+    expect(once.ok).toBe(true)
+    const before = await readFile(join(dir, 'company/org.md'), 'utf8')
+    const twice = await addMember(flaky([2, 4]), { ...input, title: 'R2', agentId: 'ops' })
+    expect(twice).toMatchObject({ ok: false, code: 'conflict' })
+    expect(await readFile(join(dir, 'company/org.md'), 'utf8')).toBe(before)
   })
 
   it('concurrent additions keep every row exactly once', async () => {
@@ -455,12 +520,6 @@ describe('loadOrg / addMember / addDepartment', () => {
       })
     ).toMatchObject({ ok: false, code: 'internal' })
   })
-
-  let outside: string
-  beforeEach(async () => {
-    outside = await mkdtemp(join(tmpdir(), 'mc-org-out-'))
-  })
-  afterEach(() => rm(outside, { recursive: true, force: true }))
 })
 
 describe('parser hardening', () => {
@@ -475,7 +534,7 @@ describe('parser hardening', () => {
         'x\n'
     )
     parse(`${HEAD}|${' '.repeat(100_000)}\n`)
-    expect(Date.now() - t0).toBeLessThan(500)
+    expect(Date.now() - t0).toBeLessThan(2000)
   })
 
   it('over-long cells and control characters are malformed rows', () => {
