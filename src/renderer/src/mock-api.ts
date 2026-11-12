@@ -18,8 +18,12 @@ const mockDecisionApi = createMockDecisionApi(
   typeof location === 'undefined' ? 0 : 400
 )
 
+// moveTicket이 상태를 바꾸므로 원본(mockTickets)은 건드리지 않고 복사본을 쓴다.
+let tickets = structuredClone(mockTickets)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
+  tickets = structuredClone(mockTickets)
   mockDecisionApi.reset()
   resetMockOnboarding()
 }
@@ -37,13 +41,22 @@ export const mockApi: WindowApi = {
     mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
   listTickets: async (status) => ({
     ok: true,
-    value: structuredClone(mockTickets.filter((t) => !status || t.status === status))
+    value: {
+      items: structuredClone(tickets.filter((t) => !status || t.status === status)),
+      unreadable: []
+    }
   }),
   getTicket: async (id) => {
-    const t = mockTickets.find((x) => x.id === id)
+    const t = tickets.find((x) => x.id === id)
     return t
       ? { ok: true, value: structuredClone(t) }
       : { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
+  },
+  moveTicket: async ({ id, to }) => {
+    const t = tickets.find((x) => x.id === id)
+    if (!t) return { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
+    t.status = to
+    return { ok: true, value: structuredClone(t) }
   },
   ...mockDecisionApi.api,
   detectProviders: mockDetectProviders,

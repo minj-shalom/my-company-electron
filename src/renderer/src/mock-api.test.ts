@@ -6,7 +6,18 @@ describe('mockApi', () => {
 
   it('filters tickets by status', async () => {
     const r = await mockApi.listTickets('backlog')
-    expect(r.ok && r.value.length > 0 && r.value.every((t) => t.status === 'backlog')).toBe(true)
+    expect(
+      r.ok && r.value.items.length > 0 && r.value.items.every((t) => t.status === 'backlog')
+    ).toBe(true)
+  })
+
+  it('moves a ticket and restores it on reset', async () => {
+    expect(await mockApi.moveTicket({ id: 'T-003', to: 'done' })).toMatchObject({
+      ok: true,
+      value: { status: 'done' }
+    })
+    resetMockApi()
+    expect(await mockApi.getTicket('T-003')).toMatchObject({ value: { status: 'backlog' } })
   })
 
   it('returns not-found for unknown ticket', async () => {
