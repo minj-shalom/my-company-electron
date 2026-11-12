@@ -9,6 +9,8 @@ import type { Ticket, TicketStatus } from '../../shared/ticket'
 export interface LoadIssue {
   path: string
   message: string
+  /** 결정 카드 목록처럼 renderer에 분류만 알려야 할 때 쓴다. 없으면 `unreadable`로 본다. */
+  reason?: 'unreadable' | 'duplicate' | 'too-large'
 }
 
 /** 목록 조회 결과. 정상 항목과 오류 항목을 함께 돌려준다. */

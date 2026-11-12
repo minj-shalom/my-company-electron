@@ -15,6 +15,7 @@ import {
   TICKET_ID
 } from './ids'
 import { splitFrontmatter } from './markdown'
+import { normalizeMemo } from './decision-memo'
 import { DECISION_DIRS, parseDecision, withDecisionResolved } from './parse-decision'
 import { AGENTS_DIR, ORG_FILE, buildOrg, parseAgentFile, parseOrgRows } from './parse-org'
 import { parseReport } from './parse-report'
@@ -200,23 +201,41 @@ export class FileCompanyRepository implements CompanyRepository {
 
   async listDecisions(status?: Decision['status']): Promise<Listing<Decision>> {
     const issues: LoadIssue[] = []
-    const items: Decision[] = []
-    for (const st of status ? [status] : DECISION_STATUSES) {
-      if (!DECISION_STATUSES.includes(st)) continue
+    const found: Array<{ item: Decision; path: string }> = []
+    // 중복 판정을 위해 필터와 무관하게 양쪽 폴더를 모두 읽고, 마지막에 상태로 거른다.
+    for (const st of DECISION_STATUSES) {
       const dir = DECISION_DIRS[st]
       const { files, skipped } = await this.scan(dir, issues)
       for (const s of skipped)
-        issues.push({ path: relPath(dir, s), message: '일반 파일이 아니어서 건너뜀' })
+        issues.push({
+          path: relPath(dir, s),
+          message: '일반 파일이 아니어서 건너뜀',
+          reason: 'unreadable'
+        })
       for (const f of files) {
         const path = relPath(dir, f)
         try {
-          items.push(parseDecision(f, await this.fs.readText(path), st))
+          found.push({ item: parseDecision(f, await this.fs.readText(path), st), path })
         } catch (e) {
-          issues.push({ path, message: issueMessage(e) })
+          issues.push({ path, message: issueMessage(e), reason: reasonOf(e) })
         }
       }
     }
-    items.sort((a, b) => numOf(a.id) - numOf(b.id))
+    // 앱이 resolve 도중 종료되면 같은 카드가 양쪽에 남을 수 있다. 결정이 기록된 done을 우선하고 나머지는 숨긴다.
+    const rank = (d: Decision): number => (d.status === 'done' ? 0 : 1)
+    const ordered = [...found].sort(
+      (a, b) => numOf(a.item.id) - numOf(b.item.id) || rank(a.item) - rank(b.item)
+    )
+    const items: Decision[] = []
+    let lastId = ''
+    for (const { item, path } of ordered) {
+      if (item.id === lastId) {
+        issues.push({ path, message: '같은 id의 카드가 이미 있어 숨김', reason: 'duplicate' })
+        continue
+      }
+      lastId = item.id
+      if (!status || item.status === status) items.push(item)
+    }
     return { items, issues }
   }
 
@@ -243,25 +262,31 @@ export class FileCompanyRepository implements CompanyRepository {
     if (typeof id !== 'string' || !DECISION_ID.test(id))
       return fail('invalid-request', '잘못된 결정 id입니다.')
     if (typeof choice !== 'string') return fail('invalid-request', '잘못된 선택입니다.')
-    if (
-      memo !== undefined &&
-      (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH || memo.includes('\0'))
-    )
+    if (typeof memo !== 'undefined' && (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH))
       return fail('invalid-request', `메모는 ${MAX_MEMO_LENGTH}자 이하여야 합니다.`)
+    // 줄바꿈 변형을 통일하고 제어문자는 거부한다. 단독 CR, NEL 등으로 카드 줄 구조를 위조하지 못하게 한다.
+    const cleanMemo = normalizeMemo(memo ?? '')
+    if (cleanMemo === null) return fail('invalid-request', '메모에 쓸 수 없는 문자가 있습니다.')
+    const matchId = (n: string): boolean => n.startsWith(`${id}-`) || n === `${id}.md`
     try {
-      const file = await this.findFile(
-        Object.values(DECISION_DIRS),
-        (n) => n.startsWith(`${id}-`) || n === `${id}.md`
-      )
-      if (!file) return fail('not-found', '결정 카드를 찾을 수 없습니다.')
-      if (!file.path.startsWith(DECISION_DIRS.pending))
+      const done = await this.findFile([DECISION_DIRS.done], matchId)
+      const pending = await this.findFile([DECISION_DIRS.pending], matchId)
+      if (done) {
+        // 이전 resolve가 done 쓰기 후 pending 삭제 전에 끊긴 상태다. done에 결정이 기록되어 있으면 남은 pending을
+        // 정리해 영구 충돌을 풀되, 새 선택은 적용하지 않는다 (먼저 기록된 결정이 우선).
+        if (pending && pending.name === done.name) {
+          const recorded = parseDecision(done.name, await this.fs.readText(done.path), 'done')
+          if (recorded.chosen !== null) await this.fs.remove(pending.path).catch(() => undefined)
+        }
         return fail('conflict', '이미 처리된 결정입니다.')
-      const text = await this.fs.readText(file.path)
-      const card = parseDecision(file.name, text, 'pending')
+      }
+      if (!pending) return fail('not-found', '결정 카드를 찾을 수 없습니다.')
+      const text = await this.fs.readText(pending.path)
+      const card = parseDecision(pending.name, text, 'pending')
       if (!card.options.some((o) => o.key === choice))
         return fail('invalid-request', '카드에 없는 선택지입니다.')
-      const target = relPath(DECISION_DIRS.done, file.name)
-      await this.relocate(file.path, target, withDecisionResolved(text, choice, memo ?? ''))
+      const target = relPath(DECISION_DIRS.done, pending.name)
+      await this.relocate(pending.path, target, withDecisionResolved(text, choice, cleanMemo))
     } catch (e) {
       return toFailure(e)
     }
@@ -321,7 +346,7 @@ export class FileCompanyRepository implements CompanyRepository {
     try {
       return await this.fs.listMarkdown(dir)
     } catch (e) {
-      issues.push({ path: dir, message: issueMessage(e) })
+      issues.push({ path: dir, message: issueMessage(e), reason: reasonOf(e) })
       return { files: [], skipped: [] }
     }
   }
@@ -362,6 +387,10 @@ export class FileCompanyRepository implements CompanyRepository {
     }
     return null
   }
+}
+
+function reasonOf(e: unknown): 'unreadable' | 'too-large' {
+  return e instanceof FsGuardError && e.kind === 'too-large' ? 'too-large' : 'unreadable'
 }
 
 function numOf(id: string): number {
