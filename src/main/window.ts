@@ -30,9 +30,12 @@ export function createMainWindow(): BrowserWindow {
     if (isAllowedExternalUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  win.webContents.on('will-navigate', (event, url) => {
+  const guardNavigation = (event: { preventDefault: () => void }, url: string): void => {
     if (!isAllowedAppUrl(url, DEV_URL)) event.preventDefault()
-  })
+  }
+  win.webContents.on('will-navigate', guardNavigation)
+  // 서버 리다이렉트로도 허용 범위를 벗어나지 못하게 같은 규칙을 건다.
+  win.webContents.on('will-redirect', guardNavigation)
 
   if (DEV_URL) {
     void win.loadURL(DEV_URL)

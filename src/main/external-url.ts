@@ -1,15 +1,11 @@
 /** 시스템 브라우저로 넘겨도 되는 호스트 (정확히 일치). 새 링크가 필요하면 여기에 추가하고 리뷰한다. */
 export const EXTERNAL_HOST_ALLOWLIST: readonly string[] = [
-  'claude.ai',
-  'claude.com',
-  'docs.claude.com',
+  // 온보딩 안내 링크(provider-guide)가 실제로 쓰는 호스트만 둔다.
   'code.claude.com',
-  'anthropic.com',
-  'docs.anthropic.com',
   'github.com'
 ]
 
-/** https이고 허용 목록 호스트이며 자격 증명(user:pass@)이 없는 URL만 허용한다. */
+/** https, 기본 포트, 허용 목록 호스트(punycode로 정규화된 ASCII), 자격 증명 없음인 URL만 허용한다. */
 export function isAllowedExternalUrl(raw: string): boolean {
   let url: URL
   try {
@@ -19,6 +15,7 @@ export function isAllowedExternalUrl(raw: string): boolean {
   }
   return (
     url.protocol === 'https:' &&
+    url.port === '' &&
     url.username === '' &&
     url.password === '' &&
     EXTERNAL_HOST_ALLOWLIST.includes(url.hostname)

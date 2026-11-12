@@ -3,15 +3,19 @@ import { isAllowedAppUrl, isAllowedExternalUrl } from './external-url'
 
 describe('isAllowedExternalUrl', () => {
   it('allows https on allowlisted hosts only', () => {
-    expect(isAllowedExternalUrl('https://docs.claude.com/en/docs/claude-code')).toBe(true)
+    expect(isAllowedExternalUrl('https://code.claude.com/docs/en/setup')).toBe(true)
     expect(isAllowedExternalUrl('https://github.com/x/y')).toBe(true)
   })
   it.each([
-    'http://claude.com/',
+    'http://github.com/',
+    'https://claude.com/',
+    'https://github.com:444/x',
+    'https://xn--clude-9ua.com/',
+    'https://clаude.com/',
     'https://evil.com/',
-    'https://claude.com.evil.com/',
-    'https://evil.com/claude.com',
-    'https://user:pw@claude.com/',
+    'https://github.com.evil.com/',
+    'https://evil.com/github.com',
+    'https://user:pw@github.com/',
     'https://sub.github.com/',
     'file:///etc/passwd',
     'javascript:alert(1)',
