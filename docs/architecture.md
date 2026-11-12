@@ -53,6 +53,9 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - 쓰기는 마크다운 파일에 먼저 한 뒤 캐시를 갱신한다. 폴더 감시가 외부 변경을 반영한다.
 - **직원 파일 형식:** Claude Code 서브에이전트 형식(`name`, `description`, `tools`, `model`, 본문). 부서와 보고 라인은 `org.md`에만 둔다.
 - **회사 폴더 구조:** 개발 회사의 `company/` 구조와 같다 (`tickets/{backlog,in-progress,done}`, `decisions/{pending,done}`, `reports/`, `templates/`, `finance/`, `org.md`).
+  - 생성 결과 (`company:create`, `src/main/company/`): 루트에 `CLAUDE.md`, `.claude/agents/*.md`(기본 직원 cto, cfo, pm, developer), `company/{org.md, mission.md, schedule.md}`, `company/tickets/{backlog,in-progress,done}`, `company/decisions/{pending,done}`, `company/reports/`, `company/templates/`, `company/finance/{budget.md,usage/}`.
+  - 회사 폴더 표식: `CLAUDE.md`와 `company/org.md`가 모두 있으면 회사 폴더로 인식한다 (폴더 감시/캐시용).
+  - 이름 규칙: 1~50자, 앞뒤 공백/`.` 시작·끝 금지, `<>:"/\|?*`와 제어 문자 금지, Windows 예약 이름 금지. 이름이 그대로 폴더 이름이다.
 - **서버 전환 대비:** 저장소 접근은 모두 Repository 인터페이스 뒤에 둔다. 지금은 파일 + SQLite 구현을 쓰고, 나중에 서버 구현으로 교체한다. 전환 설계는 별도 문서로 정리한다.
 - TODO: SQLite 스키마와 재생성(rebuild) 절차 상세
 
@@ -92,7 +95,8 @@ my-company-electron/
   assets/        # 아이콘 등 (icon.svg)
   docs/          # 제품 문서
 ```
-- TODO: T-001에서 electron-vite 템플릿 생성 후 실제 구조로 갱신
+- `src/main/company/`: 회사 폴더 생성 (`scaffold.ts` 검증·생성, `templates.ts` 기본 마크다운). IPC는 `src/main/company-ipc.ts`.
+- TODO: 나머지 모듈(스케줄러, 폴더 감시, Repository)이 추가되면 구조를 갱신
 
 ## 패키징과 배포
 - electron-builder, better-sqlite3 네이티브 rebuild (macOS, Windows 각각).
