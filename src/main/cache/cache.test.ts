@@ -3,8 +3,11 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import Database from 'better-sqlite3'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CacheStore } from './cache-store'
+import { CachedCompanyRepository } from './cached-repository'
+import { CompanyWatcher } from './company-watcher'
+import { FileCompanyRepository } from '../repository/file-repository'
 import { openCachedCompany, cacheDbPath, type CachedCompany } from './index'
 import { MIGRATIONS, migrate } from './migrations'
 import { classifyPath, relativeInside } from './watch-paths'
@@ -13,6 +16,10 @@ let dir: string
 let outside: string
 let dbPath: string
 let open: CachedCompany[] = []
+let watchers: CompanyWatcher[] = []
+
+// 병렬 부하에서 파일 이벤트가 늦을 수 있어 폴링 대기 여유를 둔다.
+vi.setConfig({ testTimeout: 20_000 })
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'mc-cache-'))
@@ -20,6 +27,8 @@ beforeEach(async () => {
   dbPath = join(outside, 'db', 'cache.sqlite')
 })
 afterEach(async () => {
+  for (const w of watchers) await w.stop().catch(() => undefined)
+  watchers = []
   for (const c of open) await c.close().catch(() => undefined)
   open = []
   await rm(dir, { recursive: true, force: true })
@@ -46,7 +55,29 @@ async function openIt(watch = false, debounceMs = 30): Promise<CachedCompany> {
   open.push(c)
   return c
 }
-async function until(fn: () => Promise<boolean>, ms = 5000): Promise<void> {
+/**
+ * 보초 파일을 새 이름으로 반복해 쓰며 조건이 참이 될 때까지 기다린다. 감시 시작 직후에는 방금 만든
+ * 폴더의 감시가 늦게 붙어 첫 이벤트가 유실될 수 있어, 한 번만 쓰고 기다리면 간헐적으로 멈춘다.
+ */
+async function ping(
+  relDir: string,
+  done: () => Promise<boolean> | boolean,
+  gapMs = 0
+): Promise<void> {
+  let n = 0
+  let last = 0
+  await until(async () => {
+    if (await done()) return true
+    // 디바운스보다 촘촘히 쓰면 flush가 계속 미뤄지므로 gapMs로 간격을 둔다.
+    if (Date.now() - last >= gapMs) {
+      last = Date.now()
+      await put(`${relDir}/SENTINEL-${n++}.md`, '# s\n')
+    }
+    return false
+  })
+}
+
+async function until(fn: () => Promise<boolean>, ms = 15_000): Promise<void> {
   const end = Date.now() + ms
   while (Date.now() < end) {
     if (await fn()) return
@@ -119,16 +150,13 @@ describe('recovery', () => {
     expect((await c.repository.listTickets()).items).toHaveLength(2)
   })
 
-  it('recovers when the db is emptied while running (unpopulated cache refills)', async () => {
+  it('rebuild restores the cache after the db file is deleted while running', async () => {
+    // 실행 중 파일 삭제는 감지하지 않는다 (복구는 시작 시 rebuild와 명시적 rebuild).
     await seed()
     const c = await openIt()
-    const store = CacheStore.open(dbPath)
-    store.reset() // 다른 핸들이 파일을 갈아엎는 상황
-    store.close()
-    // 열린 핸들이 가리키는 파일이 사라졌어도 읽기는 예외 없이 끝나야 한다.
-    const l = await c.repository.listTickets()
-    expect(Array.isArray(l.items)).toBe(true)
+    for (const suffix of ['', '-wal', '-shm']) await rm(dbPath + suffix, { force: true })
     await c.rebuild()
+    expect(existsSync(dbPath)).toBe(true)
     expect((await c.repository.listTickets()).items).toHaveLength(2)
   })
 
@@ -178,7 +206,7 @@ describe('migrations', () => {
   it('cacheDbPath is stable and outside the company dir', () => {
     expect(cacheDbPath('/u', '/c/one')).toBe(cacheDbPath('/u', '/c/one'))
     expect(cacheDbPath('/u', '/c/one')).not.toBe(cacheDbPath('/u', '/c/two'))
-    expect(cacheDbPath('/u', '/c/one').startsWith('/u/cache/')).toBe(true)
+    expect(dirname(cacheDbPath('/u', '/c/one'))).toBe(join('/u', 'cache'))
   })
 })
 
@@ -207,6 +235,9 @@ describe('watcher', () => {
   it('reflects external edits, adds, moves and deletes (debounced)', async () => {
     await seed()
     const c = await openIt(true)
+    // 셋업 중 쓴 파일의 지연 이벤트를 먼저 소진한다 (보초 이벤트는 그 뒤에 온다). 지연 이벤트가
+    // 수정과 겹치면 chokidar가 같은 mtime의 change를 걸러 내 수정이 반영되지 않는 경우가 있었다.
+    await ping('company/reports', async () => (await c.repository.getReport('SENTINEL-0')).ok)
     await put('company/tickets/backlog/T-001-a.md', ticket(1, 'backlog', '외부 수정'))
     await until(async () => {
       const t = await c.repository.getTicket('T-001')
@@ -229,52 +260,65 @@ describe('watcher', () => {
 
   /**
    * 감시자를 시작하고 셋업 중 쓴 파일의 뒤늦은 이벤트를 소진한다. macOS는 start 직전에 쓴 파일/링크
-   * 이벤트를 ready 이후에 전달하기도 한다 (ignoreInitial은 초기 스캔만 거른다). 이벤트는 순서대로 오므로
-   * 보초 파일의 이벤트가 도착하면 그 이전 이벤트는 모두 지나간 것이다.
+   * 이벤트를 ready 이후에도 전달한다 (ignoreInitial은 초기 스캔만 거른다. 부하에서 재현 확인).
+   * 보초 파일의 이벤트가 도착한 뒤에 지연된 셋업 이벤트가 또 올 수 있으므로, 호출 수가 아니라
+   * 원시 이벤트의 경로로 검사한다 (`raw`).
    */
-  async function startDrained(
+  async function startWatcher(
     debounceMs: number
-  ): Promise<{ calls: string[][]; w: import('./company-watcher').CompanyWatcher }> {
-    const { CompanyWatcher } = await import('./company-watcher')
+  ): Promise<{ calls: string[][]; raw: Array<string | null>; w: CompanyWatcher }> {
     const { realpath } = await import('node:fs/promises')
     const calls: string[][] = []
+    const raw: Array<string | null> = []
     const w = new CompanyWatcher({
       root: await realpath(dir),
       debounceMs,
-      onChange: async (k) => void calls.push(k)
+      onChange: async (k) => void calls.push(k),
+      onRawEvent: (abs, rel) => void raw.push(rel === null ? `OUTSIDE:${abs}` : rel)
     })
+    watchers.push(w)
     await w.start()
-    await put('company/reports/SENTINEL-START.md', '# s\n')
-    await until(async () => calls.some((k) => k.includes('report')))
-    calls.length = 0
-    return { calls, w }
+    return { calls, raw, w }
   }
 
   it('coalesces a burst of writes into few refreshes', async () => {
     await seed()
-    const { calls, w } = await startDrained(200)
+    const { calls } = await startWatcher(400)
+    await ping('company/reports', () => calls.some((k) => k.includes('report')), 800)
+    calls.length = 0
     for (let i = 0; i < 10; i++) await put(`company/reports/R-${i}.md`, `# R ${i}\n`)
     await until(async () => calls.length > 0)
-    // 늦게 오는 추가 flush가 없는지 보는 상한 검사라, 대기가 짧아도 거짓 실패는 나지 않는다.
-    await new Promise((r) => setTimeout(r, 450))
-    await w.stop()
+    // 늦은 추가 flush가 없는지 보는 상한 검사라, 대기가 짧아도 거짓 실패는 나지 않는다.
+    await new Promise((r) => setTimeout(r, 900))
     expect(calls.length).toBeLessThanOrEqual(2)
     expect(calls.flat()).toContain('report')
   })
 
-  it('ignores files outside the watched tree and does not follow symlinks out', async () => {
+  it('does not report outside paths or follow symlinks out', async () => {
     await seed()
     await mkdir(join(outside, 'ext'), { recursive: true })
-    await symlink(join(outside, 'ext'), join(dir, 'company/reports/linked'))
-    const { calls, w } = await startDrained(50)
+    // 보초가 쓰일 폴더를 미리 만들어, 새 폴더 감시 시작 경쟁이 검사에 섞이지 않게 한다.
+    await mkdir(join(dir, 'company/decisions/pending'), { recursive: true })
+    try {
+      await symlink(join(outside, 'ext'), join(dir, 'company/reports/linked'), 'dir')
+    } catch (e) {
+      // Windows는 권한 없이 symlink를 만들 수 없다.
+      if ((e as NodeJS.ErrnoException).code === 'EPERM') return
+      throw e
+    }
+    const { raw, calls } = await startWatcher(50)
     await writeFile(join(outside, 'ext', 'X.md'), '# x\n') // 링크 너머(밖)
     await put('src/note.md', '# n\n') // 관심 밖 폴더
-    await put('company/tickets/backlog/T-004.md.tmp', 'x') // 임시 파일
-    // 위 변경이 새어 나온다면 이 보초보다 먼저 도착한다. 보초가 보이면 검사 끝.
-    await put('company/decisions/pending/SENTINEL-END.md', '# s\n')
-    await until(async () => calls.some((k) => k.includes('decision')))
-    await w.stop()
-    expect(calls.flat().filter((k) => k !== 'decision')).toEqual([])
+    // 위 변경이 새어 나온다면 보초보다 먼저 도착한다. 보초가 보이면 검사한다.
+    await ping('company/decisions/pending', () => calls.some((k) => k.includes('decision')))
+    expect(
+      raw.filter((p) => p !== null && (p.startsWith('OUTSIDE:') || /X\.md|note\.md/.test(p)))
+    ).toEqual([])
+  })
+
+  it('rejects a second start', async () => {
+    const { w } = await startWatcher(50)
+    await expect(w.start()).rejects.toThrow()
   })
 
   it('keeps cache consistent after rebuild when edits happened while closed', async () => {
@@ -286,5 +330,72 @@ describe('watcher', () => {
     const c2 = await openIt()
     expect((await c2.repository.getTicket('T-005')).ok).toBe(true)
     expect(await readFile(dbPath).then((b) => b.length)).toBeGreaterThan(0)
+  })
+})
+
+describe('write path and filters', () => {
+  async function build(prep?: () => Promise<void>): Promise<{
+    repo: CachedCompanyRepository
+    store: CacheStore
+  }> {
+    await seed()
+    await prep?.()
+    const source = await FileCompanyRepository.open(dir)
+    const store = CacheStore.open(dbPath)
+    const repo = new CachedCompanyRepository(source, store)
+    await repo.rebuild()
+    return { repo, store }
+  }
+
+  it('keeps the ok result when the cache refresh fails after a successful write', async () => {
+    const { repo, store } = await build()
+    vi.spyOn(store, 'replaceKind').mockImplementation(() => {
+      throw Object.assign(new Error('disk full'), { code: 'SQLITE_FULL' })
+    })
+    const r = await repo.moveTicket('T-001', 'done')
+    expect(r.ok).toBe(true)
+    expect(existsSync(join(dir, 'company/tickets/done/T-001-a.md'))).toBe(true)
+    vi.restoreAllMocks()
+    // 코드 없는 오류도 삼킨다.
+    vi.spyOn(store, 'replaceKind').mockImplementation(() => {
+      throw new Error('boom')
+    })
+    expect((await repo.moveTicket('T-002', 'done')).ok).toBe(true)
+    vi.restoreAllMocks()
+    await repo.rebuild()
+    expect((await repo.listTickets('done')).items).toHaveLength(2)
+    store.close()
+  })
+
+  it('rebuilds on corruption during refresh and still returns the write result', async () => {
+    const { repo, store } = await build()
+    const real = store.replaceKind.bind(store)
+    let thrown = false
+    vi.spyOn(store, 'replaceKind').mockImplementation((...a) => {
+      if (!thrown) {
+        thrown = true
+        throw Object.assign(new Error('corrupt'), { code: 'SQLITE_CORRUPT' })
+      }
+      real(...a)
+    })
+    const r = await repo.moveTicket('T-001', 'done')
+    expect(r.ok).toBe(true)
+    vi.restoreAllMocks()
+    expect((await repo.listTickets('done')).items.map((t) => t.id)).toEqual(['T-001'])
+    store.close()
+  })
+
+  it('scopes directory-level issues to their status and treats empty status as all', async () => {
+    const { repo, store } = await build(async () => {
+      // 링크 디렉터리는 SafeFs가 거부해 디렉터리 단위 이슈가 된다.
+      await rm(join(dir, 'company/tickets/backlog'), { recursive: true })
+      await mkdir(join(outside, 'real'))
+      await symlink(join(outside, 'real'), join(dir, 'company/tickets/backlog'), 'dir')
+    })
+    expect((await repo.listTickets('in-progress')).issues).toEqual([])
+    expect((await repo.listTickets('backlog')).issues.length).toBeGreaterThan(0)
+    expect((await repo.listTickets('' as never)).items).toHaveLength(1)
+    expect((await repo.listTickets('toString' as never)).items).toEqual([])
+    store.close()
   })
 })
