@@ -84,7 +84,7 @@ const list = async (
 ): Promise<Decision[]> => {
   const r = await h.listDecisions(s)
   if (!r.ok) throw new Error(r.code)
-  return r.value
+  return r.value.items
 }
 
 describe('decision:list', () => {
@@ -296,7 +296,7 @@ describe('decision:resolve', () => {
     expect(await readdir(join(dir, 'company/decisions/pending'))).toEqual([])
   })
 
-  it('treats a card moved by another process as a conflict, not an internal error', async () => {
+  it('refuses to overwrite a different done card with the same name (name collision)', async () => {
     await put('company/decisions/pending/D-020-t.md', card())
     await put('company/decisions/done/D-020-t.md', card().replace('pending', 'done'))
     // 이름 충돌: done에 내용이 다른 같은 이름 카드가 이미 있다. 덮어쓰지 않는다.
