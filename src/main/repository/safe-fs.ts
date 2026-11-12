@@ -1,4 +1,5 @@
-import { lstat, mkdir, open, readFile, readdir, realpath, rename, unlink } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { link, lstat, mkdir, open, readdir, realpath, rename, unlink } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 
@@ -59,20 +60,29 @@ export class SafeFs {
     }
   }
 
-  /** 일반 파일만 읽는다. 크기 제한 초과, 디렉터리, 특수 파일은 거부한다. */
+  /**
+   * 일반 파일만 읽는다. O_NOFOLLOW로 열고 열린 핸들(fh.stat)로 종류와 크기를 확인해
+   * lstat과 open 사이의 바꿔치기(TOCTOU)를 막는다.
+   */
   async readText(rel: string): Promise<string> {
     const abs = await this.resolve(rel)
-    let st
+    let fh
     try {
-      st = await lstat(abs)
+      fh = await open(abs, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT')
-        throw new FsGuardError('missing', '파일이 없습니다.')
+      const code = (e as NodeJS.ErrnoException).code
+      if (code === 'ENOENT') throw new FsGuardError('missing', '파일이 없습니다.')
+      if (code === 'ELOOP') throw new FsGuardError('symlink', '심볼릭 링크는 허용하지 않습니다.')
       throw e
     }
-    if (!st.isFile()) throw new FsGuardError('not-file', '일반 파일이 아닙니다.')
-    if (st.size > MAX_FILE_BYTES) throw new FsGuardError('too-large', '파일이 너무 큽니다.')
-    return readFile(abs, 'utf8')
+    try {
+      const st = await fh.stat()
+      if (!st.isFile()) throw new FsGuardError('not-file', '일반 파일이 아닙니다.')
+      if (st.size > MAX_FILE_BYTES) throw new FsGuardError('too-large', '파일이 너무 큽니다.')
+      return await fh.readFile('utf8')
+    } finally {
+      await fh.close()
+    }
   }
 
   /** `.md` 일반 파일 이름만 돌려준다. 심볼릭 링크 등은 `skipped`로 따로 알린다. 디렉터리가 없으면 빈 결과. */
@@ -101,27 +111,36 @@ export class SafeFs {
   }
 
   /**
-   * 임시 파일에 쓴 뒤 rename으로 교체한다 (쓰다 만 파일을 남기지 않는다).
-   * `overwrite: false`면 이미 있을 때 exists 오류.
+   * 임시 파일에 쓴 뒤 교체한다 (쓰다 만 파일을 남기지 않는다).
+   * `overwrite: false`는 hard link(EEXIST)로 원자적 no-clobber를 보장한다 (CLI 에이전트와 동시 쓰기 대비).
    */
   async writeText(rel: string, content: string, overwrite = true): Promise<void> {
     const abs = await this.resolve(rel)
-    if (!overwrite && (await this.exists(rel))) throw new FsGuardError('exists', '이미 있습니다.')
     await mkdir(dirname(abs), { recursive: true })
     // mkdir 이후 상위 구간이 링크로 바뀌지 않았는지 다시 확인한다.
     await this.resolve(rel)
     const tmp = `${abs}.${randomBytes(6).toString('hex')}.tmp`
-    const fh = await open(tmp, 'wx')
     try {
-      await fh.writeFile(content, 'utf8')
+      const fh = await open(tmp, 'wx')
+      try {
+        await fh.writeFile(content, 'utf8')
+      } finally {
+        await fh.close()
+      }
+      if (overwrite) {
+        await rename(tmp, abs)
+      } else {
+        try {
+          await link(tmp, abs)
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code === 'EEXIST')
+            throw new FsGuardError('exists', '이미 있습니다.')
+          throw e
+        }
+      }
     } finally {
-      await fh.close()
-    }
-    try {
-      await rename(tmp, abs)
-    } catch (e) {
+      // rename 성공 시 tmp는 이미 없다. 그 외 모든 경로에서 잔여물을 정리한다.
       await unlink(tmp).catch(() => undefined)
-      throw e
     }
   }
 
