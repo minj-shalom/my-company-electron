@@ -22,7 +22,7 @@
   border: var(--bw) solid var(--border);
 }
 .hire-card[data-exists='true'] {
-  opacity: 0.8;
+  background: var(--bg-panel);
 }
 .hire-card__label {
   display: flex;
@@ -107,4 +107,7 @@
     border-right: 0;
     border-bottom: var(--bw) solid var(--border);
   }
+}
+.hire-banner__done:focus {
+  outline: none;
 }

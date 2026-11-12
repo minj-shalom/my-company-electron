@@ -25,7 +25,9 @@ export function OrgView({ onFirstHire }: { onFirstHire?: () => void }): React.JS
   return (
     <section className="org" aria-labelledby="org-heading">
       <div className="org__head">
-        <h2 id="org-heading">조직도</h2>
+        <h2 id="org-heading" tabIndex={-1}>
+          조직도
+        </h2>
         <Button size="small" aria-disabled={loading} onClick={() => !loading && refresh()}>
           다시 불러오기
         </Button>

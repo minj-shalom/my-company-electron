@@ -35,7 +35,9 @@ export function OfficeView({ onFirstHire }: { onFirstHire?: () => void }): React
   return (
     <section className="office" aria-labelledby="office-heading">
       <div className="office__head">
-        <h2 id="office-heading">사무실 맵</h2>
+        <h2 id="office-heading" tabIndex={-1}>
+          사무실 맵
+        </h2>
         <Button size="small" aria-disabled={loading} onClick={() => !loading && refresh()}>
           다시 불러오기
         </Button>

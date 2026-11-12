@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { DecisionInbox } from '../decisions/DecisionInbox'
 import { pendingCount } from '../decisions/decision-view'
 import { useDecisions } from '../decisions/use-decisions'
@@ -36,6 +36,20 @@ export function AppShell({
   initialFirstHire?: boolean
 }): React.JSX.Element {
   const [hiring, setHiring] = useState(initialFirstHire)
+  const returnFocus = useRef(false)
+  const closeHiring = (): void => {
+    setHiring(false)
+    returnFocus.current = true
+  }
+  // 채용 화면을 닫으면 열었던 CTA(없으면 화면 제목)로 포커스를 돌려 키보드 위치를 잃지 않게 한다.
+  useEffect(() => {
+    if (!hiring && returnFocus.current) {
+      returnFocus.current = false
+      document
+        .querySelector<HTMLElement>('[data-first-hire-cta], #office-heading, #org-heading')
+        ?.focus()
+    }
+  }, [hiring])
   // 채용 화면을 닫으면 사무실·조직도가 다시 마운트되어 새 조직을 읽는다.
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen(window.matchMedia?.('(max-width: 899px)').matches ?? false)
@@ -84,11 +98,12 @@ export function AppShell({
               const narrow = window.matchMedia?.('(max-width: 899px)').matches ?? false
               // 좁은 화면에서는 하단 시트가 조직도를 가리므로 접는다 (버튼으로 다시 열 수 있다).
               if (shouldCollapsePanel(view, id, narrow)) setPanelOpen(false)
+              setHiring(false)
               setView(id)
             }}
           >
             {hiring ? (
-              <FirstHireScreen onClose={() => setHiring(false)} />
+              <FirstHireScreen onClose={closeHiring} />
             ) : view === 'org' ? (
               <OrgView onFirstHire={() => setHiring(true)} />
             ) : (

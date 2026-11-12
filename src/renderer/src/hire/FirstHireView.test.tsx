@@ -43,6 +43,7 @@ describe('FirstHireView', () => {
     expect(html.indexOf('인사팀에 요청')).toBeLessThan(html.indexOf('바로 채용'))
     expect(html.indexOf('PM 설명')).toBeLessThan(html.indexOf('개발 설명'))
     expect(html).toMatch(/aria-disabled="true"[^>]*aria-describedby="([^"]+)"[^>]*>인사팀에 요청/)
+    expect(html).not.toMatch(/btn btn--primary"[^>]*>인사팀에 요청/)
     expect(html).toContain('준비 중')
     expect(html).toContain('프로젝트를 열려면 PM이 필요해요')
     expect(html).toContain('필요 없을 수도 있어요')
@@ -62,7 +63,9 @@ describe('FirstHireView', () => {
     expect(render({ selected: new Set() })).toContain('하나 이상 골라')
     const busy = render({ phase: { kind: 'busy' } })
     expect(busy).toContain('채용하는 중')
-    expect(busy).toContain('disabled=""')
+    // 처리 중에도 체크박스는 포커스를 유지하도록 disabled 대신 aria-disabled를 쓴다.
+    expect(busy).toContain('aria-disabled="true"')
+    expect(busy).not.toMatch(/<input[^>]*disabled=""/)
   })
   it('shows existing roles as already hired and disabled', () => {
     const html = render({ load: ready({ cards: cards([true, false]) }) })

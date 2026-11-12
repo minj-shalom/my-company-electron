@@ -6,6 +6,7 @@ import {
 } from '../../../shared/company-hire'
 import type { EmployeeCreateRequest } from '../../../shared/employee-change'
 import type { OrgSnapshot } from '../../../shared/org'
+import { runExclusive } from '../lib/refresh'
 import type { ApiResult, DomainErrorCode } from '../../../shared/result'
 
 /** 템플릿 목록에서 설명을 못 받았을 때 쓰는 문구. 직원 이름과 역할은 항상 이 표를 기준으로 보여 준다. */
@@ -44,10 +45,18 @@ export type FirstHireLoad =
 
 const LOAD_ERROR = '추천 직원 정보를 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.'
 
-/** 직원 파일 id로 이미 있는지 본다. 직급 표기는 회사마다 달라서 id(agentId)로만 판단한다. */
+/** main의 normalizeTitle(employee-service)과 같은 규칙: 앞뒤 공백 제거 + 소문자. */
+export const normalizeTitle = (t: string): string => t.trim().toLowerCase()
+
+/** main과 같이 직원 파일 id 또는 직급(템플릿 직급 PM/개발자, 정규화 비교)이 같으면 이미 있는 것으로 본다. */
 export function existingRoles(snapshot: OrgSnapshot): Set<FirstHireRole> {
-  const ids = new Set(snapshot.org.members.map((m) => m.agentId))
-  return new Set(FIRST_HIRE_ROLES.filter((r) => ids.has(r)))
+  return new Set(
+    FIRST_HIRE_ROLES.filter((r) =>
+      snapshot.org.members.some(
+        (m) => m.agentId === r || normalizeTitle(m.title) === normalizeTitle(ROLE_COPY[r].title)
+      )
+    )
+  )
 }
 
 export async function loadFirstHire(
@@ -111,7 +120,7 @@ export function requestAvailability(providerReady: boolean | null): {
 
 const ERROR_TEXT: Partial<Record<DomainErrorCode, string>> = {
   conflict: '같은 직원이 이미 있어요. 조직도를 새로 불러와 확인해 주세요.',
-  'approval-required': 'CEO 승인이 필요한 변경이에요. 결재함에서 승인 카드를 확인해 주세요.',
+  'approval-required': '이 변경은 앱에서 바로 할 수 없어요. COO에게 요청해 주세요.',
   forbidden: '이 직원은 앱에서 바꿀 수 없어요.',
   'no-company': '열린 회사가 없어요. 회사를 다시 열어 주세요.',
   'invalid-request': '요청이 올바르지 않아요. 앱을 다시 시작해 주세요.',
@@ -190,4 +199,17 @@ export async function runHrAdd(api: Pick<WindowApi, 'createEmployee'>): Promise<
   } catch {
     return { kind: 'error', message: hireErrorText(undefined) }
   }
+}
+
+/** 인사팀 추가 연타 방지. 이미 처리 중이면 API를 호출하지 않고 null. */
+export async function addHrOnce(
+  lock: { current: boolean },
+  api: Pick<WindowApi, 'createEmployee'>,
+  onBusy?: () => void
+): Promise<HireOutcome | null> {
+  const r = await runExclusive(lock, async () => {
+    onBusy?.()
+    return runHrAdd(api)
+  })
+  return r.ran ? r.value : null
 }

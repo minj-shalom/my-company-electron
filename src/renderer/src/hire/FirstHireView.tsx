@@ -109,8 +109,9 @@ function Ready({
                 <input
                   type="checkbox"
                   checked={c.exists || selected.has(c.id)}
-                  disabled={c.exists || busy}
-                  onChange={() => onToggle(c.id)}
+                  disabled={c.exists}
+                  aria-disabled={busy || undefined}
+                  onChange={() => !busy && onToggle(c.id)}
                 />
                 <span className="hire-card__title">{c.title}</span>
                 {c.exists ? <Badge tone="good">이미 있어요</Badge> : null}
@@ -131,7 +132,7 @@ function Ready({
         <div className="first-hire__choices">
           <div className="first-hire__choice first-hire__choice--main">
             <Button
-              variant={noProvider ? 'default' : 'primary'}
+              variant={request.enabled && !noProvider ? 'primary' : 'default'}
               aria-disabled={!request.enabled}
               aria-describedby={requestId}
               onClick={() => undefined}
