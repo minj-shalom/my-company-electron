@@ -6,6 +6,13 @@ import type {
 } from './company'
 import type { Decision, DecisionResolveRequest } from './decision'
 import type { OrgChart } from './employee'
+import type {
+  ConnectionTestResult,
+  ProviderCliId,
+  ProviderDetection,
+  WeeklyLimit,
+  WeeklyLimitsSaveRequest
+} from './provider'
 import type { ApiResult } from './result'
 import type { Ticket, TicketStatus } from './ticket'
 import type { RunEvent, RunStartRequest, RunStartResult } from './run'
@@ -34,6 +41,18 @@ export interface WindowApi {
   listDecisions: (status?: Decision['status']) => Promise<ApiResult<Decision[]>>
   /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것 하나뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
   resolveDecision: (req: DecisionResolveRequest) => Promise<ApiResult<Decision>>
+  /**
+   * 온보딩(T-009) 계약. main 핸들러는 후속 티켓에서 구현하며 그 전까지 preload는 `not-implemented`를 돌려준다.
+   * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
+   */
+  /** 세 제공자 CLI의 설치 여부를 확인한다. 사용량을 쓰지 않는다. */
+  detectProviders: () => Promise<ApiResult<ProviderDetection[]>>
+  /** 사용자가 `연결 테스트`를 눌렀을 때만 호출한다. 자동 호출 금지 (사용량이 든다). */
+  testProviderConnection: (provider: ProviderCliId) => Promise<ApiResult<ConnectionTestResult>>
+  /** 저장된 제공자별 주간 한도. 저장된 값이 없으면 빈 배열. */
+  getWeeklyLimits: () => Promise<ApiResult<WeeklyLimit[]>>
+  /** 주간 한도 전체를 교체 저장한다. 목록에 없는 제공자는 한도 없음. 토큰/인증 정보는 이 계약에 없다. */
+  saveWeeklyLimits: (req: WeeklyLimitsSaveRequest) => Promise<ApiResult<WeeklyLimit[]>>
   /** run 이벤트 구독. 반환된 함수로 해제한다. */
   onRunEvent: (listener: (event: RunEvent) => void) => () => void
 }
@@ -52,5 +71,9 @@ export const IPC_CHANNELS = {
   ticketList: 'ticket:list',
   ticketGet: 'ticket:get',
   decisionList: 'decision:list',
-  decisionResolve: 'decision:resolve'
+  decisionResolve: 'decision:resolve',
+  providerDetect: 'provider:detect',
+  providerTestConnection: 'provider:test-connection',
+  settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
+  settingsWeeklyLimitsSave: 'settings:weekly-limits-save'
 } as const

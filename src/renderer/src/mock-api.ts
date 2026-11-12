@@ -1,5 +1,12 @@
 import type { WindowApi } from '../../shared/api'
 import type { Decision } from '../../shared/decision'
+import {
+  mockDetectProviders,
+  mockGetWeeklyLimits,
+  mockSaveWeeklyLimits,
+  mockTestConnection,
+  resetMockOnboarding
+} from './mock-onboarding'
 import { mockCompany, mockDecisions, mockOrg, mockTickets } from './mock-data'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -8,6 +15,7 @@ let decisions: Decision[] = structuredClone(mockDecisions)
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
   decisions = structuredClone(mockDecisions)
+  resetMockOnboarding()
 }
 
 export const mockApi: WindowApi = {
@@ -44,5 +52,9 @@ export const mockApi: WindowApi = {
     d.memo = req.memo ?? ''
     return { ok: true, value: structuredClone(d) }
   },
+  detectProviders: mockDetectProviders,
+  testProviderConnection: mockTestConnection,
+  getWeeklyLimits: mockGetWeeklyLimits,
+  saveWeeklyLimits: mockSaveWeeklyLimits,
   onRunEvent: () => () => {}
 }

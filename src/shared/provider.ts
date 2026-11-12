@@ -27,3 +27,31 @@ export interface ConnectionTestResult {
   state: ConnectionTestState
   message: string
 }
+
+/** 주간 한도 단위. 지금은 달러 예산만 쓴다. 단위를 늘릴 때 이 유니온과 검증을 함께 갱신한다. */
+export type WeeklyLimitUnit = 'usd'
+
+export const WEEKLY_LIMIT_MAX = 100_000
+
+/** 예산 기준 값이다. 토큰/인증 정보를 담는 필드는 없다. */
+export interface WeeklyLimit {
+  provider: ProviderCliId
+  amount: number
+  unit: WeeklyLimitUnit
+}
+
+/** 전체 교체 저장. main은 provider 중복, 허용 목록, 금액을 validateWeeklyLimitAmount로 검증한다. */
+export interface WeeklyLimitsSaveRequest {
+  limits: WeeklyLimit[]
+}
+
+/** 0.01 이상 WEEKLY_LIMIT_MAX 이하인 유한한 수, 소수점 둘째 자리까지. main과 renderer가 같은 규칙을 쓴다. */
+export function validateWeeklyLimitAmount(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0.01 - 1e-9 && // 0.01 미만의 극소값(5e-324 등)은 센트 단위 검사를 우연히 통과하므로 하한을 둔다
+    value <= WEEKLY_LIMIT_MAX &&
+    Math.abs(value * 100 - Math.round(value * 100)) < 1e-6
+  )
+}
