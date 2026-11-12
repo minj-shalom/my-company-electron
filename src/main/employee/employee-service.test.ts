@@ -61,7 +61,7 @@ describe('template library', () => {
           department: t.department,
           reportsTo: 'COO',
           // cto/cfo/hr 템플릿은 민감하므로 승인 카드가 필요하다.
-          approval: 'D-001'
+          approval: 'D-012'
         },
         'ceo-ui'
       )
@@ -265,11 +265,11 @@ describe('approval gate', () => {
     ) // 없는 카드
     expect(await snapshotAgents(c)).toEqual(before)
     expect(await orgText(c)).toBe(orgBefore)
-    const r = okValue(await c.service.create({ ...cto2, approval: 'D-001' }, 'approved-proposal'))
+    const r = okValue(await c.service.create({ ...cto2, approval: 'D-012' }, 'approved-proposal'))
     expect(r.record).toMatchObject({
       sensitive: true,
       sensitiveReasons: ['protected-role'],
-      approval: 'D-001',
+      approval: 'D-012',
       actor: 'approved-proposal'
     })
   })
@@ -279,7 +279,7 @@ describe('approval gate', () => {
     const before = await agentText(c, id)
     expect(code(await c.service.update({ id, model: 'opus' }, 'ceo-ui'))).toBe('approval-required')
     expect(await agentText(c, id)).toBe(before)
-    okValue(await c.service.update({ id, model: 'opus', approval: 'D-001' }, 'approved-proposal'))
+    okValue(await c.service.update({ id, model: 'opus', approval: 'D-012' }, 'approved-proposal'))
     expect(splitFrontmatter(await agentText(c, id)).data.model).toBe('opus')
   })
 
@@ -290,7 +290,7 @@ describe('approval gate', () => {
       'approval-required'
     )
     expect(await orgText(c)).toBe(orgBefore)
-    okValue(await c.service.move({ id, department: '경영', approval: 'D-001' }, 'ceo-ui'))
+    okValue(await c.service.move({ id, department: '경영', approval: 'D-012' }, 'ceo-ui'))
   })
 })
 
@@ -403,7 +403,7 @@ describe('update', () => {
     okValue(await c.service.update({ id: 'reviewer-qa', tools: ['Read'] }, 'ceo-ui'))
     const r = okValue(
       await c.service.update(
-        { id: 'reviewer-qa', tools: ['Read', 'Bash'], approval: 'D-001' },
+        { id: 'reviewer-qa', tools: ['Read', 'Bash'], approval: 'D-012' },
         'ceo-ui'
       )
     )
@@ -439,9 +439,9 @@ describe('update', () => {
     await put(c.dir, 'company/org.md', org)
     await put(c.dir, '.claude/agents/coo.md', '---\nname: coo\ndescription: coo\n---\n\nx\n')
     for (const r of [
-      await c.service.update({ id: 'coo', description: 'y', approval: 'D-001' }, 'ceo-ui'),
-      await c.service.move({ id: 'coo', department: '개발팀', approval: 'D-001' }, 'ceo-ui'),
-      await c.service.retire({ id: 'coo', approval: 'D-001' }, 'ceo-ui')
+      await c.service.update({ id: 'coo', description: 'y', approval: 'D-012' }, 'ceo-ui'),
+      await c.service.move({ id: 'coo', department: '개발팀', approval: 'D-012' }, 'ceo-ui'),
+      await c.service.retire({ id: 'coo', approval: 'D-012' }, 'ceo-ui')
     ])
       expect(code(r)).toBe('forbidden')
     expect(await agentText(c, 'coo')).toContain('description: coo')
@@ -480,7 +480,7 @@ describe('move', () => {
     const orgBefore = await orgText(c)
     // developer -> CTO -> COO. CTO가 developer에게 보고하면 순환.
     expect(
-      code(await c.service.move({ id: 'cto', reportsTo: '개발자', approval: 'D-001' }, 'ceo-ui'))
+      code(await c.service.move({ id: 'cto', reportsTo: '개발자', approval: 'D-012' }, 'ceo-ui'))
     ).toBe('invalid-request')
     expect(code(await c.service.move({ id: 'developer', reportsTo: '개발자' }, 'ceo-ui'))).toBe(
       'invalid-request'
@@ -513,7 +513,7 @@ describe('move', () => {
     expect(code(await c.service.move({ id: 'developer', title: 'QA' }, 'ceo-ui'))).toBe('conflict')
     // CTO를 보고 대상으로 쓰는 직원이 있어 직급을 못 바꾼다.
     expect(
-      code(await c.service.move({ id: 'cto', title: '기술이사', approval: 'D-001' }, 'ceo-ui'))
+      code(await c.service.move({ id: 'cto', title: '기술이사', approval: 'D-012' }, 'ceo-ui'))
     ).toBe('conflict')
   })
 
@@ -536,7 +536,7 @@ describe('retire', () => {
     expect(code(await c.service.retire({ id: 'developer' }, 'ceo-ui'))).toBe('approval-required')
     expect(await agentText(c, 'developer')).toBe(orig)
 
-    const r = okValue(await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui'))
+    const r = okValue(await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'))
     expect(r.record).toMatchObject({
       action: 'retire',
       sensitive: true,
@@ -555,7 +555,7 @@ describe('retire', () => {
     const c = await company()
     await put(c.dir, 'company/archive/employees/developer.md', 'older\n')
     await put(c.dir, 'company/archive/employees/developer-2.md', 'older 2\n')
-    const r = okValue(await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui'))
+    const r = okValue(await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'))
     expect(r.record.files).toContain('company/archive/employees/developer-3.md')
     expect(await readFile(join(c.dir, 'company/archive/employees/developer.md'), 'utf8')).toBe(
       'older\n'
@@ -570,12 +570,12 @@ describe('retire', () => {
     const before = await snapshotAgents(c)
     const org = await orgText(c)
     expect(code(await c.service.retire({ id: 'cto' }, 'ceo-ui'))).toBe('conflict')
-    expect(code(await c.service.retire({ id: 'cto', approval: 'D-001' }, 'ceo-ui'))).toBe(
+    expect(code(await c.service.retire({ id: 'cto', approval: 'D-012' }, 'ceo-ui'))).toBe(
       'conflict'
     )
     // 같은 부서 직원이 보고하는 부서장.
     await c.service.move({ id: 'ui-dev', reportsTo: '개발자' }, 'ceo-ui')
-    const r = await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui')
+    const r = await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui')
     expect(r.ok ? '' : r.message).toContain('부서장')
     expect(await snapshotAgents(c)).toEqual(before)
     expect(await orgText(c)).not.toBe(org)
@@ -594,9 +594,9 @@ describe('retire', () => {
       }
     })
     const before = await snapshotAgents(c)
-    const a = await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui')
+    const a = await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui')
     expect(a.ok ? '' : a.message).toContain('배정을 해제')
-    const b = await c.service.retire({ id: 'pm', approval: 'D-001' }, 'ceo-ui')
+    const b = await c.service.retire({ id: 'pm', approval: 'D-012' }, 'ceo-ui')
     expect(b.ok ? '' : b.message).toContain('대체 PM')
     expect(await snapshotAgents(c)).toEqual(before)
   })
@@ -609,7 +609,7 @@ describe('retire', () => {
         }
       }
     })
-    expect(code(await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui'))).toBe(
+    expect(code(await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'))).toBe(
       'internal'
     )
     expect(await readdir(join(c.dir, '.claude/agents'))).toContain('developer.md')
@@ -627,7 +627,7 @@ describe('retire', () => {
       })
       const agents = await snapshotAgents(c)
       const org = await orgText(c)
-      const r = await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui')
+      const r = await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui')
       expect(r.ok).toBe(false)
       expect(await snapshotAgents(c)).toEqual(agents)
       expect(await orgText(c)).toBe(org)
@@ -638,7 +638,7 @@ describe('retire', () => {
   it('removes only the row when the agent file is already gone', async () => {
     const c = await company()
     await rm(join(c.dir, '.claude/agents/developer.md'))
-    const r = okValue(await c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui'))
+    const r = okValue(await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'))
     expect(r.record.files).toEqual(['company/org.md'])
     expect(await titles(c)).not.toContain('개발자')
   })
@@ -646,11 +646,91 @@ describe('retire', () => {
   it('serializes with other writes on the same queue', async () => {
     const c = await company()
     const [a, b] = await Promise.all([
-      c.service.retire({ id: 'developer', approval: 'D-001' }, 'ceo-ui'),
+      c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'),
       c.service.update({ id: 'developer', description: '새 설명' }, 'ceo-ui')
     ])
     // 먼저 들어온 퇴사가 끝난 뒤 수정이 돌아 not-found가 된다 (직원 파일이 반쯤 남지 않는다).
     expect(a.ok).toBe(true)
     expect(code(b)).toBe('not-found')
+  })
+})
+
+describe('review follow-ups', () => {
+  it('treats a protected target title as sensitive and COO/CEO titles as forbidden', async () => {
+    const c = await company()
+    // pm -> 직급을 비어 있는 보호 직급으로: 먼저 CFO 행을 퇴사시켜 자리를 만든다 (승인 카드 사용).
+    okValue(await c.service.retire({ id: 'cfo', approval: 'D-012' }, 'ceo-ui'))
+    const before = await orgText(c)
+    expect(code(await c.service.move({ id: 'pm', title: 'CFO' }, 'ceo-ui'))).toBe(
+      'approval-required'
+    )
+    expect(await orgText(c)).toBe(before)
+    const r = okValue(await c.service.move({ id: 'pm', title: 'CFO', approval: 'D-012' }, 'ceo-ui'))
+    expect(r.record.sensitiveReasons).toEqual(['protected-role'])
+    for (const title of ['COO', 'CEO']) {
+      expect(
+        code(await c.service.move({ id: 'developer', title, approval: 'D-012' }, 'ceo-ui'))
+      ).toBe('forbidden')
+    }
+  })
+
+  it('rejects approval cards that are done but have no recorded choice', async () => {
+    const c = await company()
+    const before = await agentText(c, 'cto')
+    expect(
+      code(await c.service.update({ id: 'cto', model: 'opus', approval: 'D-001' }, 'ceo-ui'))
+    ).toBe('approval-required')
+    expect(await agentText(c, 'cto')).toBe(before)
+  })
+
+  it('compares tools case-insensitively and counts Task/Agent/Skill and changed Bash args', async () => {
+    const c = await company()
+    await put(
+      c.dir,
+      '.claude/agents/pm.md',
+      '---\nname: pm\ndescription: d\ntools: Read, Bash(git:*)\n---\n\nb\n'
+    )
+    for (const tools of [
+      ['Read', 'bash'],
+      ['Read', 'BASH(rm:*)'],
+      ['Read', 'Bash(git:*)', 'Bash(rm:*)'],
+      ['Read', 'task'],
+      ['Read', 'Agent'],
+      ['Read', 'skill'],
+      ['Read', 'WRITE']
+    ])
+      expect(code(await c.service.update({ id: 'pm', tools }, 'ceo-ui')), tools.join()).toBe(
+        'approval-required'
+      )
+    // 같은 도구를 대소문자만 바꿔 다시 적는 것은 확대가 아니다.
+    okValue(await c.service.update({ id: 'pm', tools: ['read', 'bash(git:*)'] }, 'ceo-ui'))
+  })
+
+  it('fails retire when company/archive is a symlink', async () => {
+    const c = await company()
+    await mkdir(join(c.dir, 'elsewhere'))
+    await mkdir(join(c.dir, 'company/archive'), { recursive: true })
+    await symlink(join(c.dir, 'elsewhere'), join(c.dir, 'company/archive/employees'))
+    const before = await snapshotAgents(c)
+    const orgBefore = await orgText(c)
+    expect(code(await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'))).toBe(
+      'internal'
+    )
+    expect(await snapshotAgents(c)).toEqual(before)
+    expect(await orgText(c)).toBe(orgBefore)
+    expect(await readdir(join(c.dir, 'elsewhere'))).toEqual([])
+  })
+
+  it('fails retire when all 99 archive names are taken', async () => {
+    const c = await company()
+    await put(c.dir, 'company/archive/employees/developer.md', 'x\n')
+    for (let n = 2; n <= 99; n++)
+      await put(c.dir, `company/archive/employees/developer-${n}.md`, 'x\n')
+    const before = await snapshotAgents(c)
+    expect(code(await c.service.retire({ id: 'developer', approval: 'D-012' }, 'ceo-ui'))).toBe(
+      'internal'
+    )
+    expect(await snapshotAgents(c)).toEqual(before)
+    expect((await loadOrg(c.fs)).members.map((m) => m.agentId)).toContain('developer')
   })
 })

@@ -41,6 +41,11 @@ export async function makeCompany(
   )
   await put(
     dir,
+    'company/decisions/done/D-012-headless-permission-policy.md',
+    await readFile(join(DECISIONS, 'D-012-headless-permission-policy.md'), 'utf8')
+  )
+  await put(
+    dir,
     'company/decisions/pending/D-016-weekly-limit-unit.md',
     await readFile(join(DECISIONS, 'D-016-weekly-limit-unit.md'), 'utf8')
   )
@@ -51,7 +56,7 @@ export async function makeCompany(
     exclusive: (t) => repo.runExclusive(t),
     isApproved: async (id) => {
       const d = await repo.getDecision(id)
-      return d.ok && d.value.status === 'done'
+      return d.ok && d.value.status === 'done' && d.value.chosen !== null
     },
     now: () => new Date('2026-11-13T00:00:00.000Z'),
     ...extra

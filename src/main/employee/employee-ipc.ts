@@ -38,7 +38,7 @@ export function createEmployeeHandlers(deps: EmployeeIpcDeps): EmployeeHandlers 
         exclusive: (task) => repo.runExclusive(task),
         isApproved: async (id) => {
           const d = await repo.getDecision(id)
-          return d.ok && d.value.status === 'done'
+          return d.ok && d.value.status === 'done' && d.value.chosen !== null
         },
         assignments: deps.assignments ?? NO_ASSIGNMENTS
       })

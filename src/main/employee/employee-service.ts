@@ -49,7 +49,10 @@ export interface EmployeeServiceDeps {
   fs: SafeFs
   /** 결정 resolve, 티켓 이동과 같은 쓰기 직렬화 큐 (FileCompanyRepository.runExclusive). */
   exclusive: <T>(task: () => Promise<T>) => Promise<T>
-  /** 승인 카드가 결정 완료(done) 상태로 존재하는지. */
+  /**
+   * 승인 카드가 결정 완료(done) 상태이고 결정이 기록(`chosen`)돼 있는지.
+   * 한계: 카드가 어떤 직원·동작을 승인했는지는 묶지 않아 같은 카드를 다른 변경에 재사용할 수 있다 (T-046에서 대상 id·action 바인딩 예정).
+   */
   isApproved: (cardId: string) => Promise<boolean>
   assignments?: AssignmentSource
   /** T-052 검증기가 앱 자신의 쓰기를 `ceo-ui`/`approved-proposal` 변경으로 판정하도록, 쓰는 동안 호출자를 알린다. */
@@ -309,8 +312,15 @@ export class EmployeeService {
       set('reportsTo', member.reportsTo)
       set('role', member.role)
 
+      // 보호 직급(COO, CEO)으로 바꾸는 것은 승인이 있어도 거부하고, CTO/CFO/인사 직급으로 바꾸는 것은 민감 변경이다.
+      if (patch.title !== undefined && PROTECTED_TITLES.has(patch.title))
+        return fail('forbidden', '보호된 직급으로는 바꿀 수 없습니다.')
       const reasons: SensitiveReason[] = []
-      if (this.isSensitiveMember(member)) reasons.push('protected-role')
+      if (
+        this.isSensitiveMember(member) ||
+        (patch.title !== undefined && SENSITIVE_TITLES.has(patch.title))
+      )
+        reasons.push('protected-role')
       const gate = await this.gate(reasons, r.approval)
       if (!gate.ok) return gate
 

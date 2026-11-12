@@ -118,6 +118,8 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - 모든 입력은 main에서 검증한다.
 - 도메인 쓰기 채널은 `decision:resolve`(카드 pending → done), `ticket:move`(티켓 상태 폴더 이동 + 상태 줄 갱신)와 직원 변경 4종 `employee:create`, `employee:update`, `employee:move`, `employee:retire`(T-035)다. 모두 열린 회사의 SafeFs로만 접근하고, 같은 프로세스의 쓰기는 한 줄로 직렬화하며, 새 위치에 먼저 쓰고(덮어쓰지 않음) 옛 파일을 지우고, 실패하면 되돌린다. 목록 조회(`decision:list`, `ticket:list`)는 읽지 못한 파일이 있어도 나머지를 돌려주고 `unreadable`로 알린다. 티켓 본문은 20만 자까지만 renderer로 보낸다.
 - 직원 변경(`src/main/employee/`)은 직원 파일(`.claude/agents/<id>.md`)과 `org.md` 행을 한 연산으로 묶고(같은 쓰기 큐, 파일은 no-clobber로 먼저 만들고 행 추가가 실패하면 되돌림), 쓰기 전에 다시 파싱해 의도한 필드가 보존되는지 검증한다. 한 줄 값(description)은 줄바꿈 변형·제어 문자를 거부하고 본문은 `\n`으로 정규화한다. 퇴사는 삭제가 아니라 `company/archive/employees/`로 보관한다. `employee:list-templates`는 앱 번들 상수(템플릿)만 돌려준다. renderer 요청은 항상 `ceo-ui`로 처리되고 `approved-proposal`은 main 코드만 쓴다. 민감 변경(COO·CTO·CFO·hr 변경, 퇴사, tools에 Bash/쓰기 도구 확대)은 승인된(done) 결정 카드 번호가 없으면 `approval-required`, COO·CEO 행은 `forbidden`이다. 변경마다 `ChangeRecord`를 돌려줘 감사 줄(T-046)에 쓰게 한다.
+  - 승인 카드는 done 상태이고 결정(`chosen`)이 기록된 것만 인정한다. 알려진 한계: 카드가 어떤 직원·동작을 승인했는지는 묶지 않아 같은 카드를 다른 변경에 재사용할 수 있다 (T-046에서 대상 id·action 바인딩 예정). 신규 채용(create)은 템플릿 tools에 Bash 등이 있어도 확대로 보지 않는다 (id·직급이 민감할 때만 승인 필요). tools 비교는 대소문자를 구분하지 않고 Bash, Write, Edit, MultiEdit, NotebookEdit, Task, Agent, Skill, `mcp__*` 추가를 확대로 본다.
+  - 알려진 한계: 퇴사 중 원본 재검증과 삭제 사이에 외부(CLI 에이전트 등)가 직원 파일을 고치면 그 변경이 보관본에 없을 수 있다 (파일 잠금 없음). 채용 중 앱이 파일 생성 직후 종료되면 org.md에 행이 없는 고아 직원 파일이 남고, 같은 이름의 재채용은 `conflict`가 된다 (사람이 파일을 정리해야 한다).
 
 ## 폴더 구성
 

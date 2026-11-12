@@ -22,7 +22,17 @@ const TOOL_NAME =
   /^[A-Za-z][A-Za-z0-9_]{0,63}(?:\([^(),\u0000-\u001f\u007f\u0085\u2028\u2029]{1,100}\))?$/
 
 /** 쓰기 또는 임의 실행이 가능한 도구. 직원 `tools`에 추가·확대하는 변경은 민감 변경이다. */
-const POWER_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+// 다른 에이전트 호출(Task, Agent)과 스킬 실행(Skill)도 권한 확대로 본다. 비교는 소문자로 한다 (`bash`도 Bash다).
+const POWER_TOOLS = new Set([
+  'bash',
+  'write',
+  'edit',
+  'multiedit',
+  'notebookedit',
+  'task',
+  'agent',
+  'skill'
+])
 
 export type Checked<T> = { ok: true; value: T } | { ok: false; message: string }
 
@@ -79,7 +89,7 @@ export function readTools(value: unknown): string[] {
     .filter((t) => t.length > 0)
 }
 
-const baseName = (tool: string): string => tool.split('(')[0]
+const baseName = (tool: string): string => tool.split('(')[0].toLowerCase()
 const isPower = (tool: string): boolean =>
   POWER_TOOLS.has(baseName(tool)) || baseName(tool).startsWith('mcp__')
 
@@ -90,8 +100,8 @@ const isPower = (tool: string): boolean =>
 export function isToolsExpansion(before: string[] | null, after: string[]): boolean {
   if (before === null) return false
   if (after.length === 0) return true
-  const old = new Set(before)
-  return after.some((t) => isPower(t) && !old.has(t))
+  const old = new Set(before.map((t) => t.toLowerCase()))
+  return after.some((t) => isPower(t) && !old.has(t.toLowerCase()))
 }
 
 /** 직원 파일 본문. 본문은 이미 `checkBody`를 거치거나 기존 파일의 것이다. */

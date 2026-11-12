@@ -139,7 +139,7 @@ describe('linear time on 1MB hostile input', () => {
     expect(code(await c.service.move({ id: 'developer', department: '플랫폼팀' }, 'ceo-ui'))).toBe(
       'ok'
     )
-    expect(code(await c.service.retire({ id: 'reviewer-qa', approval: 'D-001' }, 'ceo-ui'))).toBe(
+    expect(code(await c.service.retire({ id: 'reviewer-qa', approval: 'D-012' }, 'ceo-ui'))).toBe(
       'ok'
     )
     expect(Date.now() - t).toBeLessThan(LIMIT_MS)
