@@ -5,9 +5,10 @@ import { registerIpcHandlers } from './ipc'
 import { checkSqlite } from './db'
 import { registerCompanyHandlers } from './company-ipc'
 import { registerRunHandlers } from './run-ipc'
-import { ClaudeRunner } from './runner/runner'
+import { ClaudeAdapter } from './providers/claude/claude-adapter'
+import type { ProviderAdapter } from './providers/types'
 
-let runner: ClaudeRunner | undefined
+let runner: ProviderAdapter | undefined
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.mycompany.app')
@@ -18,7 +19,7 @@ app.whenReady().then(() => {
   registerIpcHandlers()
   registerCompanyHandlers()
   // 회사 폴더 설정은 후속 티켓에서 도입한다. 그 전까지는 앱 실행 디렉터리를 cwd로 쓴다.
-  runner = new ClaudeRunner({ cwd: process.cwd() })
+  runner = new ClaudeAdapter({ cwd: process.cwd() })
   registerRunHandlers(runner)
   createMainWindow()
 
