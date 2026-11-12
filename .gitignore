@@ -21,3 +21,6 @@ release/
 
 # Claude Code 로컬 설정
 .claude/settings.local.json
+
+# lint 캐시
+.eslintcache
