@@ -103,3 +103,22 @@ describe('hitSeat', () => {
     expect(hitSeat(layout, s.cx, s.top - 5)).toBeNull()
   })
 })
+
+describe('large rooms and seat hit boundaries', () => {
+  it('lays out a 17-member room in 4 columns without leaving the room', () => {
+    const layout = computeLayout(groups([17]))
+    expect(layout.rooms[0].cols).toBe(4)
+    expect(layout.seats).toHaveLength(17)
+    for (const s of layout.seats) {
+      expect(s.top + SLOT_H).toBeLessThanOrEqual(layout.rooms[0].y + layout.rooms[0].h)
+    }
+  })
+  it('never matches two seats for one point and picks the nearer one on the boundary', () => {
+    const layout = computeLayout(groups([2]))
+    const [a, b] = layout.seats
+    const y = a.top + SLOT_H / 2
+    expect(hitSeat(layout, a.cx + 29, y)?.title).toBe(a.title)
+    expect(hitSeat(layout, b.cx - 29, y)?.title).toBe(b.title)
+    expect(hitSeat(layout, (a.cx + b.cx) / 2, y)).toBeNull()
+  })
+})

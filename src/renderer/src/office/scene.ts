@@ -61,6 +61,7 @@ export class OfficeScene {
   private readonly world = new Container()
   private readonly avatars = new Map<string, AvatarEntry>()
   private layout: OfficeLayout = { rooms: [], seats: [], width: 0, height: 0 }
+  private layoutKey = ''
   private statuses: OfficeStatusMap = {}
   private selected: string | null = null
   private palette: Palette
@@ -104,6 +105,7 @@ export class OfficeScene {
     this.canvas.addEventListener('pointermove', this.onPointerMove)
     this.canvas.addEventListener('pointerup', this.onPointerUp)
     this.canvas.addEventListener('pointercancel', this.onPointerCancel)
+    this.canvas.addEventListener('lostpointercapture', this.onPointerCancel)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     document.addEventListener('visibilitychange', this.syncTimer)
     this.resizeObserver = new ResizeObserver(() => this.resize())
@@ -114,30 +116,44 @@ export class OfficeScene {
   static async create(host: HTMLElement, opts: SceneOptions): Promise<OfficeScene> {
     const app = new Application()
     const { width, height } = sizeOf(host)
-    await app.init({
-      preference: ['webgl', 'canvas'],
-      width,
-      height,
-      background: opts.palette['bg-app'],
-      antialias: false,
-      autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
-      autoStart: false,
-      sharedTicker: false
-    })
-    app.ticker.stop()
-    // PixiJS 이벤트 시스템은 시스템 ticker로 매 프레임 가짜 pointermove를 만든다 (60fps rAF 낭비).
-    // 클릭/드래그/휠은 아래에서 직접 처리하므로 그 ticker 연결을 끊는다.
-    EventsTicker.removeTickerListener()
-    // 렌더러의 SchedulerSystem(텍스처 GC 예약)도 시스템 ticker를 60fps로 돌린다. 이 장면은 장면을 다시 만들 때
-    // 자원을 직접 destroy하고 정적이라 예약 작업이 필요 없으므로 멈춘다. 마운트마다 다시 시작되므로 그때마다 멈춘다.
-    Ticker.system.stop()
-    host.appendChild(app.canvas)
-    const backend: SceneBackend = app.renderer.name === 'canvas' ? 'canvas' : 'webgl'
-    return new OfficeScene(app, host, opts, backend)
+    try {
+      await app.init({
+        preference: ['webgl', 'canvas'],
+        width,
+        height,
+        background: opts.palette['bg-app'],
+        antialias: false,
+        autoDensity: true,
+        resolution: Math.min(window.devicePixelRatio || 1, 2),
+        autoStart: false,
+        sharedTicker: false
+      })
+      app.ticker.stop()
+      // PixiJS 이벤트 시스템은 시스템 ticker로 매 프레임 가짜 pointermove를 만든다 (60fps rAF 낭비).
+      // 클릭/드래그/휠은 아래에서 직접 처리하므로 그 ticker 연결을 끊는다.
+      EventsTicker.removeTickerListener()
+      // 렌더러의 SchedulerSystem(텍스처 GC 예약)도 시스템 ticker를 60fps로 돌린다. 이 장면은 장면을 다시 만들 때
+      // 자원을 직접 destroy하고 정적이라 예약 작업이 필요 없으므로 멈춘다. 마운트마다 다시 시작되므로 그때마다 멈춘다.
+      Ticker.system.stop()
+      host.appendChild(app.canvas)
+      const backend: SceneBackend = app.renderer.name === 'canvas' ? 'canvas' : 'webgl'
+      return new OfficeScene(app, host, opts, backend)
+    } catch (error) {
+      // 일부만 만들어진 렌더러(GL 컨텍스트 포함)를 남기지 않는다. 원인은 호출한 쪽이 안내 문구로 처리한다.
+      try {
+        app.destroy({ removeView: true }, { children: true, texture: true, context: true })
+      } catch {
+        // 초기화 전에 실패하면 destroy가 다시 던질 수 있다. 원래 오류만 전달한다.
+      }
+      throw error
+    }
   }
 
   setLayout(layout: OfficeLayout): void {
+    // 내용이 같으면 다시 만들지 않는다 (사용자가 옮긴 팬/줌을 유지).
+    const key = JSON.stringify(layout)
+    if (key === this.layoutKey) return
+    this.layoutKey = key
     this.layout = layout
     this.rebuild()
     this.userMovedCamera = false
@@ -201,6 +217,7 @@ export class OfficeScene {
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('pointercancel', this.onPointerCancel)
+    this.canvas.removeEventListener('lostpointercapture', this.onPointerCancel)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.avatars.clear()
     this.app.destroy(
@@ -323,7 +340,11 @@ export class OfficeScene {
 
   private readonly onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0 || this.drag) return
-    this.canvas.setPointerCapture(e.pointerId)
+    try {
+      this.canvas.setPointerCapture(e.pointerId)
+    } catch {
+      // 이미 끝난 포인터이면 던질 수 있다. 캡처 없이도 드래그는 캔버스 안에서 동작한다.
+    }
     this.drag = {
       id: e.pointerId,
       startX: e.clientX,

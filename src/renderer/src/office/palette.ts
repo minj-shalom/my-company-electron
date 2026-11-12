@@ -29,7 +29,7 @@ export const PALETTE_TOKENS = [
 export type PaletteToken = (typeof PALETTE_TOKENS)[number]
 export type Palette = Readonly<Record<PaletteToken, number>>
 
-/** 읽지 못한 토큰의 대체색(중간 회색). 눈에 띄지만 화면이 깨지지는 않는다. */
+/** 폴백 전용: 토큰을 읽지 못했을 때만 쓰는 중간 회색(테마 색이 아니다). 화면이 깨지지는 않는다. */
 const MISSING = 0x808080
 
 /** `#rgb`/`#rrggbb`만 받는다. 그 밖의 값(공백 포함)은 null. */

@@ -19,7 +19,9 @@ export const MAX_FIT_SCALE = 1.5
 /** 월드가 화면을 벗어나도 최소한 이만큼은 화면 안에 남긴다. */
 const KEEP_VISIBLE = 96
 
-const clamp = (v: number, lo: number, hi: number): number => Math.min(Math.max(v, lo), hi)
+/** 비유한수(NaN, Infinity)는 `lo`로 취급해 좌표가 망가지지 않게 한다. */
+const clamp = (v: number, lo: number, hi: number): number =>
+  Number.isFinite(v) ? Math.min(Math.max(v, lo), hi) : lo
 
 export function clampScale(scale: number): number {
   return clamp(scale, MIN_SCALE, MAX_SCALE)
@@ -58,12 +60,14 @@ export function fitCamera(world: Size, view: Size): Camera {
 
 /** 화면 좌표 (px, py)가 가리키는 월드 지점이 그대로 있도록 배율을 곱한다. */
 export function zoomAt(cam: Camera, factor: number, px: number, py: number): Camera {
+  if (![factor, px, py].every(Number.isFinite) || factor <= 0) return cam
   const scale = clampScale(cam.scale * factor)
   const k = scale / cam.scale
   return { scale, x: px - (px - cam.x) * k, y: py - (py - cam.y) * k }
 }
 
 export function panBy(cam: Camera, dx: number, dy: number): Camera {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return cam
   return { ...cam, x: cam.x + dx, y: cam.y + dy }
 }
 
@@ -73,5 +77,6 @@ export function screenToWorld(cam: Camera, sx: number, sy: number): { x: number;
 
 /** 마우스 휠 deltaY를 배율 계수로. 위로 굴리면 확대. 한 번에 크게 튀지 않도록 제한한다. */
 export function wheelFactor(deltaY: number): number {
+  if (!Number.isFinite(deltaY)) return 1
   return Math.exp(-clamp(deltaY, -120, 120) * 0.0015)
 }

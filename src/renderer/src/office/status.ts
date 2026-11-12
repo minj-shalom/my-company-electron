@@ -53,3 +53,8 @@ export function getOfficeStatusSource(): OfficeStatusSource {
 export function setOfficeStatusSource(next: OfficeStatusSource): void {
   source = next
 }
+
+/** 실제(또는 개발용) 공급자가 연결됐는지. 기본 공급자면 false라서 화면이 "연동 전"을 알린다. */
+export function hasLiveStatusSource(): boolean {
+  return source !== idleSource
+}

@@ -57,3 +57,16 @@ describe('mock status provider', () => {
     }
   })
 })
+
+describe('live source notice', () => {
+  it('reports no live source until one is registered', async () => {
+    const { hasLiveStatusSource, setOfficeStatusSource, getOfficeStatusSource } =
+      await import('./status')
+    const original = getOfficeStatusSource()
+    expect(hasLiveStatusSource()).toBe(false)
+    setOfficeStatusSource({ subscribe: () => () => {} })
+    expect(hasLiveStatusSource()).toBe(true)
+    setOfficeStatusSource(original)
+    expect(hasLiveStatusSource()).toBe(false)
+  })
+})

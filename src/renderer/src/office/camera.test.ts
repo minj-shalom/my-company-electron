@@ -73,3 +73,29 @@ describe('wheelFactor', () => {
     expect(wheelFactor(-100000)).toBeCloseTo(wheelFactor(-120))
   })
 })
+
+describe('non-finite and degenerate input', () => {
+  it('ignores NaN wheel and zoom/pan input', () => {
+    expect(wheelFactor(NaN)).toBe(1)
+    expect(wheelFactor(Infinity)).toBe(1)
+    const cam = { x: 5, y: 6, scale: 1 }
+    expect(zoomAt(cam, NaN, 0, 0)).toBe(cam)
+    expect(zoomAt(cam, 1.2, NaN, 0)).toBe(cam)
+    expect(zoomAt(cam, 0, 1, 1)).toBe(cam)
+    expect(panBy(cam, NaN, 1)).toBe(cam)
+  })
+  it('keeps finite values for a zero-size viewport', () => {
+    const cam = clampCamera(
+      { x: NaN, y: 3, scale: 1 },
+      { width: 100, height: 100 },
+      { width: 0, height: 0 }
+    )
+    expect(Number.isFinite(cam.x)).toBe(true)
+    expect(Number.isFinite(cam.y)).toBe(true)
+    expect(fitCamera({ width: 100, height: 100 }, { width: 0, height: 0 })).toEqual({
+      x: 0,
+      y: 0,
+      scale: 1
+    })
+  })
+})

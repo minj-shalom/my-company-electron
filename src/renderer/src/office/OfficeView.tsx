@@ -1,4 +1,4 @@
-import { memo, useId, useMemo, useState } from 'react'
+import { memo, useContext, useId, useMemo, useState } from 'react'
 import type { AvatarStatus, OfficeStatusMap } from '../../../shared/office'
 import type { OrgMember, OrgSnapshot } from '../../../shared/org'
 import { IssueList } from '../org/IssueList'
@@ -16,10 +16,9 @@ import { useOrg } from '../org/use-org'
 import { Badge, type BadgeTone } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
-import { useContext } from 'react'
 import { computeLayout, toOfficeGroups } from './layout'
 import { OfficeCanvas } from './OfficeCanvas'
-import { STATUS_LABEL, countByStatus, statusOf } from './status'
+import { STATUS_LABEL, countByStatus, hasLiveStatusSource, statusOf } from './status'
 import { useOfficeStatuses } from './use-office-statuses'
 
 const STATUS_TONE: Record<AvatarStatus, BadgeTone> = {
@@ -86,6 +85,9 @@ function OfficeReady({
   return (
     <>
       <IssueList issues={issues} />
+      {!hasLiveStatusSource() && (
+        <p className="office__notice hint">상태 연동 전이라 모두 대기로 보여요.</p>
+      )}
       <ul className="office__legend" aria-label="상태 요약">
         {(Object.keys(STATUS_LABEL) as AvatarStatus[]).map((s) => (
           <li key={s}>
