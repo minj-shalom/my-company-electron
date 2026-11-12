@@ -116,7 +116,8 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - 개발 중 브라우저(`npm run dev -- --host`)에서는 mock 구현을 주입해 UI만 확인할 수 있게 한다.
 - 채널명 규칙: `도메인:동작` (예: `ticket:list`, `run:start`, `run:event`).
 - 모든 입력은 main에서 검증한다.
-- 도메인 쓰기 채널은 둘뿐이다: `decision:resolve`(카드 pending → done)와 `ticket:move`(티켓 상태 폴더 이동 + 상태 줄 갱신). 둘 다 열린 회사의 SafeFs로만 접근하고, 같은 프로세스의 쓰기는 한 줄로 직렬화하며, 새 위치에 먼저 쓰고(덮어쓰지 않음) 옛 파일을 지우고, 실패하면 되돌린다. 목록 조회(`decision:list`, `ticket:list`)는 읽지 못한 파일이 있어도 나머지를 돌려주고 `unreadable`로 알린다. 티켓 본문은 20만 자까지만 renderer로 보낸다.
+- 도메인 쓰기 채널은 `decision:resolve`(카드 pending → done), `ticket:move`(티켓 상태 폴더 이동 + 상태 줄 갱신)와 직원 변경 4종 `employee:create`, `employee:update`, `employee:move`, `employee:retire`(T-035)다. 모두 열린 회사의 SafeFs로만 접근하고, 같은 프로세스의 쓰기는 한 줄로 직렬화하며, 새 위치에 먼저 쓰고(덮어쓰지 않음) 옛 파일을 지우고, 실패하면 되돌린다. 목록 조회(`decision:list`, `ticket:list`)는 읽지 못한 파일이 있어도 나머지를 돌려주고 `unreadable`로 알린다. 티켓 본문은 20만 자까지만 renderer로 보낸다.
+- 직원 변경(`src/main/employee/`)은 직원 파일(`.claude/agents/<id>.md`)과 `org.md` 행을 한 연산으로 묶고(같은 쓰기 큐, 파일은 no-clobber로 먼저 만들고 행 추가가 실패하면 되돌림), 쓰기 전에 다시 파싱해 의도한 필드가 보존되는지 검증한다. 한 줄 값(description)은 줄바꿈 변형·제어 문자를 거부하고 본문은 `\n`으로 정규화한다. 퇴사는 삭제가 아니라 `company/archive/employees/`로 보관한다. `employee:list-templates`는 앱 번들 상수(템플릿)만 돌려준다. renderer 요청은 항상 `ceo-ui`로 처리되고 `approved-proposal`은 main 코드만 쓴다. 민감 변경(COO·CTO·CFO·hr 변경, 퇴사, tools에 Bash/쓰기 도구 확대)은 승인된(done) 결정 카드 번호가 없으면 `approval-required`, COO·CEO 행은 `forbidden`이다. 변경마다 `ChangeRecord`를 돌려줘 감사 줄(T-046)에 쓰게 한다.
 
 ## 폴더 구성
 
