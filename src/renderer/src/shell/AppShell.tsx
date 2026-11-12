@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { OrgView } from '../org/OrgView'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
@@ -11,10 +12,16 @@ const SIDE_TABS: readonly (TabItem & { empty: string })[] = [
   { id: 'decisions', label: '결재함', empty: '결재를 기다리는 일이 없어요.' }
 ]
 
+const MAIN_VIEWS: readonly TabItem[] = [
+  { id: 'map', label: '사무실 맵' },
+  { id: 'org', label: '조직도' }
+]
+
 /** 앱 셸. 맵(T-020)과 각 탭의 실제 내용은 후속 티켓에서 채우고, 여기서는 자리와 빈 상태만 둔다. */
 export function AppShell({ companyName }: { companyName: string }): React.JSX.Element {
   const [panelOpen, setPanelOpen] = useState(true)
   const [tab, setTab] = useState(SIDE_TABS[0].id)
+  const [view, setView] = useState(MAIN_VIEWS[0].id)
   const panelId = useId()
   const current = SIDE_TABS.find((t) => t.id === tab) ?? SIDE_TABS[0]
 
@@ -35,12 +42,28 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
         </Button>
       </header>
       <div className="shell__body" data-panel={panelOpen ? 'open' : 'closed'}>
-        <main className="map-area" aria-label="사무실 맵">
-          <div className="map-area__note">
-            <Panel title="사무실 맵">
-              <p className="hint">가상 사무실이 들어올 자리예요. 곧 만나요.</p>
-            </Panel>
-          </div>
+        <main className="map-area" aria-label="메인 화면">
+          <Tabs
+            label="화면 선택"
+            tabs={MAIN_VIEWS}
+            selectedId={view}
+            onSelect={(id) => {
+              setView(id)
+              // 좁은 화면에서는 하단 시트가 조직도를 가리므로 접는다 (버튼으로 다시 열 수 있다).
+              if (id === 'org' && window.matchMedia?.('(max-width: 899px)').matches)
+                setPanelOpen(false)
+            }}
+          >
+            {view === 'org' ? (
+              <OrgView />
+            ) : (
+              <div className="map-area__note">
+                <Panel title="사무실 맵">
+                  <p className="hint">가상 사무실이 들어올 자리예요. 곧 만나요.</p>
+                </Panel>
+              </div>
+            )}
+          </Tabs>
         </main>
         <aside className="side-panel" id={panelId} hidden={!panelOpen} aria-label="업무 패널">
           <Tabs label="업무 종류" tabs={SIDE_TABS} selectedId={tab} onSelect={setTab}>

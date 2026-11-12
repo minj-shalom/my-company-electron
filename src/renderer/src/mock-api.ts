@@ -7,6 +7,7 @@ import {
   mockTestConnection,
   resetMockOnboarding
 } from './mock-onboarding'
+import { mockGetOrg, parseOrgScenario } from './mock-org'
 import { mockCompany, mockDecisions, mockOrg, mockTickets } from './mock-data'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -26,6 +27,8 @@ export const mockApi: WindowApi = {
   selectCompanyFolder: async () => '/mock',
   getCompany: async () => ({ ok: true, value: structuredClone(mockCompany) }),
   listEmployees: async () => ({ ok: true, value: structuredClone(mockOrg) }),
+  getOrg: (...args) =>
+    mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
   listTickets: async (status) => ({
     ok: true,
     value: structuredClone(mockTickets.filter((t) => !status || t.status === status))
