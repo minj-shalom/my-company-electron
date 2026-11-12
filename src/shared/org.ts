@@ -87,3 +87,20 @@ export interface OrgDepartmentInput {
   /** 부서는 소속 직원이 있어야 표에 나타난다. 부서장이 될 첫 직원. */
   lead: Omit<OrgMemberInput, 'department'>
 }
+
+/** 조직도 화면용 에이전트 상세. 원본은 `.claude/agents/<id>.md`의 frontmatter. */
+export interface OrgAgentDetail {
+  id: string
+  name: string
+  description: string
+  /** frontmatter `model`. 없으면 null. */
+  model: string | null
+  /** frontmatter `tools`를 나눈 목록. 없거나 비어 있으면 빈 배열. */
+  tools: string[]
+}
+
+/** `org:get` 응답. 조직 모델과, 직원 파일이 있는 에이전트의 상세. */
+export interface OrgSnapshot {
+  org: OrgModel
+  agents: OrgAgentDetail[]
+}
