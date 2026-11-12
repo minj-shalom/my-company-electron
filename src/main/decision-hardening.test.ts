@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CompanyContext } from './company/company-context'
 import { createDomainHandlers } from './domain-ipc'
 import { ProviderService } from './providers/provider-service'
+import { FileCompanyRepository } from './repository/file-repository'
 import { parseDecision, withDecisionResolved } from './repository/parse-decision'
 import { parseReport } from './repository/parse-report'
-import { parseTicket } from './repository/parse-ticket'
+import { parseTicket, withTicketStatus } from './repository/parse-ticket'
 import { normalizeMemo } from './repository/decision-memo'
 import { section } from './repository/markdown'
 import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
@@ -104,6 +105,35 @@ describe('parser performance on whitespace-only bodies', () => {
       parseDecision('D-023-t.md', `# D-023: x\n\n## 선택지\n${junk}\n`, 'pending')
       expect(performance.now() - t).toBeLessThan(LIMIT_MS)
     })
+    it(`runs the first-heading path when the junk is the whole file (${name})`, () => {
+      // 제목이 정크 줄이면 firstHeading이 문제 줄을 실제로 실행한다. 예외나 issues 반환이어도 시간 상한은 검증된다.
+      const t = performance.now()
+      const attempt = (f: () => unknown): void => {
+        try {
+          f()
+        } catch {
+          // 제목 없음 등은 정상적인 거부다.
+        }
+      }
+      attempt(() => parseDecision('D-024-t.md', junk, 'pending'))
+      attempt(() => parseTicket('T-006-x.md', junk, 'backlog'))
+      attempt(() => parseReport('R-x.md', junk))
+      expect(performance.now() - t).toBeLessThan(LIMIT_MS)
+    })
+    it(`rewrites ticket status on a 1MB body without slowing down (${name})`, async () => {
+      const t = performance.now()
+      withTicketStatus(`# T-005: x\n${junk}`, 'done')
+      withTicketStatus(`# T-005: x\n\n- **상태:** backlog\n${junk}`, 'done')
+      withTicketStatus(`${junk}\n- **상태:** backlog\n`, 'done')
+      expect(performance.now() - t).toBeLessThan(LIMIT_MS)
+      // moveTicket 경로: 파일 읽기, 파싱, 상태 줄 교체, 이동까지 한 번에 상한 안에서 끝나야 한다.
+      const text = `# T-005: x\n\n- **상태:** in-progress\n${junk}`.slice(0, 1024 * 1024 - 16)
+      await put('company/tickets/in-progress/T-005-x.md', text)
+      const repo = await FileCompanyRepository.open(dir)
+      const start = performance.now()
+      expect(await repo.moveTicket('T-005', 'done')).toMatchObject({ ok: true })
+      expect(performance.now() - start).toBeLessThan(LIMIT_MS)
+    })
     it(`parses tickets and reports with the same shared helpers (${name})`, () => {
       const t = performance.now()
       parseTicket('T-005-x.md', `# T-005: x\n- **상태:** backlog\n${junk}`, 'backlog')
@@ -145,6 +175,20 @@ describe('duplicate ids in one folder are resolved deterministically', () => {
         value: { unreadable: [{ path: 'company/decisions/pending/D-020-b.md' }] }
       })
     }
+  })
+})
+
+describe('withTicketStatus', () => {
+  it('replaces only the first status line, keeps CRLF, and ignores forged lines', () => {
+    expect(withTicketStatus('# T-005: x\n\n- **상태:** backlog\n본문\n', 'done')).toBe(
+      '# T-005: x\n\n- **상태:** done\n본문\n'
+    )
+    expect(withTicketStatus('# T\r\n- **상태:** backlog\r\n끝\r\n', 'in-progress')).toBe(
+      '# T\r\n- **상태:** in-progress\r\n끝\r\n'
+    )
+    const forged = '# T\r- **상태:** backlog\u2028- **상태:** backlog\n'
+    expect(withTicketStatus(forged, 'done')).toBe(forged)
+    expect(withTicketStatus('# T\n', 'done')).toBe('# T\n')
   })
 })
 
