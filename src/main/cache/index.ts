@@ -62,6 +62,7 @@ export async function openCachedCompany(opts: OpenCachedCompanyOptions): Promise
     await repository.rebuild()
   } catch (e) {
     await watcher?.stop()
+    await repository.drain().catch(() => undefined)
     store.close()
     throw e
   }
@@ -70,6 +71,8 @@ export async function openCachedCompany(opts: OpenCachedCompanyOptions): Promise
     rebuild: () => repository.rebuild(),
     async close() {
       await watcher?.stop()
+      // 진행 중인 갱신이 닫힌 DB를 건드리지 않도록 큐를 비운 뒤 닫는다.
+      await repository.drain().catch(() => undefined)
       store.close()
     }
   }

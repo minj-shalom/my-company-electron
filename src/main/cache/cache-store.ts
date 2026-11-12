@@ -46,14 +46,20 @@ function removeDbFiles(path: string): void {
  * 파일을 지우고 빈 DB로 다시 시작한다 (호출자가 폴더에서 rebuild). SQL은 모두 파라미터 바인딩이다.
  */
 export class CacheStore {
-  private db: Database.Database
+  /** reset 중 재오픈에 실패하면 null. 이후 접근은 CacheCorruptError라 호출자가 reset을 다시 시도한다. */
+  private handle: Database.Database | null
 
   private constructor(
     private readonly path: string,
     private readonly migrations: readonly string[],
     db: Database.Database
   ) {
-    this.db = db
+    this.handle = db
+  }
+
+  private get db(): Database.Database {
+    if (!this.handle) throw new CacheCorruptError('cache is not open')
+    return this.handle
   }
 
   /** `path`가 ':memory:'가 아니면 상위 폴더를 만든다. 열기/검증/마이그레이션 중 어떤 오류든 DB를 새로 만든다. */
@@ -86,16 +92,18 @@ export class CacheStore {
   /** DB 파일을 지우고 빈 스키마로 다시 연다. 데이터는 `rebuild`가 채운다. */
   reset(): void {
     try {
-      this.db.close()
+      this.handle?.close()
     } catch {
       // 손상된 핸들은 닫기에 실패할 수 있다. 어차피 파일을 지운다.
     }
+    this.handle = null
     if (this.path !== ':memory:') removeDbFiles(this.path)
-    this.db = CacheStore.openFresh(this.path, this.migrations)
+    this.handle = CacheStore.openFresh(this.path, this.migrations)
   }
 
   close(): void {
-    this.db.close()
+    this.handle?.close()
+    this.handle = null
   }
 
   get schemaVersion(): number {

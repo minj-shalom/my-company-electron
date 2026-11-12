@@ -10,6 +10,8 @@ export interface CompanyWatcherOptions {
   onError?: (e: unknown) => void
   /** 이벤트가 멈춘 뒤 기다릴 시간. 에디터의 저장 폭풍/임시 파일 교체를 한 번으로 합친다. */
   debounceMs?: number
+  /** 테스트 훅: 분류 전의 원시 이벤트 (root 밖이면 rel이 null). */
+  onRawEvent?: (abs: string, rel: string | null) => void
 }
 
 /** 관심 있는 하위 경로만 감시해 회사 폴더의 `.git` 등 큰 트리를 훑지 않는다. */
@@ -36,6 +38,7 @@ export class CompanyWatcher {
 
   /** 초기 스캔이 끝나 이벤트를 받을 준비가 되면 resolve. */
   start(): Promise<void> {
+    if (this.watcher) return Promise.reject(new Error('watcher already started'))
     const { root } = this.opts
     const w = watch(root, {
       ignoreInitial: true,
@@ -47,6 +50,7 @@ export class CompanyWatcher {
     this.watcher = w
     const onEvent = (path: string): void => {
       const rel = relativeInside(root, path)
+      this.opts.onRawEvent?.(path, rel)
       if (rel === null) return
       const kind = classifyPath(rel)
       if (kind) this.mark(kind)
@@ -56,8 +60,22 @@ export class CompanyWatcher {
       .on('unlink', onEvent)
       .on('addDir', onEvent)
       .on('unlinkDir', onEvent)
-      .on('error', (e) => this.opts.onError?.(e))
-    return new Promise((resolve) => w.once('ready', () => resolve()))
+    return new Promise((resolve, reject) => {
+      let ready = false
+      w.once('ready', () => {
+        ready = true
+        resolve()
+      })
+      // ready 전 오류(권한, 폴더 없음 등)는 start 실패로, 이후 오류는 onError로 보고한다.
+      w.on('error', (e) => {
+        if (ready) this.opts.onError?.(e)
+        else {
+          this.watcher = null
+          void w.close()
+          reject(e instanceof Error ? e : new Error('watch failed'))
+        }
+      })
+    })
   }
 
   private mark(kind: RefreshKind): void {

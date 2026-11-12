@@ -18,8 +18,10 @@ function fail<T>(code: 'invalid-request' | 'not-found', message: string): ApiRes
   return { ok: false, code, message }
 }
 
+/** 파일 경로뿐 아니라 디렉터리 단위 이슈(`company/tickets/backlog`)도 해당 status로 매긴다. */
 function scopeOf(path: string, dirs: Record<string, string>): string {
-  for (const [status, dir] of Object.entries(dirs)) if (path.startsWith(`${dir}/`)) return status
+  for (const [status, dir] of Object.entries(dirs))
+    if (path === dir || path.startsWith(`${dir}/`)) return status
   return ''
 }
 
@@ -52,6 +54,11 @@ export class CachedCompanyRepository implements CompanyRepository {
     private readonly source: CompanyRepository,
     private readonly store: CacheStore
   ) {}
+
+  /** 진행 중이거나 대기 중인 갱신이 모두 끝날 때까지 기다린다 (close 전에 호출). */
+  async drain(): Promise<void> {
+    await this.queue
+  }
 
   /** 캐시를 비우고 폴더에서 처음부터 다시 만든다. */
   async rebuild(): Promise<void> {
@@ -148,11 +155,12 @@ export class CachedCompanyRepository implements CompanyRepository {
 
   listTickets(status?: TicketStatus): Promise<Listing<Ticket>> {
     return this.read('ticket', () => {
-      // 알 수 없는 상태 값은 원본 Repository처럼 빈 결과.
-      if (status !== undefined && !(status in TICKET_DIRS)) return { items: [], issues: [] }
+      // 원본 Repository와 같게: 빈 값은 전체, 알 수 없는 상태는 빈 결과.
+      const st = status || undefined
+      if (st !== undefined && !Object.hasOwn(TICKET_DIRS, st)) return { items: [], issues: [] }
       return {
-        items: asItems<Ticket>(this.store.list('ticket', status)),
-        issues: this.store.issues('ticket', status)
+        items: asItems<Ticket>(this.store.list('ticket', st)),
+        issues: this.store.issues('ticket', st)
       }
     })
   }
@@ -167,10 +175,11 @@ export class CachedCompanyRepository implements CompanyRepository {
 
   listDecisions(status?: Decision['status']): Promise<Listing<Decision>> {
     return this.read('decision', () => {
-      if (status !== undefined && !(status in DECISION_DIRS)) return { items: [], issues: [] }
+      const st = status || undefined
+      if (st !== undefined && !Object.hasOwn(DECISION_DIRS, st)) return { items: [], issues: [] }
       return {
-        items: asItems<Decision>(this.store.list('decision', status)),
-        issues: this.store.issues('decision', status)
+        items: asItems<Decision>(this.store.list('decision', st)),
+        issues: this.store.issues('decision', st)
       }
     })
   }
@@ -200,28 +209,41 @@ export class CachedCompanyRepository implements CompanyRepository {
 
   // ---- 쓰기: 파일 Repository에 위임 후 캐시 갱신 ----
 
+  /**
+   * 파일 쓰기는 이미 끝났으므로 캐시 갱신 실패가 호출자의 ApiResult를 깨면 안 된다.
+   * 손상이면 rebuild를 시도하고, 그 외 실패는 삼킨다 (다음 읽기/감시 이벤트가 다시 맞춘다).
+   */
+  private async refreshAfterWrite(kind: RefreshKind): Promise<void> {
+    try {
+      await this.refresh([kind])
+    } catch (e) {
+      if (!isCorruption(e)) return
+      await this.rebuild().catch(() => undefined)
+    }
+  }
+
   async saveEmployee(input: EmployeeInput): Promise<ApiResult<Employee>> {
     const res = await this.source.saveEmployee(input)
     // 실패해도 부분 변경 가능성이 있어 항상 갱신한다.
-    await this.refresh(['org'])
+    await this.refreshAfterWrite('org')
     return res
   }
 
   async moveTicket(id: string, status: TicketStatus): Promise<ApiResult<Ticket>> {
     const res = await this.source.moveTicket(id, status)
-    await this.refresh(['ticket'])
+    await this.refreshAfterWrite('ticket')
     return res
   }
 
   async resolveDecision(req: DecisionResolveRequest): Promise<ApiResult<Decision>> {
     const res = await this.source.resolveDecision(req)
-    await this.refresh(['decision'])
+    await this.refreshAfterWrite('decision')
     return res
   }
 
   async createReport(id: string, markdown: string): Promise<ApiResult<Report>> {
     const res = await this.source.createReport(id, markdown)
-    await this.refresh(['report'])
+    await this.refreshAfterWrite('report')
     return res
   }
 }
