@@ -366,6 +366,72 @@ describe('publishing', () => {
   })
 })
 
+describe('review follow-ups', () => {
+  it('blocks a concurrent publish so the adapter is called once', async () => {
+    let calls = 0
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((r) => (release = r))
+    const slow: Publisher = {
+      id: 'blog-x',
+      publish: async () => {
+        calls++
+        await gate
+        return { ok: true }
+      }
+    }
+    const t = await setup({ adapter: 'blog-x', publishers: new Map([['blog-x', slow]]) })
+    await t.draft('a.md', '# A')
+    const [a] = await t.scan()
+    await approve(t, a.id)
+    const first = t.svc.publish({ projectId: 'blog', id: a.id })
+    await new Promise((r) => setTimeout(r, 20))
+    const second = await t.svc.publish({ projectId: 'blog', id: a.id })
+    expect(second).toMatchObject({ ok: false, code: 'conflict' })
+    release()
+    expect((await first).ok).toBe(true)
+    expect(calls).toBe(1)
+  })
+
+  it('allows retrying a failed item after re-checking the hash', async () => {
+    const bad = createFakePublisher('blog-x', { ok: false, code: 'network' })
+    const t = await setup({ adapter: 'blog-x', publishers: new Map([['blog-x', bad]]) })
+    await t.draft('a.md', '# A')
+    const [a] = await t.scan()
+    await approve(t, a.id)
+    const f = await t.svc.publish({ projectId: 'blog', id: a.id })
+    expect(f.ok && f.value.status).toBe('failed')
+    const r = await t.svc.requestPublish({ projectId: 'blog', id: a.id })
+    expect(r.ok && r.value.status).toBe('publish-requested')
+    // 실패 뒤 내용이 바뀌면 재시도 대신 재승인이 필요하다.
+    await t.svc.publish({ projectId: 'blog', id: a.id })
+    await t.draft('a.md', '# A edited')
+    expect(await t.svc.requestPublish({ projectId: 'blog', id: a.id })).toMatchObject({
+      ok: false,
+      code: 'conflict'
+    })
+    expect((await t.scan())[0].status).toBe('draft')
+  })
+
+  it('ignores a card that belongs to another project', async () => {
+    const t = await setup()
+    await t.draft('a.md', '# A')
+    const [a] = await t.scan()
+    const r = await t.svc.requestApproval({ projectId: 'blog', ids: [a.id] })
+    const cardId = r.ok ? r.value.cardIds[0] : ''
+    // 다른 프로젝트 카드를 가리키도록 기록의 카드 번호를 위조한다.
+    const other = await t.c.fs.readText('company/decisions/pending/D-016-weekly-limit-unit.md')
+    expect(other).toBeTruthy()
+    const text = await t.record()
+    await writeFile(join(t.c.dir, publishingFile('blog')), text.replace(cardId, 'D-016'))
+    await t.svc.onCardResolved('D-016', 'A', null)
+    expect((await t.scan())[0].status).toBe('draft')
+    // 올바른 카드는 정상 처리된다.
+    await writeFile(join(t.c.dir, publishingFile('blog')), text)
+    await t.svc.onCardResolved(cardId, 'A', null)
+    expect((await t.scan())[0].status).toBe('approved')
+  })
+})
+
 describe('link format', () => {
   it('accepts only plain https urls', () => {
     expect(isPublishLink('https://a.b/c?d=1#e')).toBe(true)

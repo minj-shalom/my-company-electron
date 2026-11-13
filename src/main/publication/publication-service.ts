@@ -95,6 +95,9 @@ function draftError(e: unknown): ApiResult<never> {
  * 승인은 내용 해시에 고정되며 발행 시점에 해시가 다르면 항목을 draft로 되돌려 재승인을 요구한다.
  */
 export class PublicationService {
+  /** 발행 중인 항목 (같은 항목의 동시 호출이 어댑터를 두 번 부르지 않게 한다). */
+  private readonly publishing = new Set<string>()
+
   constructor(private readonly deps: PublicationServiceDeps) {}
 
   private now(): Date {
@@ -312,15 +315,32 @@ export class PublicationService {
     }
   }
 
+  /** 카드 제목(`초안 승인 (<프로젝트 id>): ...`)에서 프로젝트 id를 읽는다. 앱이 만든 카드 형식이 아니면 null. */
+  private async cardProject(cardId: string): Promise<string | null> {
+    for (const dir of ['company/decisions/done', 'company/decisions/pending']) {
+      const { files } = await this.deps.fs.listMarkdown(dir)
+      const f = files.find((n) => leadingId(n, 'D') === cardId)
+      if (f === undefined) continue
+      const text = await this.deps.fs.readText(`${dir}/${f}`).catch(() => '')
+      const m = new RegExp(`^# ${cardId}: 초안 승인 \\(([a-z0-9-]+)\\):`).exec(text)
+      return m ? m[1] : null
+    }
+    return null
+  }
+
   /**
    * 승인 카드가 처리되면 호출한다 (결정 처리 경로). A는 승인, B는 거절(사유는 결정 메모).
    * 승인은 기록된 해시와 지금 파일 내용이 같을 때만 한다. 다르면 승인하지 않고 draft로 남긴다.
    */
   async onCardResolved(cardId: string, choice: string, memo: string | null): Promise<void> {
     if (choice !== 'A' && choice !== 'B') return
+    const cardProject = await this.cardProject(cardId)
+    if (cardProject === null) return
     const { files } = await this.deps.fs.listMarkdown('company/publishing')
     for (const f of files) {
       const projectId = f.replace(/\.md$/, '')
+      // 카드가 다른 프로젝트의 것이면 이 기록에 반영하지 않는다 (기록 파일의 카드 번호 위조 방지).
+      if (projectId !== cardProject) continue
       const doc = await this.load(projectId).catch(() => null)
       if (doc === null || !doc.entries.some((e) => e.cardId === cardId && e.status === 'draft'))
         continue
@@ -396,13 +416,24 @@ export class PublicationService {
     const p = parseItem(raw)
     if (!p.ok) return fail('invalid-request', p.message)
     const nowIso = this.now().toISOString()
+    try {
+      // 실패한 항목의 재시도도 해시를 다시 확인한다 (바뀌었으면 draft로 돌아가 재승인).
+      const g = await this.guard(p.value.projectId, p.value.id)
+      if (!g.ok) {
+        if ('ok' in g.result) return g.result
+        return fail('conflict', '승인 이후 내용이 바뀌어 다시 승인해야 합니다.')
+      }
+    } catch {
+      return fail('internal', '발행을 요청하지 못했습니다.')
+    }
     return this.mutate(p.value.projectId, (doc) => {
       const e = doc.entries.find((x) => x.id === p.value.id)
       if (e === undefined) return fail('not-found', NOT_FOUND)
-      if (e.status !== 'approved')
+      if (e.status !== 'approved' && e.status !== 'failed')
         return fail('conflict', '승인된 초안만 발행을 요청할 수 있습니다.')
       e.status = 'publish-requested'
       e.requestedAt = nowIso
+      e.note = null
       return { ok: true, value: { ...e } }
     })
   }
@@ -428,7 +459,7 @@ export class PublicationService {
     const e = doc.entries.find((x) => x.id === id)
     if (e === undefined) return { ok: false, result: fail('not-found', NOT_FOUND) }
     if (
-      (e.status !== 'approved' && e.status !== 'publish-requested') ||
+      (e.status !== 'approved' && e.status !== 'publish-requested' && e.status !== 'failed') ||
       e.approvedAt === null ||
       e.approvedBy === null
     )
@@ -466,6 +497,9 @@ export class PublicationService {
     const p = parseItem(raw)
     if (!p.ok) return fail('invalid-request', p.message)
     const { projectId, id } = p.value
+    const lock = `${projectId}:${id}`
+    if (this.publishing.has(lock)) return fail('conflict', '이미 발행을 처리하고 있습니다.')
+    this.publishing.add(lock)
     try {
       const g = await this.guard(projectId, id)
       if (!g.ok) {
@@ -513,6 +547,8 @@ export class PublicationService {
         : saved
     } catch {
       return fail('internal', '발행을 처리하지 못했습니다.')
+    } finally {
+      this.publishing.delete(lock)
     }
   }
 
