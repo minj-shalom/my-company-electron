@@ -652,12 +652,12 @@ describe('review follow-ups', () => {
     // pm -> 직급을 비어 있는 보호 직급으로: 먼저 CFO 행을 퇴사시켜 자리를 만든다 (승인 카드 사용).
     okValue(await c.service.retire({ id: 'cfo', approval: 'D-012' }, 'ceo-ui'))
     const before = await orgText(c)
-    expect(code(await c.service.move({ id: 'pm', title: 'CFO' }, 'ceo-ui'))).toBe(
-      'approval-required'
-    )
+    // 필수 인원 직급으로 다른 직원을 바꾸는 것은 승인 카드가 있어도 거부한다.
+    for (const approval of [undefined, 'D-012'])
+      expect(code(await c.service.move({ id: 'pm', title: 'CFO', approval }, 'ceo-ui'))).toBe(
+        'invalid-request'
+      )
     expect(await orgText(c)).toBe(before)
-    const r = okValue(await c.service.move({ id: 'pm', title: 'CFO', approval: 'D-012' }, 'ceo-ui'))
-    expect(r.record.sensitiveReasons).toEqual(['protected-role'])
     for (const title of ['COO', 'CEO']) {
       expect(
         code(await c.service.move({ id: 'developer', title, approval: 'D-012' }, 'ceo-ui'))

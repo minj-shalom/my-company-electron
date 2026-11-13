@@ -50,7 +50,8 @@ const hireKey = (v: unknown): string =>
   typeof v === 'string'
     ? v
         .normalize('NFKC')
-        .replace(/\s+/g, '')
+        // 제로폭·서식 문자(Cf), 모든 공백·구분 문자(Z)와 소프트 하이픈은 눈에 보이지 않아 우회에 쓰인다.
+        .replace(/[\p{Cf}\p{Z}\s\u00AD]/gu, '')
         .toLowerCase()
         .replace(/^.*[\\/]/, '')
         .replace(/\.md$/, '')
@@ -99,7 +100,14 @@ function mapOrgFailure(r: Extract<ApiResult<OrgModel>, { ok: false }>): ApiResul
   return fail(r.code, r.message)
 }
 
-const REQUIRED_STAFF_MESSAGE =
+/** 복구 요청이 지켜야 하는 기본 부서. 보고 대상은 항상 COO다. */
+const RESTORE_DEFAULTS: Record<string, { department: string } | undefined> = {
+  cto: { department: 'R&D' },
+  cfo: { department: '재무' },
+  hr: { department: '인사팀' }
+}
+
+export const REQUIRED_STAFF_MESSAGE =
   'CTO, CFO, 인사는 회사를 만들 때 함께 생기는 필수 인원이라 채용할 수 없습니다.'
 
 /**
@@ -120,7 +128,9 @@ function requiredStaffViolation(raw: unknown): boolean {
     o.templateId === o.id &&
     REQUIRED_STAFF_IDS.includes(o.templateId) &&
     o.title === undefined &&
-    o.role === undefined
+    o.role === undefined &&
+    o.department === RESTORE_DEFAULTS[o.templateId]?.department &&
+    o.reportsTo === 'COO'
   return !isRestore
 }
 
@@ -434,6 +444,17 @@ export class EmployeeService {
       const target = await this.findAgent(r.id)
       if (!target.ok) return target
       const { member, org } = target.value
+
+      // 다른 직원을 필수 인원·보호 직급 이름으로 바꾸는 우회를 막는다 (자기 직급 그대로는 변경이 아니다).
+      if (
+        r.title !== undefined &&
+        NON_HIRABLE_TITLES.has(hireKey(r.title)) &&
+        hireKey(r.title) !== hireKey(member.title)
+      )
+        return fail(
+          ['coo', 'ceo'].includes(hireKey(r.title)) ? 'forbidden' : 'invalid-request',
+          REQUIRED_STAFF_MESSAGE
+        )
 
       const newTitle = r.title ?? member.title
       if (r.reportsTo !== undefined) {

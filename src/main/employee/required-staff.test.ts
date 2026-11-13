@@ -1,9 +1,11 @@
-import { rm } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ApiResult } from '../../shared/result'
 import { loadOrg } from '../org/org-store'
 import { checkBody, checkDescription, checkModel, checkTools, verifyAgentFile } from './agent-file'
 import { makeCompany, orgText, snapshotAgents, type TestCompany } from './test-company'
+import { REQUIRED_STAFF_MESSAGE } from './employee-service'
 import { EMPLOYEE_TEMPLATES, REQUIRED_STAFF_IDS } from './templates'
 
 const made: TestCompany[] = []
@@ -40,6 +42,10 @@ describe('required staff are not hireable', () => {
     ['title in other case', { templateId: 'designer', id: 'x2', title: 'cfo' }],
     ['title with padding spaces', { templateId: 'designer', id: 'x3', title: ' 인사 ' }],
     ['full-width title', { templateId: 'designer', id: 'x4', title: 'ＣＴＯ' }],
+    ['zero-width title', { templateId: 'designer', id: 'x6', title: 'C\u200BTO' }],
+    ['soft hyphen title', { templateId: 'designer', id: 'x7', title: 'C\u00ADFO' }],
+    ['ideographic space title', { templateId: 'designer', id: 'x8', title: '인\u3000사' }],
+    ['file name title', { templateId: 'designer', id: 'x9', title: 'cto.md' }],
     ['COO title', { templateId: 'designer', id: 'x5', title: 'COO' }],
     ['uppercase id', { templateId: 'designer', id: 'CTO' }],
     ['file name id', { templateId: 'designer', id: 'cto.md' }],
@@ -52,11 +58,9 @@ describe('required staff are not hireable', () => {
     const c = await company()
     const before = await snapshotAgents(c)
     const orgBefore = await orgText(c)
-    const r = await c.service.create(
-      { department: '개발팀', reportsTo: 'COO', approval: 'D-012', ...extra },
-      'ceo-ui'
-    )
-    expect(r.ok).toBe(false)
+    const r = await c.service.create({ department: '개발팀', reportsTo: 'COO', ...extra }, 'ceo-ui')
+    // 승인 카드나 id 형식 검사가 아니라 새 필수 인원 검사가 막았는지 확인한다.
+    expect(r).toEqual({ ok: false, code: 'invalid-request', message: REQUIRED_STAFF_MESSAGE })
     expect(await snapshotAgents(c)).toEqual(before)
     expect(await orgText(c)).toBe(orgBefore)
   })
@@ -115,5 +119,52 @@ describe('content templates', () => {
     )
     expect(code(r)).toBe('ok')
     expect((await loadOrg(c.fs)).issues).toEqual([])
+  })
+})
+
+describe('base role restore and other paths', () => {
+  async function without(c: TestCompany, id: string): Promise<void> {
+    const org = await readFile(join(c.dir, 'company/org.md'), 'utf8')
+    await writeFile(
+      join(c.dir, 'company/org.md'),
+      org
+        .split('\n')
+        .filter((l) => !l.includes(`\`${id}\``))
+        .join('\n')
+    )
+    await rm(join(c.dir, `.claude/agents/${id}.md`))
+  }
+  const restore = { templateId: 'hr', id: 'hr', department: '인사팀', reportsTo: 'COO' }
+
+  it('restores a missing base role as-is, only from a ceo click', async () => {
+    const c = await company()
+    await without(c, 'hr')
+    expect(code(await c.service.create({ ...restore, department: '개발팀' }, 'ceo-ui'))).toBe(
+      'invalid-request'
+    )
+    expect(code(await c.service.create({ ...restore, reportsTo: 'CTO' }, 'ceo-ui'))).toBe(
+      'invalid-request'
+    )
+    expect(code(await c.service.create(restore, 'approved-proposal'))).toBe('approval-required')
+    expect(code(await c.service.create(restore, 'ceo-ui'))).toBe('ok')
+    expect(code(await c.service.create(restore, 'ceo-ui'))).toBe('conflict')
+  })
+
+  it('rejects renaming another employee to a required or protected title', async () => {
+    const c = await company()
+    await c.service.create(
+      { templateId: 'designer', id: 'designer', department: '디자인팀', reportsTo: 'COO' },
+      'ceo-ui'
+    )
+    for (const title of ['CTO', 'c\u200Bfo', 'cto.md', '인사']) {
+      const r = await c.service.move({ id: 'designer', title }, 'ceo-ui')
+      expect(r, title).toEqual({
+        ok: false,
+        code: 'invalid-request',
+        message: REQUIRED_STAFF_MESSAGE
+      })
+    }
+    const coo = await c.service.move({ id: 'designer', title: 'C\u200BOO' }, 'ceo-ui')
+    expect(code(coo)).toBe('forbidden')
   })
 })
