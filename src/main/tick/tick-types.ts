@@ -100,6 +100,8 @@ export interface TickDeps {
   requests?: TickRequests
   /** hr 전용 실행(T-052) 연결점. 대기 중인 요청이 있을 때만 run을 부른다. COO 세션에서 hr을 부르지 않는다. */
   hr?: { pending: () => Promise<number>; run: (signal: AbortSignal) => Promise<void> }
+  /** 틱 직전 정기 티켓 생성(T-049)이 남긴 막힌 점·경고. 한 번 읽으면 비워지고 브리핑 "막힌 점"에 실린다. */
+  takeNotes?: () => string[]
   /** 실행 한 번의 시간 상한(ms). */
   timeoutMs?: number
 }

@@ -19,6 +19,7 @@ import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
+import { createMockRecurringApi } from './mock-recurring'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
 import { mockProjectTemplateApi } from './mock-project-templates'
 import { createMockUsageApi, parseUsageScenario } from './mock-usage'
@@ -61,6 +62,8 @@ const mockPolicyApi = createMockPolicyApi(
   }
 )
 
+const mockRecurringApi = createMockRecurringApi()
+
 const mockEmployeeApi = createMockEmployeeApi(
   parseEmployeeScenario(typeof location === 'undefined' ? '' : location.search),
   typeof location === 'undefined' ? 0 : 400,
@@ -98,6 +101,7 @@ export function resetMockApi(): void {
   mockDecisionApi.reset()
   mockProjectApi.reset()
   mockPolicyApi.reset()
+  mockRecurringApi.reset()
   mockGateApi.reset()
   resetMockOnboarding()
   mockUsageApi.reset()
@@ -167,6 +171,7 @@ export const mockApi: WindowApi = {
   ),
   ...mockProjectApi.api,
   ...mockPolicyApi.api,
+  ...mockRecurringApi.api,
   ...mockProjectTemplateApi,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,

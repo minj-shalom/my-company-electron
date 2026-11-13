@@ -33,6 +33,12 @@ import type {
   KillSwitchSetRequest,
   KillSwitchState
 } from './gate'
+import type {
+  RecurringDefinition,
+  RecurringIdRequest,
+  RecurringList,
+  RecurringSetStatusRequest
+} from './recurring'
 import type { ProposalApplyRequest, ProposalApplyResult } from './proposal'
 import type { IntegrityActionRequest, IntegrityActionResult } from './integrity'
 import type {
@@ -205,6 +211,17 @@ export interface WindowApi {
   savePolicy: (req: PolicySaveRequest) => Promise<ApiResult<PolicySaveResult>>
   listPolicySummaries: () => Promise<ApiResult<PolicySummary[]>>
   /**
+   * 반복 업무(T-049). 원본은 `company/recurring.md`이고 정의만 다룬다 (티켓 생성은 main이 스케줄러 틱 전에 한다).
+   * `listRecurring`: 정의 목록과 다음 생성 예정 시각(`nextRunAt`, 일시정지는 null)·오늘 생성 여부. `unreadable`/`overLimit`은 안내용 개수.
+   * `addRecurring`/`updateRecurring`: 정의 전체(`RecurringDefinition`)를 보낸다. 템플릿은 `{date}`만 치환된다. 검증 실패는 `invalid-request`, 같은 id는 `conflict`, 없는 id는 `not-found`.
+   * `setRecurringStatus`: `active`/`paused` 전환. `removeRecurring`: 정의만 지우고 이미 만든 티켓은 남긴다.
+   */
+  listRecurring: () => Promise<ApiResult<RecurringList>>
+  addRecurring: (req: RecurringDefinition) => Promise<ApiResult<RecurringDefinition>>
+  updateRecurring: (req: RecurringDefinition) => Promise<ApiResult<RecurringDefinition>>
+  setRecurringStatus: (req: RecurringSetStatusRequest) => Promise<ApiResult<RecurringDefinition>>
+  removeRecurring: (req: RecurringIdRequest) => Promise<ApiResult<{ id: string }>>
+  /**
    * 프로젝트 유형 템플릿 (T-048). `listProjectTemplates`: 내장 템플릿 3종(설명, 기본 정책 요약, 추천 직원). 회사가 없어도 동작한다.
    * `applyProjectTemplate`: 정책 파일 기본값만 만든다 (모든 동작 매번 컨펌). 정책 파일이 이미 있으면 `conflict`, 알 수 없는 템플릿·유형 불일치는 `invalid-request`.
    * 직원 채용·배정은 하지 않는다. `recommendedStaff`(PM이 첫 항목)는 제안 목록이며 UI 확인이나 인사팀 요청으로 처리한다.
@@ -323,6 +340,11 @@ export const IPC_CHANNELS = {
   policyGet: 'policy:get',
   policySave: 'policy:save',
   policyListSummaries: 'policy:list-summaries',
+  recurringList: 'recurring:list',
+  recurringAdd: 'recurring:add',
+  recurringUpdate: 'recurring:update',
+  recurringSetStatus: 'recurring:set-status',
+  recurringRemove: 'recurring:remove',
   projectListTemplates: 'project:list-templates',
   projectApplyTemplate: 'project:apply-template',
   schedulerStatus: 'scheduler:status',

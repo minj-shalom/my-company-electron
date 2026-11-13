@@ -25,6 +25,7 @@ export interface TickWiringOptions {
   checkLimit?: TickDeps['checkLimit']
   requests?: TickDeps['requests']
   hr?: TickDeps['hr']
+  takeNotes?: TickDeps['takeNotes']
   now?: () => Date
 }
 
@@ -122,6 +123,7 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
         provider
       ),
     checkLimit: o.checkLimit,
+    takeNotes: o.takeNotes,
     requests: o.requests,
     // hr 전용 실행(T-059): 요청 파일이 있을 때만 돌고, 제공자가 경로 제한을 지원하지 않으면 실행하지 않는다.
     hr:

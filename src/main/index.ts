@@ -16,6 +16,7 @@ import { usageRecorder, usageServiceFor } from './usage/usage-runtime'
 import { ClaudeAdapter } from './providers/claude/claude-adapter'
 import { createProviderAdapter, providerSelectionFor } from './providers/provider-selection-ipc'
 import type { ProviderAdapter } from './providers/types'
+import { recurringServiceFor } from './recurring/recurring-ipc'
 import { Scheduler } from './scheduler/scheduler'
 import { createLastRunStore } from './scheduler/last-run-store'
 import { companyBoundDeps } from './scheduler/scheduler-wiring'
@@ -83,6 +84,8 @@ app
     // 스케줄러는 열린 회사 1개만 다룬다. 틱은 회사에 묶인 입력으로 틱마다 새로 만들고, 한도 카드 쿨다운만 공유한다.
     // 한도 점검은 CFO 사용량 집계(T-019)에 연결되어 있고, 점검이 실패하면 틱은 실행하지 않는다 (가장 보수적).
     const tickShared: TickShared = { lastLimitCardAt: 0 }
+    // 틱 직전 정기 티켓 생성(T-049)의 막힌 점은 이어지는 틱의 브리핑에 한 번 실린다.
+    let recurringNotes: string[] = []
     const sched = new Scheduler({
       ...companyBoundDeps(companyContext, app.getPath('userData')),
       lastRuns: createLastRunStore(app.getPath('userData')),
@@ -96,6 +99,7 @@ app
         const deps = tickDepsFor({
           context: companyContext,
           userDataDir: app.getPath('userData'),
+          takeNotes: () => recurringNotes.splice(0),
           checkLimit: (employeeIds) =>
             usageServiceFor(usageDeps).checkLimit([
               ...new Set(
@@ -123,6 +127,10 @@ app
         })
         await createTickRunner(deps, tickShared)(ctx)
       }
+    })
+    sched.setPreTickHook(async () => {
+      if (companyContext.getOpenCompany() === null) return
+      recurringNotes = (await recurringServiceFor({ context: companyContext }).materialize()).notes
     })
     scheduler = sched
     registerSchedulerHandlers(sched)

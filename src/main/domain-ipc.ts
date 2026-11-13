@@ -28,6 +28,7 @@ import { createIntegrityHandlers, type IntegrityHandlers } from './integrity/int
 import { integrityFor } from './integrity/integrity-runtime'
 import { createProposalHandlers, type ProposalHandlers } from './proposal/proposal-ipc'
 import { createProfileHandlers, type ProfileHandlers } from './company/profile-ipc'
+import { createRecurringHandlers, type RecurringHandlers } from './recurring/recurring-ipc'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import {
   createProviderSelectionHandlers,
@@ -118,6 +119,7 @@ export function createDomainHandlers(deps: DomainDeps): {
   DepartmentHandlers &
   ProjectHandlers &
   PolicyHandlers &
+  RecurringHandlers &
   ProfileHandlers &
   ProviderSelectionHandlers &
   GateHandlers &
@@ -128,6 +130,7 @@ export function createDomainHandlers(deps: DomainDeps): {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createPolicyHandlers({ context: deps.context }),
+    ...createRecurringHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProfileHandlers({ context: deps.context }),
     ...createProviderSelectionHandlers({ context: deps.context, providers: deps.providers }),
     ...createGateHandlers({
@@ -322,6 +325,11 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.policyGet, h.getPolicy)
   handle(IPC_CHANNELS.policySave, write(h.savePolicy))
   handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())
+  handle(IPC_CHANNELS.recurringList, () => h.listRecurring())
+  handle(IPC_CHANNELS.recurringAdd, h.addRecurring)
+  handle(IPC_CHANNELS.recurringUpdate, h.updateRecurring)
+  handle(IPC_CHANNELS.recurringSetStatus, h.setRecurringStatus)
+  handle(IPC_CHANNELS.recurringRemove, h.removeRecurring)
   handle(IPC_CHANNELS.projectListTemplates, () => h.listProjectTemplates())
   // 정책 파일(`company/policies/**`)을 만들므로 앱 쓰기로 감싼다.
   handle(IPC_CHANNELS.projectApplyTemplate, write(h.applyProjectTemplate))

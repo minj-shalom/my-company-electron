@@ -239,6 +239,7 @@ export function createTickRunner(
       notes: [],
       plan: null
     }
+    r.notes.push(...(deps.takeNotes?.() ?? []))
     try {
       const snapshot = await deps.loadSnapshot()
       r.plan = planTick(snapshot, ctx.allowedProjectIds)
