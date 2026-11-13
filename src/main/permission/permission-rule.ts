@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { PermissionDenial } from '../../shared/run'
 
@@ -18,9 +18,13 @@ const PROTECTED_FRAGMENT =
 const PROTECTED_COMPANY_FILES = new Set([
   'company/org.md',
   'company/project.md',
-  'company/recurring.md'
+  'company/recurring.md',
+  // 의존성·실행 스크립트·에이전트 지침을 바꾸면 이후 실행이 임의 코드가 되므로 막는다 (소문자 비교).
+  'package.json',
+  'package-lock.json',
+  'claude.md'
 ])
-const PROTECTED_COMPANY_DIRS = ['company/publishing/', 'company/archive/']
+const PROTECTED_COMPANY_DIRS = ['company/publishing/', 'company/archive/', 'scripts/']
 // eslint-disable-next-line no-control-regex
 const PATH_FORBIDDEN = /[\0-\x1f\x7f*?[\]{}\\!]/
 
@@ -40,9 +44,7 @@ const SAFE_COMMANDS: ReadonlySet<string> = new Set([
   'git diff',
   'git diff --stat',
   'git log',
-  'git log --oneline',
-  'git add -A',
-  'git add .'
+  'git log --oneline'
 ])
 
 export function commandRule(command: string): AllowRule | null {
@@ -84,6 +86,8 @@ export async function fileRule(rawPath: string, companyRoot: string): Promise<Al
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel) || rel.split('/').includes('..'))
     return null
   if (isProtectedRel(rel)) return null
+  // 디렉터리는 규칙 대상이 아니다 (하위 전체가 열리지 않게).
+  if ((await stat(abs).catch(() => null))?.isDirectory() === true) return null
   // 폴더 안의 심볼릭 링크가 보호 경로로 해소되는 경우도 막는다.
   const real = await realRelInside(companyRoot, join(companyRoot, rel))
   if (real === null || (real !== '' && isProtectedRel(real))) return null

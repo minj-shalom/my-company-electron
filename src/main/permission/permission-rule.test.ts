@@ -59,6 +59,8 @@ describe('deriveAllowRule', () => {
     'npm test x',
     'npm run lint --fix',
     'git add src',
+    'git add -A',
+    'git add .',
     'git commit -m x',
     'echo hi',
     'ls',
@@ -123,7 +125,14 @@ describe('deriveAllowRule', () => {
     'Company/Org.md',
     'COMPANY/POLICIES/p.md',
     '.CLAUDE/settings.local.json',
-    '.claude'
+    '.claude',
+    'package.json',
+    'Package-Lock.json',
+    'CLAUDE.md',
+    'claude.md',
+    'scripts/init.sh',
+    'Scripts/dev.sh',
+    'docs'
   ])('refuses file path %s', async (p) => {
     expect(await deriveAllowRule(file(p), root)).toBeNull()
   })
