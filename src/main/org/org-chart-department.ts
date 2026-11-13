@@ -1,3 +1,4 @@
+import type { OrgModel } from '../../shared/org'
 import {
   deleteNode,
   deptName,
