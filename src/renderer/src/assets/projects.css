@@ -196,3 +196,100 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* 프로젝트 배정 (T-045) */
+.project-people {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+}
+.project-people__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm, 0.9rem);
+}
+.project-people__list,
+.assigned__rows,
+.unassigned-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.project-people__list li,
+.assigned__rows li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.unassigned-list li {
+  padding: 0 var(--space-2);
+  border: var(--bw) solid var(--border);
+  background: var(--bg-inset);
+}
+.project-people__manual,
+.assigned__manual {
+  margin-top: var(--space-2);
+}
+.assigned__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.assigned__note {
+  margin: var(--space-1) 0 0;
+}
+.assigned__issues {
+  margin-top: var(--space-2);
+}
+.assigned__rows {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.hire-dialog__assign {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.project-chip__dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 4px;
+  vertical-align: middle;
+  background: var(--bg-panel);
+  border: 2px solid var(--chip-color, var(--focus));
+}
+.project-chip__dot[data-pc='0'] {
+  --chip-color: var(--focus);
+}
+.project-chip__dot[data-pc='1'] {
+  --chip-color: var(--working);
+}
+.project-chip__dot[data-pc='2'] {
+  --chip-color: var(--warn);
+}
+.project-chip__dot[data-pc='3'] {
+  --chip-color: var(--dept-plan);
+}
+.project-chip__dot[data-pc='4'] {
+  --chip-color: var(--dept-rnd);
+}
+.office-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.org-member[data-dim='true'] {
+  opacity: 0.4;
+}
+.org-member__projects {
+  display: block;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}

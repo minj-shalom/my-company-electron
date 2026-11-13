@@ -1,0 +1,92 @@
+/* 프로젝트별 현황. 색은 tokens.css 변수만 쓴다. */
+.pstatus {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  background: var(--bg-panel);
+  border: var(--bw) solid var(--border);
+}
+.pstatus__top h2 {
+  margin: 0 0 var(--space-3);
+}
+.pstatus__total,
+.pstatus__card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.pstatus__card[data-current='true'] {
+  border-color: var(--accent);
+}
+.pstatus__card[data-pm='pm-required'] {
+  border-left: 4px solid var(--warn);
+}
+.pstatus__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pstatus__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pstatus__name {
+  margin: 0 auto 0 0;
+  overflow-wrap: anywhere;
+}
+.pstatus__counts {
+  display: flex;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pstatus__counts li {
+  display: grid;
+}
+.pstatus__num {
+  font-size: var(--fs-5);
+  font-weight: 700;
+}
+.pstatus__lbl {
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+}
+.pstatus__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--fs-2);
+}
+.pstatus__meta dt {
+  color: var(--text-muted);
+}
+.pstatus__meta dd {
+  margin: 0;
+}
+.pstatus__warn {
+  margin: 0;
+}
+.pstatus__recent h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+}
+.pstatus__recent ul {
+  margin: 0;
+  padding-left: var(--space-3);
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+.pstatus__id {
+  font-family: var(--font-code);
+  color: var(--text-muted);
+}

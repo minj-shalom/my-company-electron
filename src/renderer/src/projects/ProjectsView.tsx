@@ -1,5 +1,11 @@
 import { useId, useRef, useState } from 'react'
+import type { OrgSnapshot } from '../../../shared/org'
+import type { PolicySummary } from '../../../shared/policy'
 import type { ProjectInfo } from '../../../shared/project'
+import { PolicyDialog } from '../policy/PolicyDialog'
+import { usePolicySummaries } from '../policy/use-policy'
+import { UnassignedSection } from '../assign/UnassignedSection'
+import { useOrg } from '../org/use-org'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
@@ -43,6 +49,16 @@ export function ProjectsView({
   const [notice, setNotice] = useState<string | null>(null)
   const lock = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const org = useOrg()
+  const policies = usePolicySummaries()
+  const orgSnapshot = org.status.kind === 'ready' ? org.status.snapshot : null
+  const people = {
+    org: orgSnapshot,
+    onChanged: () => {
+      org.refresh()
+      reload()
+    }
+  }
   const loading = load.kind === 'loading' || refreshing
 
   const close = (): void => {
@@ -121,9 +137,14 @@ export function ProjectsView({
         archived={archived}
         currentId={currentId}
         onAction={onAction}
+        people={people}
+        policies={policies.byId}
         onRetry={reload}
         onAdd={() => setDialog({ kind: 'add' })}
       />
+      {load.kind === 'ready' && (
+        <UnassignedSection org={orgSnapshot} failed={org.status.kind === 'error'} />
+      )}
       <p className="hint projects__script-note">{SCRIPT_KEY_NOTE}</p>
 
       {dialog?.kind === 'add' && load.kind === 'ready' && (
@@ -140,6 +161,14 @@ export function ProjectsView({
             }
             return outcome
           }}
+        />
+      )}
+      {dialog?.kind === 'policy' && (
+        <PolicyDialog
+          projectId={dialog.project.id}
+          projectName={dialog.project.name}
+          onClose={close}
+          onSaved={policies.reload}
         />
       )}
       {dialog?.kind === 'rename' && (
@@ -219,6 +248,8 @@ function ProjectsBody({
   archived,
   currentId,
   onAction,
+  people,
+  policies,
   onRetry,
   onAdd
 }: {
@@ -227,6 +258,8 @@ function ProjectsBody({
   archived: ProjectInfo[]
   currentId: string | null
   onAction: (a: ProjectAction, p: ProjectInfo) => void
+  people: { org: OrgSnapshot | null; onChanged: () => void }
+  policies: Map<string, PolicySummary>
   onRetry: () => void
   onAdd: () => void
 }): React.JSX.Element | null {
@@ -280,6 +313,8 @@ function ProjectsBody({
                 project={p}
                 current={p.id === currentId}
                 onAction={onAction}
+                people={people}
+                policy={policies.get(p.id)}
               />
             ))}
           </ul>
@@ -305,7 +340,14 @@ function ProjectsBody({
                 aria-label="보관된 프로젝트"
               >
                 {archived.map((p) => (
-                  <ProjectCard key={p.id} project={p} current={false} onAction={onAction} />
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    current={false}
+                    onAction={onAction}
+                    people={people}
+                    policy={policies.get(p.id)}
+                  />
                 ))}
               </ul>
             </div>

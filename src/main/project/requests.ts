@@ -114,3 +114,18 @@ export function parseAdd(raw: unknown): Parsed<AddInput> {
     }
   }
 }
+
+export function parseAssign(raw: unknown): Parsed<{ id: string; employeeId: string }> {
+  const o = plain(raw, ['id', 'employeeId'])
+  if (!o || !id(o.id)) return bad('프로젝트 id가 올바르지 않습니다.')
+  return employeeId(o.employeeId)
+    ? { ok: true, value: { id: o.id, employeeId: o.employeeId } }
+    : bad('직원 id가 올바르지 않습니다.')
+}
+
+export function parseEmployeeProjects(raw: unknown): Parsed<{ id: string }> {
+  const o = plain(raw, ['id'])
+  return o && employeeId(o.id)
+    ? { ok: true, value: { id: o.id } }
+    : bad('직원 id가 올바르지 않습니다.')
+}

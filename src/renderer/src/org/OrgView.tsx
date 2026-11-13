@@ -1,6 +1,11 @@
-import { useContext, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
+import { AssignmentIssues } from '../assign/AssignmentIssues'
 import { Badge } from '../ui/Badge'
+import { needsLeaveConfirm } from '../employee/employee-model'
+import { HireEntry } from '../employee/HireEntry'
+import { LeaveDialog, MemberManager } from '../employee/MemberManager'
+import { useNewHire } from '../employee/use-new-hire'
 import { HireBanners } from '../hire/HireBanners'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
@@ -96,6 +101,18 @@ function OrgReady({
   onChanged: () => void
 }): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null)
+  // 편집 중 변경이 있으면 다른 직원을 고르기 전에 확인한다.
+  const dirtyRef = useRef(false)
+  const [pendingSelect, setPendingSelect] = useState<string | null>(null)
+  const setDirty = useCallback((d: boolean) => {
+    dirtyRef.current = d
+  }, [])
+  const requestSelect = (title: string): void => {
+    if (needsLeaveConfirm(dirtyRef.current, selected, title)) setPendingSelect(title)
+    else setSelected(title)
+  }
+  const listsRef = useRef<HTMLDivElement>(null)
+  const { onHired, notice, assignFor } = useNewHire(snapshot, setSelected, listsRef, onChanged)
   const groups = groupByDepartment(snapshot)
   const tones = toneByTitle(groups)
   const member = snapshot.org.members.find((m) => m.title === selected) ?? null
@@ -112,6 +129,16 @@ function OrgReady({
     <>
       <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
+      <HireEntry
+        snapshot={snapshot}
+        onHired={onHired}
+        offerAssign
+        isDirty={() => dirtyRef.current}
+      />
+      <AssignmentIssues issues={snapshot.assignmentIssues ?? []} />
+      <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
+        {notice}
+      </div>
       <div className="org__layout" data-selected={member ? 'true' : 'false'}>
         <div
           className="org__detail"
@@ -122,16 +149,27 @@ function OrgReady({
         >
           <Panel title="직원 상세" as="section">
             {member ? (
-              <MemberDetail
-                detail={memberDetail(member, snapshot.agents)}
-                tone={tones.get(member.title) ?? null}
-              />
+              <>
+                <MemberDetail
+                  detail={memberDetail(member, snapshot.agents)}
+                  tone={tones.get(member.title) ?? null}
+                />
+                <MemberManager
+                  key={member.title}
+                  member={member}
+                  snapshot={snapshot}
+                  onDirtyChange={setDirty}
+                  onChanged={onChanged}
+                  onRetired={() => setSelected(null)}
+                  openAssign={member.agentId !== null && member.agentId === assignFor}
+                />
+              </>
             ) : (
               <p className="hint">직원을 선택하면 역할, 모델, 도구가 여기에 보여요.</p>
             )}
           </Panel>
         </div>
-        <div className="org__lists">
+        <div className="org__lists" ref={listsRef}>
           <Panel title="보고 라인">
             <RovingList titles={orderedTree} selected={selected}>
               <ul className="org-tree" aria-label="보고 라인 트리">
@@ -141,7 +179,7 @@ function OrgReady({
                     node={n}
                     tones={tones}
                     selected={selected}
-                    onSelect={setSelected}
+                    onSelect={requestSelect}
                     controls={detailId}
                   />
                 ))}
@@ -168,7 +206,7 @@ function OrgReady({
                             member={m}
                             tone={g.tone}
                             selected={selected === m.title}
-                            onSelect={setSelected}
+                            onSelect={requestSelect}
                             controls={detailId}
                           />
                         </li>
@@ -181,6 +219,16 @@ function OrgReady({
           </Panel>
         </div>
       </div>
+      {pendingSelect && (
+        <LeaveDialog
+          onStay={() => setPendingSelect(null)}
+          onLeave={() => {
+            dirtyRef.current = false
+            setSelected(pendingSelect)
+            setPendingSelect(null)
+          }}
+        />
+      )}
     </>
   )
 }

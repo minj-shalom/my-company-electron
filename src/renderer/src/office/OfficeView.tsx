@@ -1,6 +1,19 @@
-import { memo, useContext, useId, useMemo, useState } from 'react'
+import { memo, useContext, useId, useMemo, useRef, useState } from 'react'
 import type { AvatarStatus, OfficeStatusMap } from '../../../shared/office'
 import type { OrgMember, OrgSnapshot } from '../../../shared/org'
+import {
+  PROJECT_COLORS,
+  badgeView,
+  filterOptions,
+  highlightTitles,
+  projectColorIndexes,
+  projectsByTitle,
+  projectsSummary,
+  type NormalizedProject
+} from '../assign/assign-model'
+import { ProjectBadges } from '../assign/AssignedProjects'
+import { HireEntry } from '../employee/HireEntry'
+import { useNewHire } from '../employee/use-new-hire'
 import { HireBanners } from '../hire/HireBanners'
 import { IssueList } from '../org/IssueList'
 import { MemberDetail } from '../org/MemberDetail'
@@ -94,12 +107,30 @@ function OfficeReady({
   const statuses = useOfficeStatuses(titles)
   const member = snapshot.org.members.find((m) => m.title === selected) ?? null
   const counts = countByStatus(titles, statuses)
+  const byTitle = useMemo(() => projectsByTitle(snapshot), [snapshot])
+  const options = useMemo(() => filterOptions(byTitle), [byTitle])
+  const colors = useMemo(() => projectColorIndexes(options.map((o) => o.id)), [options])
+  const badges = useMemo(
+    () => new Map([...byTitle].map(([t, list]) => [t, badgeView(list, colors)])),
+    [byTitle, colors]
+  )
+  const [filter, setFilter] = useState<string | null>(null)
+  // 필터로 고른 프로젝트가 사라지면(배정 해제 등) 전체로 돌아간다.
+  const activeFilter = options.some((o) => o.id === filter) ? filter : null
+  const highlight = useMemo(() => highlightTitles(byTitle, activeFilter), [byTitle, activeFilter])
+  const filterId = useId()
   const detailId = useId()
+  const belowRef = useRef<HTMLDivElement>(null)
+  const { onHired, notice } = useNewHire(snapshot, setSelected, belowRef, onChanged)
 
   return (
     <>
       <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
+      <HireEntry snapshot={snapshot} onHired={onHired} />
+      <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
+        {notice}
+      </div>
       {!hasLiveStatusSource() && (
         <p className="office__notice hint">상태 연동 전이라 모두 대기로 보여요.</p>
       )}
@@ -112,13 +143,38 @@ function OfficeReady({
           </li>
         ))}
       </ul>
+      <div className="office-filter">
+        <label htmlFor={filterId}>프로젝트 필터</label>
+        <select
+          id={filterId}
+          className="input"
+          value={activeFilter ?? ''}
+          onChange={(e) => setFilter(e.target.value === '' ? null : e.target.value)}
+        >
+          <option value="">전체 직원</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name} ({o.count}명)
+            </option>
+          ))}
+        </select>
+        <span role="status" className="hint">
+          {highlight
+            ? `${highlight.size}명을 강조하고 나머지는 흐리게 보여요.`
+            : options.length === 0
+              ? '프로젝트에 배정된 직원이 아직 없어요.'
+              : ''}
+        </span>
+      </div>
       <OfficeCanvas
+        badges={badges}
+        highlight={highlight}
         layout={layout}
         statuses={statuses}
         selected={selected}
         onSelect={setSelected}
       />
-      <div className="office__below">
+      <div className="office__below" ref={belowRef}>
         <div id={detailId} className="office__detail">
           <Panel title="직원 상세" as="section">
             {member ? (
@@ -134,6 +190,8 @@ function OfficeReady({
                     detail={memberDetail(member, snapshot.agents)}
                     tone={tones.get(member.title) ?? null}
                   />
+                  <p className="office__detail-status">담당 프로젝트</p>
+                  <ProjectBadges list={byTitle.get(member.title) ?? []} />
                 </div>
               </>
             ) : (
@@ -146,6 +204,9 @@ function OfficeReady({
         <Panel title="직원 목록">
           <OfficeRoster
             groups={groups}
+            byTitle={byTitle}
+            colors={colors}
+            highlight={highlight}
             statuses={statuses}
             selected={selected}
             onSelect={setSelected}
@@ -160,12 +221,18 @@ function OfficeReady({
 /** 지도와 같은 정보를 키보드로 쓰는 목록. 위/아래 화살표로 이동하고 Enter/Space로 고른다. */
 const OfficeRoster = memo(function OfficeRoster({
   groups,
+  byTitle,
+  colors,
+  highlight,
   statuses,
   selected,
   onSelect,
   controls
 }: {
   groups: readonly DepartmentGroup[]
+  byTitle: ReadonlyMap<string, NormalizedProject[]>
+  colors: ReadonlyMap<string, number>
+  highlight: ReadonlySet<string> | null
   statuses: OfficeStatusMap
   selected: string | null
   onSelect: (title: string) => void
@@ -191,6 +258,9 @@ const OfficeRoster = memo(function OfficeRoster({
                   <RosterButton
                     member={m}
                     status={statusOf(statuses, m.title)}
+                    projects={byTitle.get(m.title) ?? []}
+                    colors={colors}
+                    dimmed={highlight !== null && !highlight.has(m.title)}
                     selected={selected === m.title}
                     onSelect={onSelect}
                     controls={controls}
@@ -208,12 +278,19 @@ const OfficeRoster = memo(function OfficeRoster({
 function RosterButton({
   member,
   status,
+  projects,
+  colors,
+  dimmed,
   selected,
   onSelect,
   controls
 }: {
   member: OrgMember
   status: AvatarStatus
+  /** 담당 프로젝트. 글자로 항상 보여 주고 색 점은 지도의 배지와 맞춘다. */
+  projects: readonly NormalizedProject[]
+  colors: ReadonlyMap<string, number>
+  dimmed: boolean
   selected: boolean
   onSelect: (title: string) => void
   controls: string
@@ -225,12 +302,28 @@ function RosterButton({
       className="org-member"
       tabIndex={tabbable === undefined || tabbable === member.title ? 0 : -1}
       data-org-item={member.title}
+      data-dim={dimmed ? 'true' : undefined}
       aria-current={selected ? 'true' : undefined}
       aria-controls={controls}
       onClick={() => onSelect(member.title)}
     >
       <span className="org-member__title">{member.title}</span>
       <Badge tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Badge>
+      <span className="org-member__projects">
+        {member.kind === 'agent' ? projectsSummary(projects) : '회사 전체'}
+        {projects.some((p) => p.active) &&
+          projects
+            .filter((p) => p.active)
+            .slice(0, 3)
+            .map((p) => (
+              <span
+                key={p.id}
+                className="project-chip__dot"
+                data-pc={(colors.get(p.id) ?? 0) % PROJECT_COLORS}
+                aria-hidden="true"
+              />
+            ))}
+      </span>
     </button>
   )
 }

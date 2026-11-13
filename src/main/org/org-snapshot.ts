@@ -2,6 +2,7 @@ import { BASE_ROLES, type OrgAgentDetail, type OrgModel, type OrgSnapshot } from
 import { splitFrontmatter, asString } from '../repository/markdown'
 import { AGENTS_DIR } from '../repository/parse-org'
 import type { SafeFs } from '../repository/safe-fs'
+import { readProjectItems, validateAssignments } from '../project/assignments-store'
 import { loadOrg } from './org-store'
 
 /** frontmatter `tools`는 콤마 문자열이거나 YAML 목록일 수 있다. */
@@ -62,6 +63,23 @@ export async function buildOrgSnapshot(fs: SafeFs): Promise<OrgSnapshot> {
   const ids = org.members
     .filter((m) => m.kind === 'agent' && m.fileExists && m.agentId !== null)
     .map((m) => m.agentId as string)
-  const agents = await mapLimited([...new Set(ids)], READ_CONCURRENCY, (id) => readAgent(fs, id))
-  return { org, agents, missingBaseRoles: findMissingBaseRoles(org) }
+  const details = await mapLimited([...new Set(ids)], READ_CONCURRENCY, (id) => readAgent(fs, id))
+  // project.md를 읽지 못해도 조직도는 보여준다 (배정 없음으로 취급).
+  const items = await readProjectItems(fs).catch(() => [])
+  const { byEmployee, issues } = validateAssignments(items, org)
+  const agents = details.map((a) => ({
+    ...a,
+    projects: (byEmployee.get(a.id) ?? []).map((e) => ({
+      id: e.projectId,
+      name: e.projectName,
+      role: e.role,
+      active: e.active
+    }))
+  }))
+  return {
+    org,
+    agents,
+    missingBaseRoles: findMissingBaseRoles(org),
+    ...(issues.length > 0 ? { assignmentIssues: issues } : {})
+  }
 }

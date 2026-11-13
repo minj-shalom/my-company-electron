@@ -11,6 +11,7 @@ import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
 import {
   assigneeChoices,
+  assigneeWarning,
   assigneeFor,
   charCount,
   draftFromTicket,
@@ -263,7 +264,10 @@ function TicketForm({
   }
 
   const projects = projectChoices(options, draft.projectId)
-  const assignees = assigneeChoices(options, draft.assignee)
+  const assignees = assigneeChoices(options, draft.assignee, draft.projectId)
+  const assigneeNote = assigneeWarning(options, draft.projectId, draft.assignee)
+  const assigned = assignees.filter((a) => a.assigned === true)
+  const others = assignees.filter((a) => a.assigned !== true && a.value !== '')
   const e = errors ?? { rows: {} }
   const pmNote = needsPm(options, draft.projectId)
   const filledCount = draft.criteria.filter((c) => c.trim() !== '').length
@@ -446,12 +450,37 @@ function TicketForm({
             set({ assignee: ev.target.value })
           }}
         >
-          {assignees.map((a) => (
-            <option key={a.value} value={a.value}>
-              {a.label}
-            </option>
-          ))}
+          <option value="">담당 없음</option>
+          {assigned.length > 0 && (
+            <optgroup label="이 프로젝트 직원">
+              {assigned.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {assigned.length > 0 ? (
+            <optgroup label="프로젝트에 배정되지 않은 직원">
+              {others.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            others.map((a) => (
+              <option key={a.value} value={a.value}>
+                {a.label}
+              </option>
+            ))
+          )}
         </select>
+        {assigneeNote && (
+          <p className="notice tform__assign-warn" role="status">
+            {assigneeNote}
+          </p>
+        )}
         <p className="hint">
           {editing
             ? '담당 없음은 오류가 아니에요. COO가 채용이 필요한 업무로 다뤄요.'

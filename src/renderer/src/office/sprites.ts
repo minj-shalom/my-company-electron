@@ -5,6 +5,7 @@
  */
 import { Container, Graphics, Text } from 'pixi.js'
 import type { AvatarStatus } from '../../../shared/office'
+import type { BadgeView } from '../assign/assign-model'
 import { lookFor, shortLabel } from './avatar-look'
 import { ROOM_HEADER, SLOT_H, type RoomLayout } from './layout'
 import type { Palette } from './palette'
@@ -92,6 +93,8 @@ export interface AvatarParts {
   mark: Graphics
   /** 선택 표시. */
   ring: Graphics
+  /** 프로젝트 소속 배지 줄 (T-045). */
+  badges: Container
 }
 
 export function createAvatar(
@@ -162,8 +165,9 @@ export function createAvatar(
   const mark = new Graphics()
   mark.position.set(0, 0)
 
-  root.addChild(ring, body, desk, pill, label, mark)
-  return { root, body, mark, ring }
+  const badges = new Container()
+  root.addChild(ring, body, desk, pill, label, mark, badges)
+  return { root, body, mark, ring, badges }
 }
 
 /** 작업 중에는 몸이 한 픽셀 칸만큼 위아래로 움직인다. `frame`이 null이면 제자리. */
@@ -209,4 +213,80 @@ export function drawMark(
 
 export function setRingVisible(parts: AvatarParts, visible: boolean): void {
   parts.ring.visible = visible
+}
+
+/** 프로젝트 색 토큰. 색은 보조이고 이니셜 글자와 목록의 이름이 구분을 맡는다. */
+const PROJECT_TOKENS = ['focus', 'working', 'warn', 'dept-plan', 'dept-rnd'] as const
+const BADGE_W = 12
+const BADGE_H = 13
+const BADGE_GAP = 2
+
+/** 이름표 아래에 PM 글자 라벨, 프로젝트 이니셜(최대 3개), "+N"을 가운데 정렬로 그린다. */
+export function drawBadges(
+  parts: AvatarParts,
+  view: BadgeView | undefined,
+  fontFamily: string,
+  p: Palette
+): void {
+  for (const c of parts.badges.removeChildren()) c.destroy({ children: true })
+  if (!view || (view.items.length === 0 && !view.pm)) return
+  const y = AVATAR_TOP + 9 * PX + 18 + LABEL_SIZE + 8
+  const text = (value: string, size: number): Text => {
+    const t = new Text({
+      text: value,
+      style: { fontFamily, fontSize: size, fontWeight: '700', fill: p.text }
+    })
+    t.resolution = TEXT_RESOLUTION
+    return t
+  }
+  const cells: { w: number; draw: (x: number) => void }[] = []
+  if (view.pm) {
+    const label = text('PM', 9)
+    const w = Math.ceil(label.width) + 6
+    cells.push({
+      w,
+      draw: (x) => {
+        const g = new Graphics()
+        g.rect(x, y, w, BADGE_H).fill(p['bg-inset']).stroke({ width: 2, color: p['border-strong'] })
+        label.position.set(x + 3, y + 2)
+        parts.badges.addChild(g, label)
+      }
+    })
+  }
+  for (const item of view.items) {
+    cells.push({
+      w: BADGE_W,
+      draw: (x) => {
+        const g = new Graphics()
+        g.rect(x, y, BADGE_W, BADGE_H)
+          .fill(p['bg-panel'])
+          .stroke({ width: 2, color: p[PROJECT_TOKENS[item.colorIndex % PROJECT_TOKENS.length]] })
+        const t = text(item.initial, 9)
+        t.anchor.set(0.5, 0)
+        t.position.set(x + BADGE_W / 2, y + 2)
+        parts.badges.addChild(g, t)
+      }
+    })
+  }
+  if (view.extra > 0) {
+    const t = text(`+${view.extra}`, 9)
+    cells.push({
+      w: Math.ceil(t.width),
+      draw: (x) => {
+        t.position.set(x, y + 2)
+        parts.badges.addChild(t)
+      }
+    })
+  }
+  const total = cells.reduce((s, c) => s + c.w, 0) + BADGE_GAP * (cells.length - 1)
+  let x = -total / 2
+  for (const c of cells) {
+    c.draw(x)
+    x += c.w + BADGE_GAP
+  }
+}
+
+/** 강조 필터에서 제외된 직원은 흐리게 한다. */
+export function setDimmed(parts: AvatarParts, dimmed: boolean): void {
+  parts.root.alpha = dimmed ? 0.3 : 1
 }

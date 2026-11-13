@@ -11,7 +11,12 @@ import {
   type ProjectStatus,
   type ProjectType
 } from '../../shared/project'
-import { formatFieldLine, parseFieldLine, parsePmValue } from './field-lines'
+import {
+  formatFieldLine,
+  parseEmployeeListValue,
+  parseFieldLine,
+  parsePmValue
+} from './field-lines'
 
 /**
  * `company/project.md`의 순수 파서/직렬화기 (파일 접근 없음).
@@ -19,6 +24,7 @@ import { formatFieldLine, parseFieldLine, parsePmValue } from './field-lines'
  * 바뀌지 않은 구간과 알 수 없는 줄(`직원:`, 정책, 스크립트용 `- project_dir:` 등)은 한 글자도 바꾸지 않는다.
  */
 
+export const PROJECT_FILE = 'company/project.md'
 export const PROJECT_HEADING = '## 프로젝트:'
 export const MAX_PROJECTS = 100
 const MAX_BLOCKS_PARSED = 200
@@ -30,6 +36,9 @@ const KEY_DEV = 'dev 명령'
 const KEY_BRANCH = '기본 브랜치'
 const KEY_STATUS = '상태'
 const KEY_PM = 'PM'
+const KEY_MEMBERS = '직원'
+/** 한 프로젝트에 배정할 수 있는 직원 수의 상한 (파일이 비정상적으로 커지는 것을 막는다). */
+export const MAX_MEMBERS = 100
 /** 새 줄을 추가할 때의 표준 순서. */
 const CANONICAL_KEYS = [
   KEY_ID,
@@ -38,7 +47,8 @@ const CANONICAL_KEYS = [
   KEY_DEV,
   KEY_BRANCH,
   KEY_STATUS,
-  KEY_PM
+  KEY_PM,
+  KEY_MEMBERS
 ] as const
 type KnownKey = (typeof CANONICAL_KEYS)[number]
 const KNOWN: ReadonlySet<string> = new Set(CANONICAL_KEYS)
@@ -53,6 +63,8 @@ export interface DocProject {
   defaultBranch: string | null
   status: ProjectStatus
   pmId: string | null
+  /** `직원:` 줄(T-045)의 일반 배정 직원 id. 담당 PM(`pmId`)은 별도 종류라 여기 없다. */
+  memberIds: string[]
 }
 
 type LayoutItem =
@@ -148,6 +160,14 @@ function parseBlockFields(
     pmId = parsePmValue(pm)
     if (pmId === null) return { project: null, layout }
   }
+  // `직원:` 값도 같은 원칙이다. 형식이 틀리거나 상한을 넘으면 블록을 신뢰하지 않는다. 중복은 하나로 본다.
+  let memberIds: string[] = []
+  const members = fields.get(KEY_MEMBERS)
+  if (members !== undefined) {
+    const parsed = parseEmployeeListValue(members)
+    if (parsed === null || parsed.length > MAX_MEMBERS) return { project: null, layout }
+    memberIds = [...new Set(parsed)]
+  }
   return {
     project: {
       id,
@@ -157,7 +177,8 @@ function parseBlockFields(
       devCommand: dev ?? null,
       defaultBranch: branch ?? null,
       status: status as ProjectStatus,
-      pmId
+      pmId,
+      memberIds
     },
     layout
   }
@@ -229,7 +250,8 @@ function legacyProjects(lines: string[]): DocProject[] {
       devCommand: dev !== null && isValidDevCommand(dev) ? dev : null,
       defaultBranch: null,
       status: 'active',
-      pmId: null
+      pmId: null,
+      memberIds: []
     })
   })
   return out
@@ -354,7 +376,8 @@ function fieldValues(p: DocProject): Record<KnownKey, string | null> {
     [KEY_DEV]: p.devCommand,
     [KEY_BRANCH]: p.defaultBranch,
     [KEY_STATUS]: p.status,
-    [KEY_PM]: p.pmId
+    [KEY_PM]: p.pmId,
+    [KEY_MEMBERS]: p.memberIds.length > 0 ? p.memberIds.join(', ') : null
   }
 }
 

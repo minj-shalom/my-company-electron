@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectInfo } from '../../../shared/project'
 import {
   assigneeChoices,
+  assigneeWarning,
   assigneeFor,
   draftFromTicket,
   EMPTY_DRAFT,
@@ -127,5 +128,33 @@ describe('saveErrorText', () => {
     expect(saveErrorText('conflict', '/secret/path')).not.toContain('/secret')
     expect(saveErrorText('forbidden', '')).toContain('진행 중')
     expect(saveErrorText('internal', '/secret')).not.toContain('/secret')
+  })
+})
+
+describe('assignee choices with project team (T-045)', () => {
+  const options: FormOptions = {
+    projects: [proj({ id: 'a', pmId: 'pm', memberIds: ['dev'] })],
+    employees: [
+      { id: 'cfo', name: 'CFO', title: '재무' },
+      { id: 'dev', name: '개발자', title: '개발' },
+      { id: 'pm', name: 'PM', title: '기획' }
+    ],
+    projectsFailed: false,
+    employeesFailed: false
+  }
+  it('puts project staff first and marks the rest', () => {
+    const c = assigneeChoices(options, '', 'a')
+    expect(c.map((x) => x.value)).toEqual(['', 'dev', 'pm', 'cfo'])
+    expect(c[1].assigned).toBe(true)
+    expect(c[3].assigned).toBe(false)
+  })
+  it('stays flat without a project', () => {
+    expect(assigneeChoices(options, '').map((x) => x.value)).toEqual(['', 'cfo', 'dev', 'pm'])
+  })
+  it('warns (never rejects) for an unassigned assignee', () => {
+    expect(assigneeWarning(options, 'a', 'cfo')).toContain('배정되지 않은')
+    expect(assigneeWarning(options, 'a', 'dev')).toBeNull()
+    expect(assigneeWarning(options, '', 'cfo')).toBeNull()
+    expect(assigneeWarning({ ...options, projectsFailed: true }, 'a', 'cfo')).toBeNull()
   })
 })

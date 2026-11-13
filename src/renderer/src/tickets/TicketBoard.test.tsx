@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import type { ProjectInfo } from '../../../shared/project'
 import type { Ticket } from '../../../shared/ticket'
 import { createMockTicketApi, parseTicketScenario } from '../mock-tickets'
 import { TicketBoard } from './TicketBoard'
@@ -112,5 +113,59 @@ describe('TicketBoard create/edit entry', () => {
     expect(html).toContain('aria-label="T-001 편집"')
     expect(html).not.toContain('aria-label="T-002 편집"')
     expect(html).not.toContain('aria-label="T-003 편집"')
+  })
+})
+
+describe('TicketBoard project view (T-042)', () => {
+  const proj = (id: string, over: Partial<ProjectInfo> = {}): ProjectInfo => ({
+    id,
+    name: `프로젝트 ${id}`,
+    path: `/x/${id}`,
+    type: 'development',
+    devCommand: null,
+    defaultBranch: null,
+    status: 'active',
+    pmId: 'pm',
+    pm: null,
+    state: 'ready',
+    git: { status: 'ok', branch: 'develop', dirty: false },
+    ...over
+  })
+  const items = [
+    t('T-001', { projectId: 'a' }),
+    t('T-002', { projectId: null }),
+    t('T-003', { projectId: 'np' }),
+    t('T-004', { projectId: 'ghost' })
+  ]
+  const projects = [proj('a'), proj('np', { state: 'pm-required', pmId: null })]
+  const render = (scope: string | null): string =>
+    renderToStaticMarkup(
+      <TicketBoard
+        state={ready(items)}
+        refresh={async () => {}}
+        markMoved={() => {}}
+        projects={projects}
+        scope={scope}
+        onScopeChange={() => {}}
+      />
+    )
+  it('shows project chips, badges and the PM note', () => {
+    const html = render(null)
+    expect(html).toContain('aria-label="프로젝트 필터"')
+    expect(html).toContain('회사 공통')
+    expect(html).toContain('미확인 프로젝트')
+    expect(html).toContain('PM 지정 전까지 실행되지 않음')
+  })
+  it('filters by scope', () => {
+    const html = render('a')
+    expect(html).toContain('제목 T-001')
+    expect(html).not.toContain('제목 T-002')
+    expect(render('')).toContain('제목 T-002')
+    expect(render('')).not.toContain('제목 T-001')
+  })
+  it('hides project UI when the project list is unavailable', () => {
+    const html = board(ready(items))
+    expect(html).not.toContain('프로젝트 필터')
+    expect(html).not.toContain('미확인 프로젝트')
   })
 })

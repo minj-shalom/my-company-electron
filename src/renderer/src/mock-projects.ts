@@ -2,6 +2,7 @@ import type { WindowApi } from '../../shared/api'
 import {
   checkProjectName,
   isPmTitle,
+  type EmployeeProjectEntry,
   type ProjectChangeRecord,
   type ProjectChangeResult,
   type ProjectInfo,
@@ -15,6 +16,7 @@ import { mockGetOrg, parseOrgScenario } from './mock-org'
  * ok: 기본 3건(PM 필요·보관·git 조회 불가 포함), empty: 없음, legacy: 기존 형식 안내, many: 12건,
  * error: 조회 실패, loading: 응답 없음, slow: 응답 지연, pm-none: 모든 프로젝트가 PM 없음.
  * 보관은 'landing'이 진행 중 티켓 때문에 거부된다.
+ * 배정(T-045)은 `?mock-assign=error|conflict`로 실패를 낼 수 있다 (기본 조직에서 cfo는 배정 대기).
  */
 export type ProjectScenario =
   'ok' | 'empty' | 'legacy' | 'many' | 'error' | 'loading' | 'slow' | 'pm-none'
@@ -45,6 +47,9 @@ type Mock = Pick<
   | 'setProjectType'
   | 'setProjectPm'
   | 'clearProjectPm'
+  | 'assignProjectEmployee'
+  | 'unassignProjectEmployee'
+  | 'listEmployeeProjects'
 >
 
 const base = (
@@ -55,13 +60,39 @@ const base = (
   defaultBranch: 'develop',
   status: 'active',
   pmId: 'pm',
+  memberIds: [],
   pm: null,
   state: 'ready',
   git: { status: 'ok', branch: 'develop', dirty: false },
   ...over
 })
 
-function seed(s: ProjectScenario): { items: ProjectInfo[]; format: ProjectList['format'] } {
+const range = (prefix: string, n: number): string[] =>
+  Array.from({ length: n }, (_, i) => `${prefix}-${i}`)
+
+/** 일반 배정 시드. 기본 조직은 cfo가 보관 프로젝트에만 있어 "배정 대기"로 보이고, `?mock-org=many`는 직원 20명에 맞춰 나눈다. */
+function seedMembers(id: string, many: boolean): string[] {
+  if (many) {
+    const by: Record<string, string[]> = {
+      'my-company': [...range('agent-1', 3), ...range('agent-4', 6)],
+      landing: ['agent-4-0', 'agent-4-1', ...range('agent-5', 3), 'agent-3-0'],
+      blog: [...range('agent-3', 3), 'agent-2-0']
+    }
+    return by[id] ?? []
+  }
+  const by: Record<string, string[]> = {
+    'my-company': ['cto', 'developer', 'ui-dev', 'reviewer-qa'],
+    landing: ['developer', 'devops'],
+    video: ['developer'],
+    'old-app': ['cfo']
+  }
+  return by[id] ?? []
+}
+
+function seed(
+  s: ProjectScenario,
+  many = false
+): { items: ProjectInfo[]; format: ProjectList['format'] } {
   if (s === 'empty') return { items: [], format: 'empty' }
   const noPm = s === 'pm-none' ? null : 'pm'
   const main = [
@@ -116,9 +147,13 @@ function seed(s: ProjectScenario): { items: ProjectInfo[]; format: ProjectList['
         pmId: i % 3 === 0 ? null : 'pm'
       })
     )
-    return { items: [...main, ...extra], format: 'blocks' }
+    return {
+      items: [...main, ...extra].map((p) => ({ ...p, memberIds: seedMembers(p.id, many) })),
+      format: 'blocks'
+    }
   }
-  return { items: main, format: s === 'legacy' ? 'legacy' : 'blocks' }
+  const items = main.map((p) => ({ ...p, memberIds: seedMembers(p.id, many) }))
+  return { items, format: s === 'legacy' ? 'legacy' : 'blocks' }
 }
 
 const record = (
@@ -150,8 +185,10 @@ export function createMockProjectApi(
   scenario: ProjectScenario,
   delayMs: number,
   orgSearch: string
-): { api: Mock; reset: () => void } {
-  let state = seed(scenario)
+): { api: Mock; reset: () => void; entriesFor: (employeeId: string) => EmployeeProjectEntry[] } {
+  const orgMany = parseOrgScenario(orgSearch) === 'many'
+  const assignMode = new URLSearchParams(orgSearch).get('mock-assign')
+  let state = seed(scenario, orgMany)
   let folderSeq = 0
   const wait = (): Promise<void> =>
     new Promise((r) => setTimeout(r, scenario === 'slow' ? Math.max(delayMs, 1) * 5 : delayMs))
@@ -188,12 +225,102 @@ export function createMockProjectApi(
     return next
   }
 
+  const entriesFor = (employeeId: string): EmployeeProjectEntry[] =>
+    state.items
+      .flatMap((p): EmployeeProjectEntry[] =>
+        p.pmId === employeeId
+          ? [
+              {
+                projectId: p.id,
+                projectName: p.name,
+                role: 'pm' as const,
+                active: p.status === 'active'
+              }
+            ]
+          : (p.memberIds ?? []).includes(employeeId)
+            ? [
+                {
+                  projectId: p.id,
+                  projectName: p.name,
+                  role: 'member' as const,
+                  active: p.status === 'active'
+                }
+              ]
+            : []
+      )
+      .sort((a, b) =>
+        a.role !== b.role
+          ? a.role === 'pm'
+            ? -1
+            : 1
+          : a.projectName.localeCompare(b.projectName, 'ko')
+      )
+
+  /** 조직도 mock에서 직원 파일이 있는 직원인지. CEO/COO는 직원 파일이 없어 forbidden이다. */
+  const employeeKind = async (id: string): Promise<'ok' | 'forbidden' | 'not-found'> => {
+    if (id === 'ceo' || id === 'coo') return 'forbidden'
+    const r = await mockGetOrg(parseOrgScenario(orgSearch))()
+    return r.ok && r.value.org.members.some((m) => m.agentId === id && m.fileExists)
+      ? 'ok'
+      : 'not-found'
+  }
+  const assignChange = async (
+    action: 'assign-employee' | 'unassign-employee',
+    req: { id: string; employeeId: string }
+  ): Promise<ApiResult<ProjectChangeResult>> => {
+    await wait()
+    if (assignMode === 'error')
+      return { ok: false, code: 'internal', message: '/Users/demo/secret/path 내부 오류' }
+    if (assignMode === 'conflict') return fail('conflict', '다른 곳에서 먼저 바뀌었어요.')
+    const p = find(req.id)
+    if (!p) return fail('not-found', '프로젝트를 찾지 못했어요.')
+    const kind = await employeeKind(req.employeeId)
+    if (kind === 'forbidden')
+      return { ok: false, code: 'forbidden', message: 'CEO와 COO는 배정 대상이 아니에요.' }
+    if (kind === 'not-found') return fail('not-found', '직원을 찾지 못했어요.')
+    const ids = p.memberIds ?? []
+    let next = p
+    if (action === 'assign-employee') {
+      if (p.status === 'archived') return fail('conflict', '보관된 프로젝트예요.')
+      if (p.pmId === req.employeeId) return fail('conflict', '이미 담당 PM이에요.')
+      if (!ids.includes(req.employeeId))
+        next = update(p.id, { memberIds: [...ids, req.employeeId] })
+    } else {
+      if (p.pmId === req.employeeId) return fail('conflict', '담당 PM은 일반 해제할 수 없어요.')
+      next = update(p.id, { memberIds: ids.filter((x) => x !== req.employeeId) })
+    }
+    const result = await changed(next, {
+      ...record(action, p.id, p.pmId, p.pmId),
+      employeeId: req.employeeId
+    })
+    return result.ok
+      ? { ok: true, value: { ...result.value, stateAfter: result.value.project.state } }
+      : result
+  }
+
   return {
+    entriesFor,
     reset: () => {
-      state = seed(scenario)
+      state = seed(scenario, orgMany)
       folderSeq = 0
     },
     api: {
+      assignProjectEmployee: (req) => assignChange('assign-employee', req),
+      unassignProjectEmployee: (req) => assignChange('unassign-employee', req),
+      listEmployeeProjects: async (req) => {
+        await wait()
+        if (assignMode === 'error')
+          return { ok: false, code: 'internal', message: '/Users/demo/secret/path 내부 오류' }
+        if ((await employeeKind(req.id)) !== 'ok') return fail('not-found', '직원을 찾지 못했어요.')
+        return {
+          ok: true,
+          value: {
+            employeeId: req.id,
+            projects: entriesFor(req.id),
+            issues: []
+          }
+        }
+      },
       selectProjectFolder: async () => {
         await wait()
         folderSeq += 1
@@ -293,13 +420,21 @@ export function createMockProjectApi(
         if (!p) return fail('not-found', '프로젝트를 찾지 못했어요.')
         if (!(await validPm(req.pm)))
           return fail('invalid-request', 'PM 직급 직원만 담당 PM으로 지정할 수 있어요.')
-        return changed(update(req.id, { pmId: req.pm }), record('set-pm', req.id, p.pmId, req.pm))
+        const r = await changed(
+          update(req.id, { pmId: req.pm }),
+          record('set-pm', req.id, p.pmId, req.pm)
+        )
+        return r.ok ? { ok: true, value: { ...r.value, stateAfter: r.value.project.state } } : r
       },
       clearProjectPm: async (req) => {
         await wait()
         const p = find(req.id)
         if (!p) return fail('not-found', '프로젝트를 찾지 못했어요.')
-        return changed(update(req.id, { pmId: null }), record('clear-pm', req.id, p.pmId, null))
+        const r = await changed(
+          update(req.id, { pmId: null }),
+          record('clear-pm', req.id, p.pmId, null)
+        )
+        return r.ok ? { ok: true, value: { ...r.value, stateAfter: r.value.project.state } } : r
       }
     }
   }

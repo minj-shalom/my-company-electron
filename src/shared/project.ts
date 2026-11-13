@@ -108,6 +108,8 @@ export interface ProjectInfo {
   status: ProjectStatus
   /** `project.md`의 `PM:` 값. 가리키는 직원이 없어도 그대로 남는다. */
   pmId: string | null
+  /** `직원:` 줄의 일반 배정 직원 id (T-045). 조직도에 없는 id도 그대로 담는다 (경고는 `employee:projects`/`org:get`). 없으면 빈 배열로 읽는다. */
+  memberIds?: string[]
   /** 현재 org.md에서 유효한 PM이면 표시 정보, 아니면 null. */
   pm: ProjectPmInfo | null
   state: ProjectState
@@ -129,7 +131,15 @@ export interface ProjectList {
 }
 
 export type ProjectChangeAction =
-  'add' | 'rename' | 'archive' | 'restore' | 'set-type' | 'set-pm' | 'clear-pm'
+  | 'add'
+  | 'rename'
+  | 'archive'
+  | 'restore'
+  | 'set-type'
+  | 'set-pm'
+  | 'clear-pm'
+  | 'assign-employee'
+  | 'unassign-employee'
 
 /** 프로젝트 변경 감사 기록. renderer 호출은 항상 `ceo-ui`다. 저장 위치는 T-046/T-052가 정한다. */
 export interface ProjectChangeRecord extends ChangeRecordBase {
@@ -139,11 +149,18 @@ export interface ProjectChangeRecord extends ChangeRecordBase {
   pmBefore: string | null
   pmAfter: string | null
   changedFields: string[]
+  /** 배정·해제 대상 직원 (assign-employee, unassign-employee). */
+  employeeId?: string
 }
 
 export interface ProjectChangeResult {
   record: ProjectChangeRecord
   project: ProjectInfo
+  /**
+   * 변경 뒤 프로젝트 상태 (`project.state`와 같다). PM을 해제하거나 대체 PM 없이 바꾸면 `pm-required`가 된다 (T-045).
+   * main은 항상 채우며, 필드가 없는 응답(구형 mock)은 `project.state`를 쓴다.
+   */
+  stateAfter?: ProjectState
 }
 
 /** `project:select-folder` 결과. 취소하면 null. `project:add`는 여기서 돌려받은 경로만 받는다. */
@@ -180,4 +197,42 @@ export interface ProjectSetTypeRequest {
 export interface ProjectSetPmRequest {
   id: string
   pm: string
+}
+
+/** 일반 배정(`직원:` 줄) 요청. `employeeId`는 org.md의 직원 파일 id. 담당 PM은 `setProjectPm`/`clearProjectPm`을 쓴다. */
+export interface ProjectAssignEmployeeRequest {
+  id: string
+  employeeId: string
+}
+
+/** 직원 한 명의 담당 프로젝트 하나. 보관된 프로젝트는 `active: false`로 읽고 배정은 보존한다. */
+export interface EmployeeProjectEntry {
+  projectId: string
+  projectName: string
+  role: 'pm' | 'member'
+  active: boolean
+}
+
+export type AssignmentIssueCode =
+  | 'unknown-employee' // 조직도에 없거나 직원 파일이 없는 id
+  | 'protected-employee' // CEO, COO는 배정 대상이 아님
+
+/** 읽기 중 발견한 배정 경고. 파일 원문은 담지 않고 id와 고정 분류만 알린다. 오류로 중단하지 않는다. */
+export interface AssignmentIssue {
+  code: AssignmentIssueCode
+  projectId: string
+  employeeId: string
+  /** `PM:` 줄에서 온 것인지 `직원:` 줄에서 온 것인지. */
+  role: 'pm' | 'member'
+}
+
+export interface EmployeeProjectsRequest {
+  id: string
+}
+
+/** `employee:projects` 응답. `projects`는 PM을 앞에 두고 프로젝트 이름순. */
+export interface EmployeeProjectsResult {
+  employeeId: string
+  projects: EmployeeProjectEntry[]
+  issues: AssignmentIssue[]
 }

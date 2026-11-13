@@ -1,6 +1,7 @@
 import type { WindowApi } from '../../../shared/api'
 import type { Employee } from '../../../shared/employee'
 import type { ProjectInfo } from '../../../shared/project'
+import { isAssigneeUnassigned } from '../assign/assign-model'
 import type { DomainErrorCode } from '../../../shared/result'
 import {
   defaultTicketAssignee,
@@ -170,16 +171,48 @@ export function projectChoices(options: FormOptions, current: string): ProjectCh
 export interface AssigneeChoice {
   value: string
   label: string
+  /** 선택한 프로젝트에 배정된(PM·팀원) 직원이면 true. 프로젝트가 없거나 배정 정보가 없으면 undefined. */
+  assigned?: boolean
 }
 
-/** 담당 없음 + 현재 직원. 조직에 없는 현재 담당은 값을 잃지 않게 덧붙인다. */
-export function assigneeChoices(options: FormOptions, current: string): AssigneeChoice[] {
-  const out: AssigneeChoice[] = [{ value: '', label: '담당 없음' }]
-  for (const e of options.employees)
-    out.push({ value: e.id, label: e.title ? `${e.name} (${e.title})` : e.name })
+/**
+ * 담당 없음 + 직원. 프로젝트를 골랐으면 그 프로젝트의 PM·팀원을 먼저 보여 준다 (그 밖의 직원도 고를 수 있다).
+ * 조직에 없는 현재 담당은 값을 잃지 않게 덧붙인다.
+ */
+export function assigneeChoices(
+  options: FormOptions,
+  current: string,
+  projectId = ''
+): AssigneeChoice[] {
+  const project = projectId === '' ? undefined : options.projects.find((p) => p.id === projectId)
+  const inProject = (id: string): boolean =>
+    project !== undefined && (project.pmId === id || (project.memberIds ?? []).includes(id))
+  const rows = options.employees.map((e) => ({
+    value: e.id,
+    label: e.title ? `${e.name} (${e.title})` : e.name,
+    ...(project ? { assigned: inProject(e.id) } : {})
+  }))
+  const ordered = project
+    ? [...rows.filter((r) => r.assigned), ...rows.filter((r) => !r.assigned)]
+    : rows
+  const out: AssigneeChoice[] = [{ value: '', label: '담당 없음' }, ...ordered]
   if (current !== '' && !out.some((c) => c.value === current))
     out.push({ value: current, label: `${current} (조직에 없음)` })
   return out
+}
+
+export const UNASSIGNED_ASSIGNEE_WARNING =
+  '이 프로젝트에 배정되지 않은 직원이에요. 저장은 되지만 COO가 배정 제안으로 올릴 수 있어요.'
+
+/** 선택한 담당이 선택한 프로젝트에 배정되지 않았으면 경고 문구, 아니면 null (거부가 아니라 안내다). */
+export function assigneeWarning(
+  options: FormOptions,
+  projectId: string,
+  assignee: string
+): string | null {
+  if (projectId === '' || assignee === '' || options.projectsFailed) return null
+  const project = options.projects.find((p) => p.id === projectId)
+  return isAssigneeUnassigned(project, assignee) ? UNASSIGNED_ASSIGNEE_WARNING : null
 }
 
 /** 선택한 프로젝트가 PM 필요 상태인지. */
