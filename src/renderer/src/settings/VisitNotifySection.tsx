@@ -48,7 +48,7 @@ export function VisitNotifySection(): React.JSX.Element {
         </p>
       )}
       {load.kind === 'ready' && (
-        <label className="check">
+        <label className="visit-notify__check">
           <input
             type="checkbox"
             checked={load.enabled}

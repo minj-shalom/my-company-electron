@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import type { VisitSummary } from '../../../shared/visit'
 import { mockVisitSummary } from '../mock-visit'
 import { VisitNotifySection } from '../settings/VisitNotifySection'
-import type { UseVisitSummary, VisitLoad } from './use-visit-summary'
+import { confirmSeen, type UseVisitSummary, type VisitLoad } from './use-visit-summary'
 import { VisitSummaryBanner } from './VisitSummaryBanner'
-import { autoGroups, hasNews, pausedLabel } from './visit-model'
+import { autoGroups, hasNews, pausedLabel, runConfirmClick } from './visit-model'
 
 const empty = (over: Partial<VisitSummary> = {}): VisitSummary => ({
   ...mockVisitSummary(),
@@ -117,5 +117,39 @@ describe('VisitNotifySection', () => {
     const html = renderToStaticMarkup(<VisitNotifySection />)
     expect(html).toContain('알림')
     expect(html).toContain('불러오고 있어요')
+  })
+})
+
+describe('confirm flow', () => {
+  it('dismisses only when the seen mark succeeds', async () => {
+    expect(await confirmSeen(async () => ({ ok: true }))).toEqual({ dismissed: true, error: null })
+    const failed = await confirmSeen(async () => ({ ok: false }))
+    expect(failed.dismissed).toBe(false)
+    expect(failed.error).toContain('확인 기록을 남기지 못했어요')
+    const thrown = await confirmSeen(async () => {
+      throw new Error('x')
+    })
+    expect(thrown.dismissed).toBe(false)
+  })
+
+  it('keeps the banner and its heading focusable while confirm failed', () => {
+    const html = render(
+      { kind: 'ready', summary: mockVisitSummary() },
+      { confirmError: '확인 기록을 남기지 못했어요. 다시 눌러 주세요.' }
+    )
+    expect(html).toContain('id="visit-heading"')
+    expect(html).toContain('tabindex="-1"')
+    expect(html).toContain('확인했어요')
+  })
+
+  it('ignores confirm requests while busy', () => {
+    let calls = 0
+    const confirm = async (): Promise<void> => {
+      calls++
+    }
+    runConfirmClick(true, confirm)
+    expect(calls).toBe(0)
+    runConfirmClick(false, confirm)
+    expect(calls).toBe(1)
   })
 })

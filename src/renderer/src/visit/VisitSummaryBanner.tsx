@@ -3,7 +3,7 @@ import type { VisitItem } from '../../../shared/visit'
 import { ACTION_LABELS, RESULT_LABELS, formatTime } from '../gate/gate-model'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-import { autoGroups, hasNews, pausedLabel, sinceLabel } from './visit-model'
+import { autoGroups, hasNews, pausedLabel, runConfirmClick, sinceLabel } from './visit-model'
 import type { UseVisitSummary } from './use-visit-summary'
 
 function Items({ title, items }: { title: string; items: VisitItem[] }): React.JSX.Element | null {
@@ -68,7 +68,7 @@ export function VisitSummaryBanner({
     <Button
       size="small"
       variant="primary"
-      onClick={() => void visit.confirm()}
+      onClick={() => runConfirmClick(busy, visit.confirm)}
       aria-disabled={busy}
     >
       {busy ? '확인 중…' : '확인했어요'}

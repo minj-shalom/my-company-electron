@@ -50,3 +50,8 @@ export function sinceLabel(iso: string | null): string {
   if (Number.isNaN(d.getTime())) return ''
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} 이후`
 }
+
+/** aria-disabled는 클릭을 막지 못하므로, 처리 중에는 확인 요청을 여기서 버린다. */
+export function runConfirmClick(busy: boolean, confirm: () => Promise<void>): void {
+  if (!busy) void confirm()
+}

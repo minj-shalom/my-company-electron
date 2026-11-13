@@ -7,6 +7,20 @@ export type VisitLoad =
   | { kind: 'error'; message: string }
   | { kind: 'dismissed' }
 
+const CONFIRM_ERROR = '확인 기록을 남기지 못했어요. 다시 눌러 주세요.'
+
+/** 확인 기록 결과를 화면 상태로 바꾼다. 실패하면 배너를 닫지 않고 오류를 돌려준다. */
+export async function confirmSeen(
+  mark: () => Promise<{ ok: boolean }>
+): Promise<{ dismissed: boolean; error: string | null }> {
+  try {
+    const r = await mark()
+    return r.ok ? { dismissed: true, error: null } : { dismissed: false, error: CONFIRM_ERROR }
+  } catch {
+    return { dismissed: false, error: CONFIRM_ERROR }
+  }
+}
+
 export interface UseVisitSummary {
   load: VisitLoad
   busy: boolean
@@ -52,11 +66,9 @@ export function useVisitSummary(projectId: string | null): UseVisitSummary {
     setBusy(true)
     setConfirmError(null)
     try {
-      const r = await window.api.markVisitSeen()
-      if (r.ok) setLoad({ kind: 'dismissed' })
-      else setConfirmError('확인 기록을 남기지 못했어요. 다시 눌러 주세요.')
-    } catch {
-      setConfirmError('확인 기록을 남기지 못했어요. 다시 눌러 주세요.')
+      const r = await confirmSeen(() => window.api.markVisitSeen())
+      if (r.dismissed) setLoad({ kind: 'dismissed' })
+      else setConfirmError(r.error)
     } finally {
       setBusy(false)
     }
