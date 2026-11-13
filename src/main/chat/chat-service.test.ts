@@ -153,6 +153,21 @@ describe('ChatService', () => {
     expect(t.runs[1].launch).toEqual({ resumeSessionId: 'sess-1234abcd' })
   })
 
+  it('records a failed reply when setup throws after the CEO message was stored', async () => {
+    const t = await setup({
+      createAdapter: async () => {
+        throw new Error('boom')
+      }
+    })
+    expect(await t.svc.send({ text: 'a' })).toMatchObject({ ok: false, code: 'internal' })
+    expect(t.svc.isBusy()).toBe(false)
+    const m = (await t.svc.getHistory()).messages
+    expect(m.map((x) => [x.role, x.status])).toEqual([
+      ['ceo', 'ok'],
+      ['coo', 'failed']
+    ])
+  })
+
   it('does not resume on providers that do not support it', async () => {
     const t = await setup({}, 'codex')
     await t.svc.send({ text: 'a' })

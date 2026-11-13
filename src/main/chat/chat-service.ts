@@ -108,6 +108,7 @@ export class ChatService {
     const messageId = randomUUID()
     const slot: Active = { messageId, runId: null, adapter: null, cancelled: false }
     this.active = slot
+    let appended = false
     try {
       const limit = await this.checkLimit()
       if (!limit.ok) {
@@ -118,6 +119,7 @@ export class ChatService {
       const history = this.deps.history()
       const prior = await history.load()
       await history.append('ceo', text, this.now())
+      appended = true
       const before = await snapshot(fs)
       const adapter = await this.deps.createAdapter(fs.root)
       slot.adapter = adapter
@@ -134,6 +136,11 @@ export class ChatService {
       this.deps.broadcast({ type: 'started', messageId, runId: started.runId })
       return { ok: true, value: { started: true, messageId, runId: started.runId } }
     } catch {
+      // CEO 메시지가 이미 기록됐다면 실행 전 실패도 기록에 남겨 대화에 답 없는 메시지가 남지 않게 한다.
+      if (appended && slot.runId === null)
+        await this.finish(slot.messageId, '응답을 시작하지 못했어요.', 'failed', []).catch(
+          () => undefined
+        )
       this.release(slot)
       return { ok: false, code: 'internal', message: '메시지를 보내지 못했습니다.' }
     }

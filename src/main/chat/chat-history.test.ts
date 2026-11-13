@@ -46,6 +46,7 @@ describe('chat history', () => {
 describe('chat input handling', () => {
   it('validates length, type, and control characters', () => {
     expect(validateChatMessage({ text: '  안녕\r\n하세요\u0000 ' })).toBe('안녕\n하세요')
+    expect(validateChatMessage({ text: 'a\u2028b\u2029c\u0085d' })).toBe('abcd')
     expect(validateChatMessage({ text: '   ' })).toBeNull()
     expect(validateChatMessage({ text: 'a'.repeat(4001) })).toBeNull()
     expect(validateChatMessage({ text: 5 })).toBeNull()
