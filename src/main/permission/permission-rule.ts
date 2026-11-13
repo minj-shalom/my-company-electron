@@ -1,5 +1,5 @@
 import { realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { PermissionDenial } from '../../shared/run'
 
 /** 허용 규칙으로 바꿀 수 있는 거부 동작과 그 규칙. 원문 입력은 담지 않고 검증을 통과한 값만 담는다. */
@@ -38,14 +38,48 @@ const DANGEROUS_FIRST_TOKEN = new Set([
   'env',
   'xargs',
   'nc',
-  'open'
+  'open',
+  'osascript',
+  'perl',
+  'ruby',
+  'php',
+  'python',
+  'python2',
+  'python3',
+  'node',
+  'deno',
+  'bun',
+  'find'
 ])
+/** 앞에 붙어 뒤 명령을 그대로 실행하는 래퍼. 건너뛰고 실제 명령을 본다. */
+const WRAPPERS = new Set(['command', 'nice', 'nohup', 'time', 'exec', 'builtin', 'env'])
+const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/
+/** 인터프리터의 인라인 코드 실행 옵션(-e, -c, -pe, --eval 등)과 find의 실행·삭제 옵션. */
+const INLINE_CODE_FLAG =
+  /^(-[A-Za-z]*[ecEpr][A-Za-z]*|--eval|--exec|--command|-exec|-execdir|-ok|-okdir|-delete)$/
+
+/** 환경변수 할당과 래퍼를 건너뛴 실제 명령의 이름(경로 제거, 소문자)과 그 뒤 인자. */
+function effectiveCommand(cmd: string): { name: string; args: string[] } {
+  const tokens = cmd.split(/\s+/).filter((t) => t !== '')
+  let i = 0
+  for (;;) {
+    const t = tokens[i]
+    if (t === undefined) return { name: '', args: [] }
+    const base = (t.split('/').pop() ?? '').toLowerCase()
+    if (ENV_ASSIGN.test(t)) i++
+    else if (WRAPPERS.has(base)) {
+      i++
+      // 래퍼의 옵션(`nice -n 5`의 `-n 5`)도 건너뛴다.
+      while (tokens[i] !== undefined && /^(-\S*|\d+)$/.test(tokens[i])) i++
+    } else return { name: base, args: tokens.slice(i + 1) }
+  }
+}
 /** D-012: 푸시·머지·발행·히스토리 재작성은 게이트 밖에서 허용 규칙으로 열 수 없다 (`DENY_RULES`와 같은 범위). */
 const GATED_COMMAND =
-  /\bgit\b.*\b(push|reset|rebase|filter-branch|clean)\b|\bgh\b\s+(pr\s+merge|api|auth|release)\b/
+  /\bgit\b.*\b(push|reset|rebase|filter-branch|clean)\b|\bgh\b\s+(pr\s+merge|api|auth|release)\b/i
 /** 에이전트가 쓰지 못해야 하는 경로 조각과 제공자 인증 파일 위치. */
 const PROTECTED_FRAGMENT =
-  /(\.claude\/|\.ssh|\.env|\.git\/|company\/policies|company\/audit|~\/|\.aws|\.npmrc|id_rsa)/
+  /(\.claude|\.ssh|\.env|\.git\/|company\/policies|company\/audit|~\/|\.aws|\.npmrc|id_rsa)/i
 const PROTECTED_COMPANY_FILES = new Set([
   'company/org.md',
   'company/project.md',
@@ -59,29 +93,34 @@ export function commandRule(command: string): AllowRule | null {
   const cmd = command.trim()
   if (cmd.length === 0 || cmd.length > MAX_COMMAND || COMMAND_FORBIDDEN.test(cmd)) return null
   if (SECRET_HINT.test(cmd) || GATED_COMMAND.test(cmd) || PROTECTED_FRAGMENT.test(cmd)) return null
-  if (DANGEROUS_FIRST_TOKEN.has(cmd.split(/\s+/)[0] ?? '')) return null
+  const eff = effectiveCommand(cmd)
+  if (eff.name === '' || DANGEROUS_FIRST_TOKEN.has(eff.name)) return null
+  if (eff.args.some((a) => INLINE_CODE_FLAG.test(a))) return null
   const rule = `Bash(${cmd})`
   return rule.length <= MAX_RULE ? { rule, summary: `명령 실행: ${cmd}` } : null
 }
 
-function isProtectedRel(rel: string): boolean {
+function isProtectedRel(raw: string): boolean {
+  // 대소문자를 구분하지 않는 파일 시스템(macOS 기본)에서 `Company/Org.md`로 우회하지 못하게 한다.
+  const rel = raw.toLowerCase()
   if (PROTECTED_COMPANY_FILES.has(rel)) return true
   if (PROTECTED_COMPANY_DIRS.some((d) => rel.startsWith(d))) return true
   return PROTECTED_FRAGMENT.test(rel) || PROTECTED_FRAGMENT.test(`${rel}/`)
 }
 
 /** 존재하는 가장 가까운 상위 폴더까지의 실제 경로(심볼릭 링크 해소)가 회사 폴더 안인지 확인한다. */
-async function resolvesInside(root: string, abs: string): Promise<boolean> {
+async function realRelInside(root: string, abs: string): Promise<string | null> {
   let cur = abs
+  const rest: string[] = []
   for (;;) {
     try {
-      const real = await realpath(cur)
-      const rel = relative(root, real)
-      return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+      const rel = relative(root, join(await realpath(cur), ...rest))
+      return rel.startsWith('..') || isAbsolute(rel) ? null : rel.split(sep).join('/')
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return false
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return null
       const up = dirname(cur)
-      if (up === cur) return false
+      if (up === cur) return null
+      rest.unshift(basename(cur))
       cur = up
     }
   }
@@ -95,7 +134,9 @@ export async function fileRule(rawPath: string, companyRoot: string): Promise<Al
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel) || rel.split('/').includes('..'))
     return null
   if (isProtectedRel(rel)) return null
-  if (!(await resolvesInside(companyRoot, join(companyRoot, rel)))) return null
+  // 폴더 안의 심볼릭 링크가 보호 경로로 해소되는 경우도 막는다.
+  const real = await realRelInside(companyRoot, join(companyRoot, rel))
+  if (real === null || (real !== '' && isProtectedRel(real))) return null
   return { rule: `Edit(${rel})`, summary: `파일 쓰기: ${rel}` }
 }
 

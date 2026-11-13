@@ -80,13 +80,18 @@ function repositoryFor(deps: DomainDeps): FileCompanyRepository {
   return sharedRepository(deps.context.requireOpenCompany().fs)
 }
 
-async function onPermissionResolved(deps: DomainDeps, id: string, choice: string): Promise<void> {
+async function onPermissionResolved(
+  deps: DomainDeps,
+  id: string,
+  choice: string,
+  ticketId: string | null
+): Promise<void> {
   if (deps.userDataDir === undefined) return
   try {
     await permissionServiceFor({
       context: deps.context,
       userDataDir: deps.userDataDir
-    }).onResolved(id, choice)
+    }).onResolved(id, choice, ticketId)
   } catch {
     // 규칙을 쓰지 못한 것이므로 아무 것도 허용되지 않는다 (fail-closed). 카드 결정 자체는 유효하다.
   }
@@ -278,7 +283,7 @@ export function createDomainHandlers(deps: DomainDeps): {
       if (r.value.ok) {
         // 승인 선택이 기록된 뒤에만 허용 규칙을 쓴다 (T-017). 요청 기록이 없는 카드는 아무것도 하지 않는다.
         if (card.ok && card.value.ok && card.value.value.kind === 'permission')
-          await onPermissionResolved(deps, id, choice)
+          await onPermissionResolved(deps, id, choice, card.value.value.ticketId)
         notifyResolved(deps)
       }
       // 저장소의 실패 사유는 고정 문구로 바꿔 돌려준다 (파일명/경로 노출 방지).

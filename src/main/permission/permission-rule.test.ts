@@ -47,7 +47,33 @@ describe('deriveAllowRule', () => {
     'echo hi > out.txt',
     'npm *',
     'export TOKEN=abc',
-    'x'.repeat(301)
+    'x'.repeat(301),
+    '/bin/rm -rf docs',
+    './rm x',
+    'RM -rf docs',
+    'command rm x',
+    'nice rm x',
+    'nice -n 5 rm x',
+    'nohup rm x',
+    'time rm x',
+    'exec rm x',
+    'builtin rm x',
+    'env rm x',
+    'FOO=1 rm x',
+    'FOO=1 BAR=2 command nohup /usr/bin/RM x',
+    'GIT push origin x',
+    '/usr/bin/git push',
+    'perl -e 1',
+    'python3 -c 1',
+    'python -c 1',
+    'node -e 1',
+    'node --eval 1',
+    'ruby -e 1',
+    'osascript x.scpt',
+    'find . -exec ls {}',
+    'find . -delete',
+    'cat .CLAUDE',
+    'cat .Claude'
   ])('refuses %s', async (cmd) => {
     expect(await deriveAllowRule(bash(cmd), root)).toBeNull()
   })
@@ -78,9 +104,27 @@ describe('deriveAllowRule', () => {
     '.claude/agents/x.md',
     '.git/config',
     '.env',
-    'company/publishing/a.md'
+    'company/publishing/a.md',
+    'Company/Org.md',
+    'COMPANY/POLICIES/p.md',
+    '.CLAUDE/settings.local.json',
+    '.claude'
   ])('refuses file path %s', async (p) => {
     expect(await deriveAllowRule(file(p), root)).toBeNull()
+  })
+
+  it('refuses a symlink inside the folder that resolves to a protected path', async () => {
+    await mkdir(join(root, 'company/policies'), { recursive: true })
+    await mkdir(join(root, '.claude'), { recursive: true })
+    await symlink(join(root, 'company/policies'), join(root, 'docs/p'))
+    await symlink(join(root, '.claude'), join(root, 'docs/c'))
+    expect(await deriveAllowRule(file('docs/p/x.md'), root)).toBeNull()
+    expect(await deriveAllowRule(file('docs/c/x.md'), root)).toBeNull()
+  })
+
+  it('allows harmless wrapped commands but not interpreters', async () => {
+    expect(await deriveAllowRule(bash('nice npm test'), root)).not.toBeNull()
+    expect(await deriveAllowRule(bash('python3 script.py'), root)).toBeNull()
   })
 
   it('refuses paths that escape through a symlink', async () => {

@@ -53,7 +53,7 @@ describe('PermissionService.raise', () => {
     const r = await svc.raise('T-050', [denial('npm test')])
     expect(r.cardIds).toEqual(['D-101'])
     expect(created[0]).toMatchObject({ kind: 'permission', ticketId: 'T-050' })
-    expect(created[0].question).toContain('npm test')
+    expect(created[0].question).toContain('Bash(npm test)')
     expect(created[0].options.map((o) => o.key)).toEqual(['A', 'B'])
     expect(created[0].impact).toContain('settings.local.json')
     expect(await settings()).toBeNull()
@@ -126,6 +126,14 @@ describe('PermissionService.onResolved', () => {
     expect(
       await readFile(join(dir, 'company/tickets/in-progress/T-050-work.md'), 'utf8')
     ).toContain('막힌 점')
+  })
+
+  it('records a blocker when the card has no stored request', async () => {
+    expect(await svc.onResolved('D-555', 'A', 'T-050')).toBe('ignored')
+    expect(await settings()).toBeNull()
+    expect(
+      await readFile(join(dir, 'company/tickets/in-progress/T-050-work.md'), 'utf8')
+    ).toContain('기록이 없어')
   })
 
   it('does not add a rule recorded for another company', async () => {

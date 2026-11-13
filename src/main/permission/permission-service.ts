@@ -63,7 +63,7 @@ export class PermissionService {
         kind: 'permission',
         title: `권한 요청: ${oneLine(allow.summary, 60)}`,
         ticketId,
-        question: `${ticketId ?? '회사 업무'} 실행 중 거부된 동작입니다. ${oneLine(allow.summary, 200)} 를 허용하고 다시 실행할까요?`,
+        question: `${ticketId ?? '회사 업무'} 실행 중 거부된 동작입니다. 허용 규칙 ${oneLine(allow.rule, 420)} 를 추가하고 다시 실행할까요?`,
         options: [
           {
             key: APPROVE_KEY,
@@ -87,7 +87,11 @@ export class PermissionService {
   }
 
   /** 권한 카드가 결정된 뒤 부른다. 앱 데이터에 기록된 요청이 없으면 아무것도 하지 않는다. */
-  async onResolved(cardId: string, choice: string): Promise<ResolveOutcome> {
+  async onResolved(
+    cardId: string,
+    choice: string,
+    cardTicketId: string | null = null
+  ): Promise<ResolveOutcome> {
     if (choice !== APPROVE_KEY && choice !== REJECT_KEY) return 'ignored'
     const approve = choice === APPROVE_KEY
     const rec = await this.deps.store.take(
@@ -95,7 +99,14 @@ export class PermissionService {
       this.companyKey,
       approve ? 'approved' : 'rejected'
     )
-    if (rec === null) return 'ignored'
+    if (rec === null) {
+      // 카드는 만들어졌지만 요청 기록이 없다(기록 실패, 다른 회사, 처리된 카드). 아무것도 허용하지 않고 막힌 점만 남긴다.
+      await this.block(
+        cardTicketId,
+        '권한 요청 기록이 없어 승인을 적용하지 못했어요. 다시 실행해 요청을 새로 받아 주세요.'
+      )
+      return 'ignored'
+    }
     if (approve) {
       // 저장된 값도 다시 검증한다: 규칙은 안전한 형태일 때만 쓴다.
       const ok = await revalidateRule(rec.rule, this.companyKey)
