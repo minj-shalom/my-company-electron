@@ -2,6 +2,7 @@ import type { ProposalApplyResult } from '../../shared/proposal'
 import type { ApiResult } from '../../shared/result'
 import { NoCompanyError, type CompanyContext } from '../company/company-context'
 import { EmployeeService } from '../employee/employee-service'
+import { violationStoreFor } from '../hr/hr-runtime'
 import { integrityFor } from '../integrity/integrity-runtime'
 import { policyServiceFor } from '../policy/policy-ipc'
 import { createAssignmentSource } from '../project/assignments-store'
@@ -50,7 +51,8 @@ export function createProposalHandlers(deps: ProposalIpcDeps): ProposalHandlers 
               }),
             project: projectServiceFor({ context: deps.context, homeDir: deps.homeDir }),
             policy: policyServiceFor({ context: deps.context }),
-            integrity: integrityFor({ context: deps.context, userDataDir: deps.userDataDir })
+            integrity: integrityFor({ context: deps.context, userDataDir: deps.userDataDir }),
+            hrScope: violationStoreFor({ context: deps.context, userDataDir: deps.userDataDir })
           })
           services.set(fs, svc)
         }

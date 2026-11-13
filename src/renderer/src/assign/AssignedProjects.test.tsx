@@ -24,7 +24,7 @@ describe('AssignedProjects', () => {
     expect(html).toContain('배정 대기')
     expect(html).toContain('<details')
     expect(html).not.toContain('<details class="assigned__manual" open')
-    expect(html).toContain('인사팀에 요청')
+    expect(html).toContain('담당 프로젝트를 바꿀 수 있어요')
   })
   it('names role in text and opens the manual area when requested', async () => {
     const snap = await load('no-hr')

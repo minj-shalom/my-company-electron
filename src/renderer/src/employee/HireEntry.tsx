@@ -1,15 +1,11 @@
-import { useId, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { OrgSnapshot } from '../../../shared/org'
-import { needsHr } from '../hire/hire-model'
 import { Button } from '../ui/Button'
 import { HireDialog } from './HireDialog'
 import { needsLeaveConfirm } from './employee-model'
 import { LeaveDialog } from './MemberManager'
 
-/**
- * 채용 진입. 인사팀이 있으면 기본은 "인사팀에 채용 요청"(COO 대화 연결 전이라 비활성)이고 수동 채용은 접힌 메뉴에 둔다.
- * 인사팀이 없으면 "직원 채용"이 기본이다.
- */
+/** 채용 진입. 버튼은 "직원 채용" 하나다. 내부 처리 경로는 사용자에게 드러내지 않는다. */
 export function HireEntry({
   snapshot,
   onHired,
@@ -27,9 +23,7 @@ export function HireEntry({
   const [confirming, setConfirming] = useState(false)
   const start = (): void =>
     needsLeaveConfirm(isDirty?.() ?? false, null, 'new-hire') ? setConfirming(true) : setOpen(true)
-  const hintId = useId()
   const openerRef = useRef<HTMLButtonElement>(null)
-  const hasHr = !needsHr(snapshot)
   const leave = confirming && (
     <LeaveDialog
       onStay={() => setConfirming(false)}
@@ -58,29 +52,11 @@ export function HireEntry({
       )}
     </>
   )
-  if (!hasHr)
-    return (
-      <div className="hire-entry">
-        <Button variant="primary" ref={openerRef} onClick={start}>
-          직원 채용
-        </Button>
-        {dialog}
-      </div>
-    )
   return (
     <div className="hire-entry">
-      <Button variant="primary" aria-disabled="true" aria-describedby={hintId}>
-        인사팀에 채용 요청
+      <Button variant="primary" ref={openerRef} onClick={start}>
+        직원 채용
       </Button>
-      <p id={hintId} className="hint">
-        COO 대화가 연결되면 쓸 수 있어요. 지금은 직접 채용을 써 주세요.
-      </p>
-      <details className="hire-entry__manual">
-        <summary>직접 채용(수동)</summary>
-        <Button size="small" ref={openerRef} onClick={start}>
-          직원 채용
-        </Button>
-      </details>
       {dialog}
     </div>
   )

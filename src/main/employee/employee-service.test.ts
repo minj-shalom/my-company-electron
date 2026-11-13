@@ -99,10 +99,11 @@ describe('create', () => {
       department: '디자인팀',
       reportsTo: 'COO'
     })
-    // 기존 줄은 그대로이고 한 줄만 늘었다.
+    // 표 행과 조직도 새 부서 줄 두 개가 늘고, 기존 줄은 마지막 형제 연결선(`└`→`├`) 외에 그대로다 (T-064).
     const after = await orgText(c)
-    expect(after.split('\n').length).toBe(before.split('\n').length + 1)
-    for (const line of before.split('\n')) expect(after).toContain(line)
+    expect(after.split('\n').length).toBe(before.split('\n').length + 2)
+    for (const line of before.split('\n'))
+      if (!line.includes('└─ 기획팀')) expect(after).toContain(line)
     expect((await c.repo.getEmployee('designer')).ok).toBe(true)
   })
 
@@ -524,7 +525,8 @@ describe('move', () => {
     okValue(await c.service.move({ id: 'developer', department: '플랫폼팀' }, 'ceo-ui'))
     const after = await orgText(c)
     expect(after.replace(/\r\n/g, '')).not.toContain('\n')
-    expect(after.split('\r\n').length).toBe(crlf.split('\r\n').length)
+    // 새 부서 줄이 조직도 블록에 하나 늘어난다 (T-064).
+    expect(after.split('\r\n').length).toBe(crlf.split('\r\n').length + 1)
   })
 })
 

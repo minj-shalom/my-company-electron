@@ -43,7 +43,7 @@ export type IntegrityActionResult =
       files: string[]
     }
 
-/** 카드에 실린 상태 해시. 있으면 main이 현재 상태와 같을 때만 동작한다. */
+/** 카드에 실린 상태 해시(필수). main이 현재 상태와 같을 때만 동작한다 (해시 없는 요청은 거부). */
 export interface IntegrityActionRequest {
-  stateHash?: string
+  stateHash: string
 }

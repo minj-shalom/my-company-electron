@@ -3,12 +3,7 @@ import type { FirstHireRole } from '../../../shared/company-hire'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
-import {
-  requestAvailability,
-  rolesToHire,
-  type FirstHireLoad,
-  type HireOutcome
-} from './hire-model'
+import { rolesToHire, type FirstHireLoad, type HireOutcome } from './hire-model'
 
 export type HirePhase = { kind: 'idle' } | { kind: 'busy' } | HireOutcome
 
@@ -42,8 +37,7 @@ export function FirstHireView(props: FirstHireViewProps): React.JSX.Element {
         첫 채용
       </h2>
       <p className="first-hire__lead">
-        지금 회사에는 CTO, CFO, 인사팀뿐이에요. 프로젝트를 열려면 PM이 필요해요. 필요한 직원은
-        인사팀에 요청하는 것이 기본이에요.
+        지금 회사에는 CTO, CFO, 인사팀뿐이에요. 프로젝트를 열려면 PM이 필요해요.
       </p>
       {load.kind === 'loading' && (
         <p role="status" aria-live="polite" className="hint">
@@ -87,13 +81,10 @@ function Ready({
   onHire,
   onClose
 }: FirstHireViewProps & { load: Extract<FirstHireLoad, { kind: 'ready' }> }): React.JSX.Element {
-  const requestId = useId()
   const directId = useId()
   const busy = phase.kind === 'busy'
   const roles = rolesToHire(load.cards, selected)
-  const request = requestAvailability(load.providerReady)
   const allExist = load.cards.every((c) => c.exists)
-  const noProvider = load.providerReady === false
   const directBlocked = busy || roles.length === 0
 
   return (
@@ -126,45 +117,24 @@ function Ready({
 
       {allExist ? (
         <p role="status" className="hint">
-          추천 직원이 이미 모두 있어요. 더 필요한 직원은 인사팀에 요청해 주세요.
+          추천 직원이 이미 모두 있어요. 더 필요한 직원은 인사 관리 탭에서 채용해 주세요.
         </p>
       ) : (
-        <div className="first-hire__choices">
-          <div className="first-hire__choice first-hire__choice--main">
-            <Button
-              variant={request.enabled && !noProvider ? 'primary' : 'default'}
-              aria-disabled={!request.enabled}
-              aria-describedby={requestId}
-              onClick={() => undefined}
-            >
-              인사팀에 요청
-            </Button>
-            <p id={requestId} className="hint">
-              <Badge tone="warn">준비 중</Badge> {request.reason}
-            </p>
-          </div>
-          <div className="first-hire__choice">
-            <Button
-              variant={noProvider ? 'primary' : 'default'}
-              aria-disabled={directBlocked}
-              aria-describedby={directId}
-              onClick={() => !directBlocked && onHire()}
-            >
-              {busy ? '채용하는 중…' : '바로 채용'}
-            </Button>
-            <p id={directId} className="hint">
-              {roles.length === 0
-                ? '채용할 직원을 하나 이상 골라 주세요.'
-                : 'AI 사용량 없이 앱이 바로 채용해요. AI 제공자가 연결되지 않아도 돼요.'}
-            </p>
-          </div>
+        <div className="first-hire__choice first-hire__choice--main">
+          <Button
+            variant="primary"
+            aria-disabled={directBlocked}
+            aria-describedby={directId}
+            onClick={() => !directBlocked && onHire()}
+          >
+            {busy ? '채용하는 중…' : '직원 채용'}
+          </Button>
+          <p id={directId} className="hint">
+            {roles.length === 0
+              ? '채용할 직원을 하나 이상 골라 주세요.'
+              : '고른 직원을 바로 채용해요.'}
+          </p>
         </div>
-      )}
-      {noProvider && (
-        <p className="hint" role="note">
-          AI 제공자가 아직 연결되지 않았어요. 온보딩이나 설정에서 연결하면 인사팀 요청을 쓸 수
-          있어요.
-        </p>
       )}
       <div role="status" aria-live="polite" className={busy ? 'hint' : 'visually-hidden'}>
         {busy && '직원을 채용하고 있어요…'}
@@ -178,7 +148,9 @@ function Ready({
         <Button aria-disabled={busy} onClick={() => !busy && onClose(false)}>
           나중에
         </Button>
-        <span className="hint">나중에 사무실·조직도의 안내나 COO 대화로도 채용할 수 있어요.</span>
+        <span className="hint">
+          나중에 인사 관리 탭이나 사무실의 직원 채용 버튼으로도 채용할 수 있어요.
+        </span>
       </div>
     </>
   )

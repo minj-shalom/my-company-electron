@@ -231,7 +231,8 @@ describe('loadOrg / addMember / addDepartment', () => {
     })
     expect(r.ok).toBe(true)
     const text = await readFile(join(dir, 'company/org.md'), 'utf8')
-    const after = REAL.split('\n')
+    // 조직도 블록도 함께 갱신된다 (T-064).
+    const after = REAL.replace('reviewer-qa)', 'reviewer-qa, qa-two)').split('\n')
     const expectedRow = text.split('\n').find((l) => l.startsWith('| QA2'))
     expect(expectedRow).toMatch(/^\| QA2 +\| `qa-two` +\| 개발팀 \| CTO +\| 검수 \\\| 보조 +\|$/)
     const rowIdx = after.findIndex((l) => l.startsWith('| QA '))

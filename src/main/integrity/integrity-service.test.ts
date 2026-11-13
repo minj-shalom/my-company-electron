@@ -546,12 +546,31 @@ describe('secrets and state safety', () => {
 describe('ipc handlers', () => {
   it('fail closed without a state directory', async () => {
     const h = createIntegrityHandlers({ context: {} as never })
+    const stateHash = 'a'.repeat(64)
     for (const r of [
       await h.getQuarantined(),
-      await h.restoreIntegrity(),
-      await h.acceptIntegrity()
+      await h.restoreIntegrity({ stateHash }),
+      await h.acceptIntegrity({ stateHash })
     ])
       expect(r.ok).toBe(false)
+  })
+
+  it('rejects restore and accept without a valid state hash before touching any state', async () => {
+    const h = createIntegrityHandlers({ context: {} as never, userDataDir: '/unused' })
+    for (const bad of [
+      undefined,
+      null,
+      {},
+      { stateHash: 1 },
+      { stateHash: 'xyz' },
+      { stateHash: 'A'.repeat(64) },
+      { stateHash: 'a'.repeat(63) }
+    ])
+      for (const call of [h.restoreIntegrity, h.acceptIntegrity]) {
+        const r = await call(bad)
+        expect(r.ok).toBe(false)
+        if (!r.ok) expect(r.code).toBe('invalid-request')
+      }
   })
 })
 

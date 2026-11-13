@@ -3,11 +3,11 @@ import type { IntegrityIssue, IntegrityIssueCode } from '../../shared/integrity'
 import type { OrgModel } from '../../shared/org'
 import { isPmMember } from '../../shared/project'
 import { checkTools, readTools } from '../employee/agent-file'
+import { chartMismatches } from '../org/org-chart'
 import { parseOrgDocument } from '../org/parse-org-doc'
 import { parseFieldLine, parsePmValue } from '../project/field-lines'
 import { parseProjectDoc, type ProjectDoc } from '../project/project-doc'
 import { splitFrontmatter } from '../repository/markdown'
-import { EMPLOYEE_ID } from '../repository/ids'
 import { ORG, PROJECT, agentIdOf, isAgentPath, type FileMap } from './protected-files'
 
 const issue = (
@@ -23,30 +23,6 @@ export const agentIdsOf = (files: FileMap): Set<string> =>
 export function orgModelOf(files: FileMap): OrgModel | null {
   const text = files.get(ORG)?.text
   return typeof text === 'string' ? parseOrgDocument(text, agentIdsOf(files)) : null
-}
-
-/** 조직도 코드 블록의 괄호 안 id 목록과 표의 직원이 같은지. 블록이 없으면 비교하지 않는다. */
-function chartMismatches(org: OrgModel): string[] {
-  if (org.chart.length === 0) return []
-  const agents = new Set(org.members.flatMap((m) => (m.agentId === null ? [] : [m.agentId])))
-  const labels = new Set(org.chart.map((c) => c.label.toLowerCase()))
-  const inChart = new Set<string>()
-  const out: string[] = []
-  for (const c of org.chart) {
-    const m = /\(([^()]*)\)/.exec(c.detail)
-    if (m === null) continue
-    for (const tok of m[1].split(',').map((t) => t.trim())) {
-      if (!EMPLOYEE_ID.test(tok)) continue
-      inChart.add(tok)
-      if (!agents.has(tok)) out.push(`조직도 블록에만 있는 직원: ${tok}`)
-    }
-  }
-  for (const m of org.members) {
-    if (m.agentId === null) continue
-    if (!inChart.has(m.agentId) && !labels.has(m.title.toLowerCase()))
-      out.push(`직원 표에만 있는 직원: ${m.agentId}`)
-  }
-  return out
 }
 
 const keyOf = (i: { code: string; message: string }): string => `${i.code}:${i.message}`

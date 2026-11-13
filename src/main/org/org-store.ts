@@ -1,8 +1,9 @@
-import type { OrgDepartmentInput, OrgMemberInput, OrgModel } from '../../shared/org'
+import type { OrgDepartmentInput, OrgMember, OrgMemberInput, OrgModel } from '../../shared/org'
 import type { ApiResult } from '../../shared/result'
 import { EMPLOYEE_ID } from '../repository/ids'
 import { FsGuardError, SafeFs } from '../repository/safe-fs'
 import { AGENTS_DIR, ORG_FILE } from '../repository/parse-org'
+import { chartMismatches, syncChartText, type ChartChange } from './org-chart'
 import {
   displayWidth,
   escapeCell,
@@ -21,6 +22,7 @@ type Fail = {
   code: 'invalid-request' | 'not-found' | 'conflict' | 'internal'
   message: string
 }
+const CHART_REJECT = '조직도 블록을 자동으로 갱신할 수 없어 취소했습니다. 블록 형식을 확인하세요.'
 const fail = (code: Fail['code'], message: string): Fail => ({ ok: false, code, message })
 
 export async function agentIdSet(fs: SafeFs): Promise<Set<string>> {
@@ -196,7 +198,18 @@ async function addRowOnce(
       .map((c, i) => c + ' '.repeat(Math.max(0, widths[i] - displayWidth(c))))
       .join(' | ')} |`
     lines.splice(table.lastIdx + 1, 0, row)
-    const next = lines.join(eol)
+    let next = lines.join(eol)
+    if (model.chart.length > 0) {
+      const synced = syncChartText(next, {
+        kind: 'add',
+        agentId: input.agentId,
+        department: input.department,
+        reportsTo: input.reportsTo,
+        reportsToId: model.members.find((m) => m.title === input.reportsTo)?.agentId ?? null
+      })
+      if (!synced.ok) return fail('invalid-request', CHART_REJECT)
+      next = synced.text
+    }
 
     // 쓰기 전에 결과를 다시 파싱해 검증한다: 새 행이 정확히 하나 늘고 새 오류가 없어야 한다.
     // (행 수 제한 초과처럼 파서가 조용히 무시하는 경우도 여기서 걸린다.)
@@ -208,6 +221,7 @@ async function addRowOnce(
     if (
       after.members.length !== model.members.length + 1 ||
       hasNewIssue ||
+      hasNewChartMismatch(model, after) ||
       added?.title !== input.title ||
       added.agentId !== input.agentId ||
       added.department !== input.department ||
@@ -276,6 +290,37 @@ function editRow(fs: SafeFs, agentId: string, edit: RowEdit): Promise<ApiResult<
       return fail('internal', 'org.md를 갱신하지 못했습니다.')
     }
   })
+}
+
+/** 쓰기 전 상태에 없던 조직도 블록 불일치가 생겼는지 (T-052 chart-mismatch와 같은 기준). */
+function hasNewChartMismatch(before: OrgModel, after: OrgModel): boolean {
+  const known = new Set(chartMismatches(before))
+  return chartMismatches(after).some((m) => !known.has(m))
+}
+
+function chartChangeOf(
+  edit: RowEdit,
+  member: OrgMember,
+  expected: { title: string; department: string; reportsTo: string } | null,
+  memberTitles: string[],
+  reportsToId: string | null
+): ChartChange | null {
+  const agentId = member.agentId
+  if (agentId === null) return null
+  if (edit.kind === 'remove' || expected === null)
+    return { kind: 'remove', agentId, title: member.title, memberTitles }
+  const oldDepartment = member.department ?? ''
+  if (expected.title === member.title && expected.department === oldDepartment) return null
+  return {
+    kind: 'update',
+    agentId,
+    oldTitle: member.title,
+    newTitle: expected.title,
+    oldDepartment,
+    newDepartment: expected.department,
+    reportsTo: expected.reportsTo,
+    reportsToId
+  }
 }
 
 const issueKey = (i: { code: string; message: string }): string => `${i.code}:${i.message}`
@@ -367,7 +412,19 @@ async function editRowOnce(
       // 마지막 줄이면 앞 줄의 줄바꿈까지 함께 지운다.
       parts.splice(2 * row.idx - 1, 2)
     }
-    const next = parts.join('')
+    let next = parts.join('')
+    const change = chartChangeOf(
+      edit,
+      member,
+      expected,
+      others.map((m) => m.title),
+      model.members.find((m) => m.title === expected?.reportsTo)?.agentId ?? null
+    )
+    if (model.chart.length > 0 && change !== null) {
+      const synced = syncChartText(next, change)
+      if (!synced.ok) return fail('invalid-request', CHART_REJECT)
+      next = synced.text
+    }
 
     const after = parseOrgDocument(next, agents)
     const afterMember = after.members.find((m) => m.kind === 'agent' && m.agentId === agentId)
@@ -376,6 +433,7 @@ async function editRowOnce(
     const hasNewIssue = after.issues.some((i) => !known.has(issueKey(i)))
     const good =
       !hasNewIssue &&
+      !hasNewChartMismatch(model, after) &&
       sameOthers() &&
       (expected === null
         ? afterMember === undefined && after.members.length === model.members.length - 1

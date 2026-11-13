@@ -5,6 +5,7 @@ import type { CompanyContext } from '../company/company-context'
 import { createFileGateCards } from '../gate/gate-cards'
 import { gateRuntimeFor } from '../gate/gate-runtime'
 import { prepareGateRun } from '../gate/tool-bridge'
+import { hrRunnerFor } from '../hr/hr-runtime'
 import { integrityFor } from '../integrity/integrity-runtime'
 import { loadOrg, agentIdSet } from '../org/org-store'
 import { policyServiceFor } from '../policy/policy-ipc'
@@ -40,6 +41,14 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
   const exclusive = <T>(t: () => Promise<T>): Promise<T> => repo.runExclusive(t)
   const gate = gateRuntimeFor({ context: o.context, userDataDir: o.userDataDir })
   const policyDeps = { context: o.context }
+  const readAgentPrompt = async (employeeId: string): Promise<string | null> => {
+    if (!EMPLOYEE_ID.test(employeeId)) return null
+    try {
+      return splitFrontmatter(await fs.readText(`.claude/agents/${employeeId}.md`)).body
+    } catch {
+      return null
+    }
+  }
   return {
     now: o.now ?? ((): Date => new Date()),
     companyDir: () => fs.root,
@@ -62,14 +71,7 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
       const r = await policyServiceFor(policyDeps).get({ projectId })
       return r.ok ? r.value : null
     },
-    readAgentPrompt: async (employeeId) => {
-      if (!EMPLOYEE_ID.test(employeeId)) return null
-      try {
-        return splitFrontmatter(await fs.readText(`.claude/agents/${employeeId}.md`)).body
-      } catch {
-        return null
-      }
-    },
+    readAgentPrompt,
     resolveProjectDir: async (projectId) => {
       if (!PROJECT_ID.test(projectId)) return null
       const list = await projectServiceFor(policyDeps).list()
@@ -121,6 +123,14 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
       ),
     checkLimit: o.checkLimit,
     requests: o.requests,
-    hr: o.hr
+    // hr 전용 실행(T-059): 요청 파일이 있을 때만 돌고, 제공자가 경로 제한을 지원하지 않으면 실행하지 않는다.
+    hr:
+      o.hr ??
+      hrRunnerFor({
+        context: o.context,
+        userDataDir: o.userDataDir,
+        createAdapter: o.createAdapter,
+        readAgentPrompt
+      })
   }
 }

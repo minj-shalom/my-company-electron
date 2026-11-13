@@ -512,6 +512,29 @@ describe('review fixes', () => {
     expect((await s.pendingIds()).some((f) => f.startsWith(id))).toBe(true)
   })
 
+  it('removes approval records saved before a later record fails to save', async () => {
+    const s = await setup()
+    const cto = await s.read('.claude/agents/cto.md')
+    const ctoNext = cto.replace(/description: .*/, 'description: 새로운 CTO 설명')
+    const cfo = await s.read('.claude/agents/cfo.md')
+    const cfoNext = cfo.replace(/description: .*/, 'description: 새로운 CFO 설명')
+    const id = await s.make([
+      { action: 'update', id: 'cto', base: sha256(cto), after: sha256(ctoNext) },
+      { action: 'update', id: 'cfo', base: sha256(cfo), after: sha256(cfoNext) }
+    ])
+    const real = s.integrity.approve.bind(s.integrity)
+    let calls = 0
+    vi.spyOn(s.integrity, 'approve').mockImplementation(async (f, b, a) => {
+      if (++calls === 2) throw new Error('disk')
+      await real(f, b, a)
+    })
+    expect(await s.apply(id)).toEqual({ ok: false, code: 'failed' })
+    expect(calls).toBe(2)
+    // 첫 승인이 남아 있으면 이 편집이 승인된 변경으로 통과한다. 지워졌으니 미승인으로 걸려야 한다.
+    await put(s.c.dir, '.claude/agents/cto.md', ctoNext)
+    expect((await s.integrity.reconcile()).status).toBe('flagged')
+  })
+
   it('treats hire, move and retire against a changed company as stale', async () => {
     const s = await setup()
     const before = await s.read('company/org.md')

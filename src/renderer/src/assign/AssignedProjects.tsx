@@ -56,7 +56,7 @@ export function AssignedProjects({
           <summary>직접 배정/해제 (수동)</summary>
           <p className="hint">
             {hasHr
-              ? '배정은 인사팀에 요청하세요. 인사팀 요청은 COO 대화가 연결되면 쓸 수 있어요. 지금은 여기서 직접 바꿀 수 있어요.'
+              ? '여기서 담당 프로젝트를 바꿀 수 있어요.'
               : '인사팀이 없어서 여기서 직접 배정해요.'}
           </p>
           <ManualAssign

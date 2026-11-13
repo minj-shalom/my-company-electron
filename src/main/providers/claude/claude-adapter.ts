@@ -1,6 +1,7 @@
 import { GATE_SERVER_NAME, GATE_TOOL_NAMES } from '../../../shared/gate'
 import { CliRunner, type SpawnFn } from '../cli-runner'
-import type { ProviderAdapter, ProviderUsage, RunToolOptions } from '../types'
+import { HR_TOOLS } from '../../hr/hr-scope'
+import type { ProviderAdapter, ProviderUsage, RunHrOptions, RunToolOptions } from '../types'
 import { probeVersion } from '../version-probe'
 import { claudeAgentTranslator } from './agent-translator'
 import { parseLine } from './parser'
@@ -37,10 +38,27 @@ export function toolArgs(tools: RunToolOptions): string[] {
   ]
 }
 
+/**
+ * hr 전용 실행 인자. 도구는 고정 목록(Bash 없음)이고 MCP 서버는 전혀 붙이지 않는다 (`--strict-mcp-config`에 설정 없음).
+ * 경로 규칙은 임시 설정 파일이 담는다.
+ */
+export function hrArgs(hr: RunHrOptions): string[] {
+  if (!SAFE_PATH.test(hr.settingsPath)) throw new Error('Invalid hr settings path')
+  return [
+    '--settings',
+    hr.settingsPath,
+    '--tools',
+    HR_TOOLS.join(','),
+    '--strict-mcp-config',
+    '--permission-mode',
+    'default'
+  ]
+}
+
 /** Claude Code CLI(`claude -p --output-format stream-json`) 어댑터. */
 export class ClaudeAdapter implements ProviderAdapter {
   readonly id = 'claude' as const
-  readonly capabilities = { toolBridge: true } as const
+  readonly capabilities = { toolBridge: true, pathScopedWrites: true } as const
   readonly agentTranslator = claudeAgentTranslator
   private readonly runner: CliRunner
   private readonly command: string
@@ -56,15 +74,19 @@ export class ClaudeAdapter implements ProviderAdapter {
       displayName: 'claude',
       spawnFn: options.spawnFn,
       // 프롬프트가 '-'로 시작해도 옵션으로 해석되지 않도록 `--` 뒤에 둔다.
-      buildArgs: (prompt, tools) => [
-        '-p',
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        ...(tools ? toolArgs(tools) : []),
-        '--',
-        prompt
-      ],
+      buildArgs: (prompt, tools, hr) => {
+        if (tools && hr) throw new Error('Tools and hr options are exclusive')
+        return [
+          '-p',
+          '--output-format',
+          'stream-json',
+          '--verbose',
+          ...(tools ? toolArgs(tools) : []),
+          ...(hr ? hrArgs(hr) : []),
+          '--',
+          prompt
+        ]
+      },
       parseLine,
       onStdoutLine: onUsage
         ? (line, runId) => {

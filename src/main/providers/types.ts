@@ -18,8 +18,18 @@ export interface RunToolOptions {
   settingsPath: string
 }
 
+/**
+ * hr 전용 실행(T-059)의 경로 제한 옵션. 도구 목록과 규칙은 main 코드가 고정하고, 어댑터는 임시 설정 파일의 절대 경로만 받는다.
+ * 자유 인자(`extraArgs`)는 받지 않는다.
+ */
+export interface RunHrOptions {
+  settingsPath: string
+}
+
 export interface RunLaunchOptions {
   tools?: RunToolOptions
+  /** `tools`와 함께 쓸 수 없다. 경로 제한을 지원하지 않는 제공자(`capabilities.pathScopedWrites`가 false)는 이 옵션으로 시작하지 않는다. */
+  hr?: RunHrOptions
   /** 실행이 어떤 경로로 끝나든(정상, 취소, 시간 초과, 시작 실패, 요청 검증 실패) 한 번 호출한다. 임시 서버와 파일 정리용. */
   onFinish?: () => void | Promise<void>
 }
@@ -30,8 +40,9 @@ export interface RunLaunchOptions {
  */
 export interface ProviderAdapter {
   readonly id: ProviderId
+  /** `pathScopedWrites`: 파일 단위 쓰기 허용·금지 규칙을 실행별로 걸 수 있는지. false면 hr은 직접 편집 없이 제안 카드만 만든다. */
   /** 실행별 도구 브리지를 지원하는지. false면 해당 실행의 자동 모드는 꺼진다 (`매번 컨펌`). */
-  readonly capabilities: { readonly toolBridge: boolean }
+  readonly capabilities: { readonly toolBridge: boolean; readonly pathScopedWrites: boolean }
   /** CLI 설치 여부와 버전을 확인한다. 실행 실패는 예외 대신 installed: false로 돌려준다. */
   checkInstall(): Promise<ProviderInstallStatus>
   /** 입력 검증 후 CLI를 실행한다. 이벤트는 emit으로 흘려보내고 마지막은 항상 exit 이벤트다. */

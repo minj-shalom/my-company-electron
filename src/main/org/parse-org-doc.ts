@@ -12,7 +12,7 @@ export const MAX_ORG_BYTES = 256 * 1024
 export const MAX_ORG_ROWS = 500
 const MAX_CELL = 300
 const MAX_NAME = 60
-const MAX_CHART_LINES = 200
+export const MAX_CHART_LINES = 200
 export const MAIN_SESSION_FILE = 'CLAUDE.md'
 export const HUMAN_CELL = '(사용자)'
 
@@ -108,6 +108,11 @@ export function locateTable(lines: string[]): TableLocation | null {
   return { headerIdx, lastIdx: last, headers, rows }
 }
 
+/** 조직도 줄에서 라벨이 시작하는 열. 트리 기호만 있는 줄은 -1. */
+export function chartLabelCol(line: string): number {
+  return line.slice(0, MAX_LINE).search(/[^\s│├└─|`+\\-]/)
+}
+
 function parseChart(lines: string[], issues: OrgIssue[]): OrgChartLine[] {
   let i = 0
   let fence = false
@@ -131,7 +136,7 @@ function parseChart(lines: string[], issues: OrgIssue[]): OrgChartLine[] {
       issues.push({ code: 'too-many-rows', message: '조직도 블록이 너무 깁니다.', line: i + 1 })
       break
     }
-    const col = line.slice(0, MAX_LINE).search(/[^\s│├└─|`+\\-]/)
+    const col = chartLabelCol(line)
     if (col < 0) continue
     const { label, detail } = splitChartText(line.slice(col, MAX_LINE).trim())
     while (stack.length && stack[stack.length - 1].col >= col) stack.pop()
@@ -142,7 +147,7 @@ function parseChart(lines: string[], issues: OrgIssue[]): OrgChartLine[] {
 }
 
 /** `CTO ── 개발팀 (...)`, `CEO (사용자)` 형태를 선형 탐색으로 나눈다 (정규식 역추적 방지). */
-function splitChartText(text: string): { label: string; detail: string } {
+export function splitChartText(text: string): { label: string; detail: string } {
   const dash = text.indexOf('──')
   const paren = text.indexOf(' (')
   let cut = -1
