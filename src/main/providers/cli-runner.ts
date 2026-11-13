@@ -19,6 +19,8 @@ export interface CliRunnerOptions {
   /** 사용자에게 보이는 메시지에 쓰는 CLI 이름. */
   displayName: string
   spawnFn?: SpawnFn
+  /** 이 제공자에만 추가로 통과시킬 환경변수 접두어. */
+  envPrefixes?: readonly string[]
   /** 프롬프트를 CLI 인자 배열로 만든다. 프롬프트가 옵션으로 해석되지 않게 하는 책임은 어댑터에 있다. */
   buildArgs: (prompt: string, tools?: RunToolOptions, hr?: RunHrOptions) => string[]
   /** stdout 한 줄을 공통 이벤트로 변환한다. */
@@ -90,7 +92,7 @@ export class CliRunner {
       child = this.spawnFn(this.options.command, args, {
         cwd: this.options.cwd,
         shell: false,
-        env: buildCliEnv(),
+        env: buildCliEnv(process.env, this.options.envPrefixes),
         stdio: ['ignore', 'pipe', 'pipe']
       })
     } catch {
