@@ -39,14 +39,84 @@ export const MOCK_TEMPLATES: EmployeeTemplateInfo[] = [
     body: '# 개발자\n'
   },
   {
-    id: 'hr',
-    title: '인사',
-    department: '인사팀',
-    role: '직원 채용, 직원 파일·조직도 정리',
-    description: '직원 채용과 조직도 정리를 맡아요.',
+    id: 'reviewer-qa',
+    title: 'QA',
+    department: '개발팀',
+    role: '읽기 전용 검수',
+    description: '구현 결과를 읽기만 하고 문제를 찾아 알려 줘요.',
+    model: 'sonnet',
+    tools: ['Read', 'Grep', 'Glob'],
+    body: '# QA\n'
+  },
+  {
+    id: 'designer',
+    title: '디자이너',
+    department: '디자인팀',
+    role: '화면·시각 설계',
+    description: '화면 구성과 시각 디자인을 정리해요.',
     model: 'sonnet',
     tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
-    body: '# 인사\n'
+    body: '# 디자이너\n'
+  },
+  {
+    id: 'researcher',
+    title: '리서처',
+    department: '리서치팀',
+    role: '자료 조사',
+    description: '필요한 자료를 찾아 요약해요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 리서처\n'
+  },
+  {
+    id: 'content-planner',
+    title: '콘텐츠 기획자',
+    department: '콘텐츠팀',
+    role: '콘텐츠 기획',
+    description: '어떤 콘텐츠를 언제 낼지 계획해요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 콘텐츠 기획자\n'
+  },
+  {
+    id: 'blog-writer',
+    title: '블로그 작가',
+    department: '콘텐츠팀',
+    role: '블로그 글 작성',
+    description: '블로그 글 초안을 써요. 올리기 전에 승인을 받아요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 블로그 작가\n'
+  },
+  {
+    id: 'video-planner',
+    title: '영상 기획자',
+    department: '콘텐츠팀',
+    role: '영상 기획',
+    description: '영상 주제와 구성안, 대본을 만들어요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 영상 기획자\n'
+  },
+  {
+    id: 'video-editor',
+    title: '영상 편집자',
+    department: '콘텐츠팀',
+    role: '영상 편집 계획',
+    description: '편집 순서와 자막 등 편집 계획을 정리해요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 영상 편집자\n'
+  },
+  {
+    id: 'sns-marketer',
+    title: 'SNS 마케터',
+    department: '콘텐츠팀',
+    role: 'SNS 게시물 작성',
+    description: 'SNS 게시물 초안을 써요. 올리기 전에 승인을 받아요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# SNS 마케터\n'
   }
 ]
 

@@ -94,8 +94,8 @@ describe('misc', () => {
     expect(suggestName('/x/a#b')).toBe('')
   })
   it('validates the add form', () => {
-    expect(validateAddForm({ name: '', devCommand: '', defaultBranch: '' }).name).toBeDefined()
-    expect(validateAddForm({ name: 'ok', devCommand: '', defaultBranch: '' })).toEqual({})
+    expect(validateAddForm({ name: '' }).name).toBeDefined()
+    expect(validateAddForm({ name: 'ok' })).toEqual({})
   })
 })
 
@@ -125,18 +125,15 @@ describe('addProjectFlow', () => {
     path: '/x/a',
     name: 'A',
     type: 'development' as const,
-    devCommand: ' npm run dev ',
-    defaultBranch: '',
     pm: { kind: 'later' as const }
   }
-  it('sends trimmed optional fields and only the dialog path', async () => {
+  it('sends only the dialog path, name, type (no dev command or branch)', async () => {
     const addProject = vi.fn(async () => changed())
     const out = await addProjectFlow({ addProject, hirePm: vi.fn(), setProjectPm: vi.fn() }, input)
     expect(addProject).toHaveBeenCalledWith({
       path: '/x/a',
       name: 'A',
-      type: 'development',
-      devCommand: 'npm run dev'
+      type: 'development'
     })
     expect(out).toMatchObject({ kind: 'done' })
     expect(out.message).toContain('PM 필요')

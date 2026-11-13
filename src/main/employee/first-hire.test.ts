@@ -11,7 +11,7 @@ import { FileCompanyRepository } from '../repository/file-repository'
 import { SafeFs } from '../repository/safe-fs'
 import { createWeeklyLimitsStore } from '../settings/weekly-limits-store'
 import { EmployeeService, normalizeTitle } from './employee-service'
-import { EMPLOYEE_TEMPLATES } from './templates'
+import { findTemplate } from './templates'
 import { parseFirstHire } from './requests'
 
 const made: string[] = []
@@ -41,8 +41,8 @@ const titles = async (fs: SafeFs): Promise<string[]> =>
   (await loadOrg(fs)).members.map((m) => m.title)
 
 describe('prompt wording is pinned', () => {
-  const hr = EMPLOYEE_TEMPLATES.find((t) => t.id === 'hr')
-  const pm = EMPLOYEE_TEMPLATES.find((t) => t.id === 'pm')
+  const hr = findTemplate('hr')
+  const pm = findTemplate('pm')
 
   it('hr has no Bash and the four write targets', () => {
     expect(hr?.tools).not.toContain('Bash')
@@ -163,12 +163,12 @@ describe('missingBaseRoles', () => {
     )
     expect(restored.ok && restored.value.record.sensitiveReasons).toEqual(['protected-role'])
     expect(await titles(c.fs)).toContain('인사')
-    // 직급을 바꾼 hr 템플릿 채용은 복구가 아니므로 카드가 필요하다.
+    // 직급을 바꾼 hr 템플릿 채용은 복구가 아니라 필수 인원 채용이므로 거부한다.
     const other = await c.svc.create(
       { templateId: 'hr', id: 'hr-2', title: '인사 보조', department: '인사팀', reportsTo: 'COO' },
       'ceo-ui'
     )
-    expect(!other.ok && other.code).toBe('approval-required')
+    expect(!other.ok && other.code).toBe('invalid-request')
   })
 })
 

@@ -211,20 +211,18 @@ export function AddProjectDialog({
   onCancel: () => void
 }): React.JSX.Element {
   const titleId = useId()
-  const ids = { name: useId(), type: useId(), dev: useId(), branch: useId(), nameErr: useId() }
+  const ids = { name: useId(), type: useId(), nameErr: useId() }
   const [step, setStep] = useState<1 | 2>(1)
   const [path, setPath] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [nameTouched, setNameTouched] = useState(false)
   const [type, setType] = useState<ProjectType>('development')
-  const [devCommand, setDevCommand] = useState('')
-  const [defaultBranch, setDefaultBranch] = useState('')
   const [pm, setPm] = useState<PmChoice>(() => defaultPmChoice(pms))
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  const errors = validateAddForm({ name, devCommand, defaultBranch })
+  const errors = validateAddForm({ name })
   const showNameError = (nameTouched || name !== '') && errors.name
   const canNext = path !== null && Object.keys(errors).length === 0
 
@@ -243,7 +241,7 @@ export function AddProjectDialog({
     if (path === null || busy) return
     setBusy(true)
     setMessage(null)
-    const outcome = await onSubmit({ path, name, type, devCommand, defaultBranch, pm })
+    const outcome = await onSubmit({ path, name, type, pm })
     // done/partial이면 부모가 이 대화를 닫으므로 오류일 때만 돌아온다.
     if (outcome.kind === 'error') {
       setBusy(false)
@@ -314,35 +312,9 @@ export function AddProjectDialog({
               <p className="hint">
                 {type === 'development'
                   ? '개발: git 레포 폴더(.git이 있는 최상위 폴더)여야 해요.'
-                  : '콘텐츠·기타: git 레포가 아니어도 돼요.'}
+                  : '콘텐츠·기타: 어떤 폴더든 괜찮아요.'}
               </p>
             </div>
-            {type === 'development' && (
-              <>
-                <div className="field">
-                  <label htmlFor={ids.dev}>dev 명령 (선택)</label>
-                  <Input
-                    id={ids.dev}
-                    value={devCommand}
-                    autoComplete="off"
-                    aria-invalid={Boolean(errors.devCommand)}
-                    onChange={(e) => setDevCommand(e.target.value)}
-                  />
-                  {errors.devCommand ? <p className="error">{errors.devCommand}</p> : null}
-                </div>
-                <div className="field">
-                  <label htmlFor={ids.branch}>기본 브랜치 (선택)</label>
-                  <Input
-                    id={ids.branch}
-                    value={defaultBranch}
-                    autoComplete="off"
-                    aria-invalid={Boolean(errors.defaultBranch)}
-                    onChange={(e) => setDefaultBranch(e.target.value)}
-                  />
-                  {errors.defaultBranch ? <p className="error">{errors.defaultBranch}</p> : null}
-                </div>
-              </>
-            )}
           </div>
         ) : (
           <div className="modal__body">

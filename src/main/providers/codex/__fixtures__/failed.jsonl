@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"t1"}
+{"type":"turn.started"}
+{"type":"error","message":"stream disconnected"}
+{"type":"turn.failed","error":{"message":"stream disconnected"}}

@@ -3,6 +3,7 @@ import { lstat, open } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ProjectGit } from '../../shared/project'
 import { MAX_BRANCH, hasForbiddenChar } from '../../shared/project'
+import { isValidBranch } from './project-doc'
 
 /**
  * 레포 읽기 전용 조회. `git`을 `spawn` + 인자 배열로만 실행한다 (셸 없음).
@@ -140,4 +141,28 @@ export async function readHeadBranch(dir: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/** 판정할 수 없을 때의 내부 기본값. 화면에는 노출하지 않는다. */
+export const FALLBACK_DEFAULT_BRANCH = 'main'
+
+/**
+ * 프로젝트 추가 시 기본 브랜치를 자동 판정한다 (develop 브랜치 우선, 없으면 현재 브랜치, 그래도 모르면 내부 기본값).
+ * 읽기 전용 git 호출만 쓰며, 실행 실패·시간 초과·detached HEAD는 다음 순서로 넘어간다.
+ */
+export async function detectDefaultBranch(run: GitRunner, dir: string): Promise<string> {
+  const dev = await run(
+    ['show-ref', '--verify', '--quiet', 'refs/heads/develop'],
+    dir,
+    GIT_TIMEOUT_MS
+  )
+  if (dev.kind === 'done' && dev.code === 0) return 'develop'
+  // 커밋이 없는 새 레포도 symbolic-ref로는 브랜치 이름을 얻는다.
+  const cur = await run(['symbolic-ref', '--short', 'HEAD'], dir, GIT_TIMEOUT_MS)
+  if (cur.kind === 'done' && cur.code === 0) {
+    const name = singleLine(cur.stdout)
+    if (name !== null && isValidBranch(name)) return name
+  }
+  const head = await readHeadBranch(dir)
+  return head !== null && isValidBranch(head) ? head : FALLBACK_DEFAULT_BRANCH
 }

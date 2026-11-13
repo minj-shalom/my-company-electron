@@ -78,6 +78,18 @@ export function departmentNames(snapshot: OrgSnapshot): string[] {
   return snapshot.org.departments.map((d) => d.name)
 }
 
+export interface TemplateGroup {
+  department: string
+  templates: EmployeeTemplateInfo[]
+}
+
+/** 부서(템플릿의 기본 부서) 기준 묶음. 묶음 순서는 처음 나온 순서이고, 개발팀·콘텐츠팀 같은 부서명을 그대로 제목으로 쓴다. */
+export function groupTemplates(list: readonly EmployeeTemplateInfo[]): TemplateGroup[] {
+  const groups = new Map<string, EmployeeTemplateInfo[]>()
+  for (const t of list) groups.set(t.department, [...(groups.get(t.department) ?? []), t])
+  return [...groups].map(([department, templates]) => ({ department, templates }))
+}
+
 /** 템플릿 목록: PM을 맨 앞(바로가기)에 두고 나머지는 받은 순서. */
 export function orderTemplates(list: readonly EmployeeTemplateInfo[]): EmployeeTemplateInfo[] {
   return [...list].sort((a, b) => Number(b.id === 'pm') - Number(a.id === 'pm'))

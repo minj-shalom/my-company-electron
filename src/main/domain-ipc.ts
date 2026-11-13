@@ -27,6 +27,10 @@ import { createIntegrityHandlers, type IntegrityHandlers } from './integrity/int
 import { integrityFor } from './integrity/integrity-runtime'
 import { createProposalHandlers, type ProposalHandlers } from './proposal/proposal-ipc'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
+import {
+  createProviderSelectionHandlers,
+  type ProviderSelectionHandlers
+} from './providers/provider-selection-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
 
@@ -111,6 +115,7 @@ export function createDomainHandlers(deps: DomainDeps): {
 } & EmployeeHandlers &
   ProjectHandlers &
   PolicyHandlers &
+  ProviderSelectionHandlers &
   GateHandlers &
   IntegrityHandlers &
   ProposalHandlers &
@@ -119,6 +124,7 @@ export function createDomainHandlers(deps: DomainDeps): {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createPolicyHandlers({ context: deps.context }),
+    ...createProviderSelectionHandlers({ context: deps.context, providers: deps.providers }),
     ...createGateHandlers({
       context: deps.context,
       userDataDir: deps.userDataDir,
@@ -268,6 +274,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.orgGet, () => h.getOrg())
   handle(IPC_CHANNELS.providerDetect, () => h.detectProviders())
   handle(IPC_CHANNELS.providerTestConnection, h.testProviderConnection)
+  handle(IPC_CHANNELS.providerSelectionGet, () => h.getProviderSelection())
+  handle(IPC_CHANNELS.providerSelectionSave, h.saveProviderSelection)
   handle(IPC_CHANNELS.ticketList, h.listTickets)
   handle(IPC_CHANNELS.ticketGet, h.getTicket)
   handle(IPC_CHANNELS.ticketMove, h.moveTicket)

@@ -7,9 +7,9 @@ import {
   type PolicyAction,
   type PolicyValues
 } from '../../../shared/policy'
+import type { ProjectType } from '../../../shared/project'
 import { Input } from '../ui/Input'
 import {
-  ACTION_LABELS,
   MODE_HINTS,
   MODE_LABELS,
   hasProtectedTarget,
@@ -17,6 +17,7 @@ import {
   parseList,
   setMode
 } from './policy-model'
+import { wordingFor } from './policy-wording'
 
 type Edit = (v: PolicyValues) => void
 
@@ -25,24 +26,27 @@ export function ModeRow({
   action,
   draft,
   projectName,
+  projectType,
   disabled,
   onChange
 }: {
   action: PolicyAction
   draft: PolicyValues
   projectName: string
+  projectType: ProjectType
   disabled: boolean
   onChange: Edit
 }): React.JSX.Element {
   const name = useId()
+  const w = wordingFor(projectType)
   const mode = draft.modes[action]
   return (
     <fieldset className="policy-mode" data-mode={mode} disabled={disabled}>
-      <legend>{ACTION_LABELS[action]}</legend>
+      <legend>{w.actions[action]}</legend>
       <div
         className="policy-mode__options"
         role="radiogroup"
-        aria-label={`${ACTION_LABELS[action]} 승인 모드`}
+        aria-label={`${w.actions[action]} 승인 모드`}
       >
         {APPROVAL_MODES.map((m) => (
           <label
@@ -64,7 +68,13 @@ export function ModeRow({
         {MODE_HINTS[mode]}
       </p>
       {mode === 'auto' && (
-        <AutoDetails action={action} draft={draft} projectName={projectName} onChange={onChange} />
+        <AutoDetails
+          action={action}
+          draft={draft}
+          projectName={projectName}
+          projectType={projectType}
+          onChange={onChange}
+        />
       )}
     </fieldset>
   )
@@ -74,14 +84,17 @@ function AutoDetails({
   action,
   draft,
   projectName,
+  projectType,
   onChange
 }: {
   action: PolicyAction
   draft: PolicyValues
   projectName: string
+  projectType: ProjectType
   onChange: Edit
 }): React.JSX.Element | null {
   const id = useId()
+  const w = wordingFor(projectType)
   const protectedMerge = action === 'merge' && hasProtectedTarget(draft.autoMergeBranches)
   const limited = action !== 'draft-approve'
   const max = protectedMerge ? PROTECTED_MERGE_MAX_DAILY : MAX_DAILY_LIMIT[action as LimitedAction]
@@ -110,36 +123,31 @@ function AutoDetails({
       </div>
       {action === 'push' && (
         <div className="field">
-          <label htmlFor={`${id}-prefix`}>자동 푸시를 허용할 브랜치 접두어</label>
+          <label htmlFor={`${id}-prefix`}>{w.pushPrefixLabel}</label>
           <Input
             id={`${id}-prefix`}
             placeholder="feature/"
             value={listText(draft.autoPushPrefixes)}
             onChange={(e) => onChange({ ...draft, autoPushPrefixes: parseList(e.target.value) })}
           />
-          <p className="hint">
-            쉼표로 여러 개를 적을 수 있어요. master, main 같은 보호 브랜치는 안 돼요.
-          </p>
+          <p className="hint">{w.pushPrefixHint}</p>
         </div>
       )}
       {action === 'merge' && (
         <>
           <div className="field">
-            <label htmlFor={`${id}-branches`}>자동 머지를 허용할 브랜치 (이름으로 정확히)</label>
+            <label htmlFor={`${id}-branches`}>{w.mergeTargetLabel}</label>
             <Input
               id={`${id}-branches`}
               placeholder="develop"
               value={listText(draft.autoMergeBranches)}
               onChange={(e) => onChange({ ...draft, autoMergeBranches: parseList(e.target.value) })}
             />
-            <p className="hint">PR이 있고 reviewer-qa 검수를 통과한 것만 머지돼요.</p>
+            <p className="hint">{w.mergeTargetHint}</p>
           </div>
           {protectedMerge && (
-            <div className="field policy-protected" role="group" aria-label="보호 브랜치 확인">
-              <p className="policy-mode__hint--danger">
-                보호 브랜치(master, main 등)에 컨펌 없이 머지돼요. 릴리스에 바로 반영될 수 있어요.
-                하루 1~2회까지만 허용돼요.
-              </p>
+            <div className="field policy-protected" role="group" aria-label={w.protectedGroupLabel}>
+              <p className="policy-mode__hint--danger">{w.protectedDanger}</p>
               <label htmlFor={`${id}-confirm`}>
                 확인을 위해 프로젝트 이름 &ldquo;{projectName}&rdquo;을(를) 그대로 입력하세요
               </label>

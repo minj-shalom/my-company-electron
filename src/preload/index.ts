@@ -61,6 +61,8 @@ const api: WindowApi = {
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),
+  getProviderSelection: () => ipcRenderer.invoke(IPC_CHANNELS.providerSelectionGet),
+  saveProviderSelection: (req) => ipcRenderer.invoke(IPC_CHANNELS.providerSelectionSave, req),
   getWeeklyLimits: () => ipcRenderer.invoke(IPC_CHANNELS.settingsWeeklyLimitsGet),
   saveWeeklyLimits: (req) => ipcRenderer.invoke(IPC_CHANNELS.settingsWeeklyLimitsSave, req),
   onRunEvent: (listener) => {

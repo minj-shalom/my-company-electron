@@ -11,6 +11,7 @@ import { ProviderService } from './providers/provider-service'
 import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
 import { registerRunHandlers } from './run-ipc'
 import { ClaudeAdapter } from './providers/claude/claude-adapter'
+import { createProviderAdapter, providerSelectionFor } from './providers/provider-selection-ipc'
 import type { ProviderAdapter } from './providers/types'
 import { Scheduler } from './scheduler/scheduler'
 import { createLastRunStore } from './scheduler/last-run-store'
@@ -51,10 +52,11 @@ app
       store: createLastCompanyStore(app.getPath('userData'))
     })
     registerCompanyHandlers(new CompanyService({ context: companyContext }))
-    providers = new ProviderService()
+    const providerService = new ProviderService()
+    providers = providerService
     registerDomainHandlers({
       context: companyContext,
-      providers,
+      providers: providerService,
       limits: createWeeklyLimitsStore(app.getPath('userData')),
       userDataDir: app.getPath('userData')
     })
@@ -76,10 +78,19 @@ app
       lastRuns: createLastRunStore(app.getPath('userData')),
       tick: async (ctx) => {
         if (companyContext.getOpenCompany() === null) return
+        // 설정과 감지 결과를 틱 시작 때 한 번 고정한다: 변경은 다음 틱부터 적용되고 진행 중인 틱은 그대로다.
+        const selection = await providerSelectionFor({
+          context: companyContext,
+          providers: providerService
+        }).snapshot()
         const deps = tickDepsFor({
           context: companyContext,
           userDataDir: app.getPath('userData'),
-          createAdapter: (cwd) => new ClaudeAdapter({ cwd })
+          // 쓸 수 있는 제공자가 없으면 claude 어댑터가 시작 때 cli-not-found로 거부한다 (안내 문구는 기존 실패 경로).
+          createAdapter: (cwd, employeeId) => {
+            const r = selection.resolve(employeeId)
+            return createProviderAdapter(r.ok ? r.provider : 'claude', cwd)
+          }
         })
         await createTickRunner(deps, tickShared)(ctx)
       }

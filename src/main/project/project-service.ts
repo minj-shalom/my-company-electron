@@ -21,7 +21,7 @@ import { loadOrg } from '../org/org-store'
 import { splitFrontmatter } from '../repository/markdown'
 import { AGENTS_DIR } from '../repository/parse-org'
 import { FsGuardError, MAX_FILE_BYTES, type SafeFs } from '../repository/safe-fs'
-import { gitToplevel, probeGit, spawnGit, type GitRunner } from './git-probe'
+import { detectDefaultBranch, gitToplevel, probeGit, spawnGit, type GitRunner } from './git-probe'
 import {
   MAX_MEMBERS,
   MAX_PROJECTS,
@@ -200,13 +200,17 @@ export class ProjectService {
         stop('conflict', '이미 등록된 폴더예요. 보관된 프로젝트라면 복원하세요.')
       await this.requireGitFor(input.type, real)
       if (input.pm !== null) this.requirePm(org, input.pm)
+      // 화면이 기본 브랜치를 묻지 않으므로 development는 git으로 판정해 기록한다.
+      const defaultBranch =
+        input.defaultBranch ??
+        (input.type === 'development' ? await detectDefaultBranch(this.git, real) : null)
       const project: DocProject = {
         id: makeProjectId(input.name, new Set(view.items.map((p) => p.id))),
         name: input.name,
         type: input.type,
         path: real,
         devCommand: input.devCommand,
-        defaultBranch: input.defaultBranch,
+        defaultBranch,
         status: 'active',
         pmId: input.pm,
         memberIds: []
@@ -440,7 +444,7 @@ export class ProjectService {
       text = await this.deps.fs.readText(PROJECT_FILE)
     } catch (e) {
       if (!(e instanceof FsGuardError && e.kind === 'missing'))
-        return stop('internal', 'project.md를 읽을 수 없습니다.')
+        return stop('internal', '프로젝트 설정을 읽을 수 없어요.')
     }
     return { text, doc: text === null ? emptyProjectDoc() : parseProjectDoc(text) }
   }
@@ -497,7 +501,7 @@ export class ProjectService {
     const fs = this.deps.fs
     const out = serializeProjectDoc(change.next)
     if (Buffer.byteLength(out, 'utf8') > MAX_FILE_BYTES)
-      stop('invalid-request', 'project.md가 너무 커져서 저장하지 않았어요.')
+      stop('invalid-request', '프로젝트 설정이 너무 커져서 저장하지 않았어요.')
     // 이름·경로에 구조를 위조하는 값이 섞였거나 직렬화가 어긋났다면 쓰기 전에 막는다.
     const again = parseProjectDoc(out)
     const expected = viewProjectDoc(change.next)
@@ -517,18 +521,18 @@ export class ProjectService {
       current = await fs.readText(PROJECT_FILE)
     } catch (e) {
       if (!(e instanceof FsGuardError && e.kind === 'missing'))
-        stop('internal', 'project.md를 읽을 수 없습니다.')
+        stop('internal', '프로젝트 설정을 읽을 수 없어요.')
     }
     if (current !== original)
-      stop('conflict', 'project.md가 동시에 수정되고 있습니다. 다시 시도하세요.')
+      stop('conflict', '프로젝트 설정이 동시에 바뀌고 있어요. 다시 시도해 주세요.')
 
     try {
       // 파일이 없던 경우는 no-clobber로 만든다 (그 사이 생긴 파일을 덮어쓰지 않는다).
       await fs.writeText(PROJECT_FILE, out, original !== null)
     } catch (e) {
       if (e instanceof FsGuardError && e.kind === 'exists')
-        return stop('conflict', 'project.md가 동시에 수정되고 있습니다. 다시 시도하세요.')
-      return stop('internal', 'project.md를 쓰지 못했습니다.')
+        return stop('conflict', '프로젝트 설정이 동시에 바뀌고 있어요. 다시 시도해 주세요.')
+      return stop('internal', '프로젝트 설정을 저장하지 못했어요.')
     }
     const ok = await fs.readText(PROJECT_FILE).then(
       (t) => t === out,
@@ -541,7 +545,7 @@ export class ProjectService {
       } catch {
         return stop(
           'internal',
-          '쓴 내용을 확인하지 못했고 되돌리지도 못했습니다. project.md를 확인하세요.'
+          '쓴 내용을 확인하지 못했고 되돌리지도 못했어요. 프로젝트 설정을 확인해 주세요.'
         )
       }
       stop('internal', '쓴 내용을 확인하지 못해 되돌렸습니다.')

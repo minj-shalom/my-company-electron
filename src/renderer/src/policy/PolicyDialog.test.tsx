@@ -39,7 +39,14 @@ describe('PolicyDialog', () => {
 describe('ModeRow', () => {
   it('shows every as default and hides auto details', () => {
     const html = renderToStaticMarkup(
-      <ModeRow action="push" draft={draft()} projectName="앱" disabled={false} onChange={noop} />
+      <ModeRow
+        action="push"
+        draft={draft()}
+        projectName="앱"
+        projectType="development"
+        disabled={false}
+        onChange={noop}
+      />
     )
     expect(html).toMatch(
       /<input[^>]*checked[^>]*value="every"|<input[^>]*value="every"[^>]*checked/
@@ -54,6 +61,7 @@ describe('ModeRow', () => {
           modes: { push: 'auto', merge: 'every', publish: 'every', 'draft-approve': 'every' }
         })}
         projectName="앱"
+        projectType="development"
         disabled={false}
         onChange={noop}
       />
@@ -71,6 +79,7 @@ describe('ModeRow', () => {
           autoMergeBranches: ['master']
         })}
         projectName="<b>앱</b>"
+        projectType="development"
         disabled={false}
         onChange={noop}
       />
@@ -89,6 +98,7 @@ describe('AutoConfirmDialog', () => {
         actions={['push']}
         draft={d}
         projectName="앱"
+        projectType="development"
         busy={false}
         onCancel={noop}
         onConfirm={noop}
@@ -96,5 +106,42 @@ describe('AutoConfirmDialog', () => {
     )
     expect(html).toContain('컨펌 없이')
     expect(html).toMatch(/aria-disabled="true"[^>]*>자동 모드 켜고 저장/)
+  })
+})
+
+describe('plain wording for non-development projects (D-024)', () => {
+  const auto = draft({
+    modes: { push: 'auto', merge: 'auto', publish: 'every', 'draft-approve': 'every' },
+    dailyLimits: { push: 3, merge: 2 },
+    autoPushPrefixes: ['feature/'],
+    autoMergeBranches: ['master'],
+    confirmInput: ''
+  })
+  it('hides PR/merge/push/branch terms in ModeRow and AutoConfirmDialog but keeps all modes', () => {
+    const rows = (['push', 'merge'] as const).map((a) =>
+      renderToStaticMarkup(
+        <ModeRow
+          action={a}
+          draft={auto}
+          projectName="글"
+          projectType="content"
+          disabled={false}
+          onChange={noop}
+        />
+      )
+    )
+    const dialog = renderToStaticMarkup(
+      <AutoConfirmDialog
+        actions={['push', 'merge']}
+        draft={auto}
+        projectName="글"
+        projectType="content"
+        busy={false}
+        onCancel={noop}
+        onConfirm={noop}
+      />
+    )
+    for (const html of [...rows, dialog]) expect(html).not.toMatch(/PR|머지|푸시|브랜치/)
+    for (const m of ['every', 'batch', 'auto']) expect(rows[0]).toContain(`value="${m}"`)
   })
 })

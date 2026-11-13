@@ -20,11 +20,6 @@
 .projects__lead {
   margin: var(--space-2) 0 var(--space-3);
 }
-.projects__script-note {
-  margin: var(--space-4) 0 0;
-  padding-top: var(--space-3);
-  border-top: 1px dashed var(--border);
-}
 .projects__notice {
   display: flex;
   flex-wrap: wrap;

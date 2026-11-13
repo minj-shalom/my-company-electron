@@ -1,7 +1,5 @@
 import type { WindowApi } from '../../../shared/api'
 import {
-  MAX_BRANCH,
-  MAX_DEV_COMMAND,
   checkProjectName,
   isPmTitle,
   type ProjectInfo,
@@ -222,8 +220,6 @@ export interface AddInput {
   path: string
   name: string
   type: ProjectType
-  devCommand: string
-  defaultBranch: string
   pm: PmChoice
 }
 
@@ -241,13 +237,10 @@ export async function addProjectFlow(
   input: AddInput
 ): Promise<AddOutcome> {
   try {
-    const dev = input.type === 'development'
     const added = await api.addProject({
       path: input.path,
       name: input.name,
       type: input.type,
-      ...(dev && input.devCommand.trim() ? { devCommand: input.devCommand.trim() } : {}),
-      ...(dev && input.defaultBranch.trim() ? { defaultBranch: input.defaultBranch.trim() } : {}),
       ...(input.pm.kind === 'existing' ? { pm: input.pm.id } : {})
     })
     if (!added.ok) return { kind: 'error', message: projectErrorText(added.code, added.message) }
@@ -275,27 +268,17 @@ export function suggestName(path: string): string {
 
 export interface AddFormErrors {
   name?: string
-  devCommand?: string
-  defaultBranch?: string
 }
 
-export function validateAddForm(f: {
-  name: string
-  devCommand: string
-  defaultBranch: string
-}): AddFormErrors {
+export function validateAddForm(f: { name: string }): AddFormErrors {
   const errors: AddFormErrors = {}
   const nameError = checkProjectName(f.name)
   if (nameError) errors.name = nameError
-  if (f.devCommand.length > MAX_DEV_COMMAND)
-    errors.devCommand = `dev 명령은 ${MAX_DEV_COMMAND}자 이하여야 해요.`
-  if (f.defaultBranch.length > MAX_BRANCH)
-    errors.defaultBranch = `기본 브랜치는 ${MAX_BRANCH}자 이하여야 해요.`
   return errors
 }
 
 export interface GitView {
-  /** 표시할 브랜치. 모르면 null. */
+  /** 표시할 작업 버전(브랜치) 이름. 모르면 null. */
   branch: string | null
   branchText: string
   dirtyText: string
@@ -303,20 +286,23 @@ export interface GitView {
 }
 
 /** git 조회 결과 표시. unavailable이어도 `.git/HEAD`로 읽은 브랜치가 있으면 보여 주고 변경 여부만 '알 수 없음'으로 둔다. */
+const unknownVersion = (type: ProjectType): string =>
+  type === 'development' ? '브랜치를 알 수 없어요' : '작업 버전을 알 수 없어요'
+
 export function gitView(p: Pick<ProjectInfo, 'git' | 'type'>): GitView {
   const g = p.git
   switch (g.status) {
     case 'ok':
       return {
         branch: g.branch,
-        branchText: g.branch ?? '브랜치를 알 수 없어요',
+        branchText: g.branch ?? unknownVersion(p.type),
         dirtyText: g.dirty ? '변경 있음' : '변경 없음',
         tone: g.dirty ? 'warn' : 'good'
       }
     case 'unavailable':
       return {
         branch: g.branch ?? null,
-        branchText: g.branch ? g.branch : '브랜치를 알 수 없어요',
+        branchText: g.branch ? g.branch : unknownVersion(p.type),
         dirtyText: '변경 여부 알 수 없음',
         tone: 'neutral'
       }
@@ -325,7 +311,7 @@ export function gitView(p: Pick<ProjectInfo, 'git' | 'type'>): GitView {
         ? { branch: null, branchText: 'git 레포가 아니에요', dirtyText: '확인 필요', tone: 'warn' }
         : {
             branch: null,
-            branchText: 'git 레포 아님 (정상)',
+            branchText: '작업 버전 관리를 쓰지 않아요 (정상)',
             dirtyText: '해당 없음',
             tone: 'neutral'
           }
@@ -363,11 +349,11 @@ export function resolveCurrent(
     : null
 }
 
-export const SCRIPT_KEY_NOTE =
-  '프로젝트 문서(company/project.md)의 "- 키: 값" 줄은 scripts/*.sh가 읽는 스크립트용 키(project_dir, dev_command 등)와 어긋날 수 있어요. 앱에서 프로젝트를 바꿔도 스크립트용 키는 자동으로 바뀌지 않으니, 스크립트를 쓴다면 직접 맞춰 주세요.'
-
 export const LEGACY_NOTE =
-  '기존 단일 형식의 project.md를 읽었어요. 앱에서 처음 저장하면 새 형식으로 바뀌고, 바뀌기 전 내용은 git으로 되돌릴 수 있어요.'
+  '이전 형식의 프로젝트 설정을 읽었어요. 앱에서 처음 저장하면 새 형식으로 바뀌고, 바뀌기 전 내용은 되돌릴 수 있어요.'
+
+/** 읽지 못한 프로젝트 설정 항목의 위치. 파일 이름·형식 대신 쉬운 말로 보여 준다. */
+export const unreadableLabel = (line: number): string => `프로젝트 설정 ${line}번째 항목`
 
 /** 폴더 선택 창. 취소하면 null. 프로젝트 경로는 이 창이 돌려준 값만 main이 받는다. */
 export async function pickFolder(

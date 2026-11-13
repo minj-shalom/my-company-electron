@@ -11,6 +11,7 @@ import {
   defaultsFor,
   departmentNames,
   errorText,
+  groupTemplates,
   hasErrors,
   orderTemplates,
   validateHire,
@@ -105,12 +106,12 @@ export function HireDialog({
         <div className="modal__body">
           {load.kind === 'loading' && (
             <p role="status" className="hint">
-              직원 템플릿을 불러오고 있어요…
+              채용할 수 있는 직군을 불러오고 있어요…
             </p>
           )}
           {load.kind === 'error' && (
             <div role="alert" className="error">
-              <p>템플릿을 불러오지 못했어요.</p>
+              <p>직군 목록을 불러오지 못했어요. 잠시 뒤 다시 시도해 주세요.</p>
               <Button
                 size="small"
                 onClick={() => {
@@ -123,43 +124,51 @@ export function HireDialog({
             </div>
           )}
           {load.kind === 'ready' && templates.length === 0 && (
-            <p className="empty-state">채용할 수 있는 템플릿이 없어요.</p>
+            <p className="empty-state">지금 채용할 수 있는 직군이 없어요.</p>
           )}
           {load.kind === 'ready' && templates.length > 0 && (
             <>
               <fieldset className="hire-dialog__templates" disabled={busy}>
-                <legend>템플릿</legend>
-                <ul>
-                  {templates.map((t) => (
-                    <li
-                      key={t.id}
-                      className="hire-card"
-                      data-selected={values?.templateId === t.id}
-                    >
-                      <label className="hire-card__label">
-                        <input
-                          type="radio"
-                          name="hire-template"
-                          value={t.id}
-                          checked={values?.templateId === t.id}
-                          onChange={() => {
-                            setValues(defaultsFor(t, snapshot))
-                            setSubmitted(false)
-                            setError(null)
-                          }}
-                        />
-                        <span className="hire-card__title">{t.title}</span>
-                        {t.id === 'pm' && <Badge tone="info">PM 채용 바로가기</Badge>}
-                      </label>
-                      <p className="hire-card__desc">{t.description}</p>
-                      {values?.templateId === t.id && (
-                        <p className="hint">
-                          기본 부서 {t.department} · 모델 {t.model}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <legend>직군</legend>
+                <p className="hint">
+                  회사를 만들 때 CTO, CFO, 인사는 이미 들어와요. 여기서는 그 밖의 직군을 골라요.
+                </p>
+                {groupTemplates(templates).map((g) => (
+                  <section key={g.department} className="hire-group">
+                    <h3 className="hire-group__title">{g.department}</h3>
+                    <ul>
+                      {g.templates.map((t) => (
+                        <li
+                          key={t.id}
+                          className="hire-card"
+                          data-selected={values?.templateId === t.id}
+                        >
+                          <label className="hire-card__label">
+                            <input
+                              type="radio"
+                              name="hire-template"
+                              value={t.id}
+                              checked={values?.templateId === t.id}
+                              onChange={() => {
+                                setValues(defaultsFor(t, snapshot))
+                                setSubmitted(false)
+                                setError(null)
+                              }}
+                            />
+                            <span className="hire-card__title">{t.title}</span>
+                            {t.id === 'pm' && <Badge tone="info">PM 채용 바로가기</Badge>}
+                          </label>
+                          <p className="hire-card__desc">{t.description}</p>
+                          {values?.templateId === t.id && (
+                            <p className="hint">
+                              기본 부서 {t.department} · 모델 {t.model}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
               </fieldset>
               {values && template && (
                 <div className="hire-dialog__fields">

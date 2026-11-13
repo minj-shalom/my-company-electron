@@ -130,6 +130,12 @@ export const mockApi: WindowApi = {
   ...mockPolicyApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
+  // 2단계(T-038 설정 화면)에서 UI와 함께 시나리오를 확장한다. 그 전까지는 저장 없이 기본값만 돌려준다.
+  getProviderSelection: async () => ({
+    ok: true,
+    value: { defaultProvider: 'claude', overrides: {} }
+  }),
+  saveProviderSelection: async (req) => ({ ok: true, value: req }),
   getWeeklyLimits: mockGetWeeklyLimits,
   saveWeeklyLimits: mockSaveWeeklyLimits
 }

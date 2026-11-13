@@ -29,11 +29,20 @@ const EXACT = new Set([
 ])
 const PREFIXES = ['LC_', 'XDG_', 'CLAUDE_', 'ANTHROPIC_']
 
-export function buildCliEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+/** `extraPrefixes`: 제공자별로 명시 허용한 접두어. 기본 호출은 허용 목록만 통과시킨다. */
+export function buildCliEnv(
+  source: NodeJS.ProcessEnv = process.env,
+  extraPrefixes: readonly string[] = []
+): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}
   for (const [k, v] of Object.entries(source)) {
     if (v === undefined) continue
-    if (EXACT.has(k) || PREFIXES.some((p) => k.startsWith(p))) out[k] = v
+    if (
+      EXACT.has(k) ||
+      PREFIXES.some((p) => k.startsWith(p)) ||
+      extraPrefixes.some((p) => p !== '' && k.startsWith(p))
+    )
+      out[k] = v
   }
   return out
 }

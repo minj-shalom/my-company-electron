@@ -1,0 +1,3 @@
+{"type":"init","session_id":"s-3","model":"gemini-sample"}
+{"type":"error","severity":"warning","message":"quota nearly exceeded"}
+{"type":"result","status":"error","error":{"type":"Error","message":"request failed"},"stats":{"duration_ms":30}}

@@ -20,7 +20,7 @@ export interface TickWiringOptions {
   context: CompanyContext
   userDataDir: string
   /** cwd마다 제공자 어댑터를 만든다. */
-  createAdapter: (cwd: string) => ProviderAdapter
+  createAdapter: (cwd: string, employeeId?: string) => ProviderAdapter
   /** 후속 티켓(T-019 한도 점검, T-046/T-052 요청 경로, T-052 hr 전용 실행)이 채우는 연결점. */
   checkLimit?: TickDeps['checkLimit']
   requests?: TickDeps['requests']
@@ -129,7 +129,7 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
       hrRunnerFor({
         context: o.context,
         userDataDir: o.userDataDir,
-        createAdapter: o.createAdapter,
+        createAdapter: (cwd) => o.createAdapter(cwd, 'hr'),
         readAgentPrompt
       })
   }

@@ -55,6 +55,7 @@ import type {
   WeeklyLimit,
   WeeklyLimitsSaveRequest
 } from './provider'
+import type { ProviderSelection } from './provider-selection'
 import type { ApiResult } from './result'
 import type {
   Ticket,
@@ -205,6 +206,10 @@ export interface WindowApi {
   detectProviders: () => Promise<ApiResult<ProviderDetection[]>>
   /** 사용자가 `연결 테스트`를 눌렀을 때만 호출한다. 자동 호출 금지 (사용량이 든다). */
   testProviderConnection: (provider: ProviderCliId) => Promise<ApiResult<ConnectionTestResult>>
+  /** 회사 기본 제공자와 직원별 오버라이드(T-056). 값은 허용 목록 제공자뿐이다. 변경은 다음 실행부터 적용된다. */
+  getProviderSelection: () => Promise<ApiResult<ProviderSelection>>
+  /** 전체 교체 저장. 잘못된 값이 하나라도 있으면 `invalid-request`로 거부하고 저장하지 않는다. */
+  saveProviderSelection: (req: ProviderSelection) => Promise<ApiResult<ProviderSelection>>
   /** 저장된 제공자별 주간 한도. 저장된 값이 없으면 빈 배열. */
   getWeeklyLimits: () => Promise<ApiResult<WeeklyLimit[]>>
   /** 주간 한도 전체를 교체 저장한다. 목록에 없는 제공자는 한도 없음. 토큰/인증 정보는 이 계약에 없다. */
@@ -273,6 +278,8 @@ export const IPC_CHANNELS = {
   proposalApply: 'proposal:apply',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
+  providerSelectionGet: 'provider:selection-get',
+  providerSelectionSave: 'provider:selection-save',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
   settingsWeeklyLimitsSave: 'settings:weekly-limits-save'
 } as const
