@@ -11,6 +11,7 @@ import { ProviderService } from './providers/provider-service'
 import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
 import { registerRunHandlers } from './run-ipc'
 import { registerUsageHandlers } from './usage/usage-ipc'
+import { registerThemeHandlers } from './settings/theme-ipc'
 import { usageRecorder, usageServiceFor } from './usage/usage-runtime'
 import { ClaudeAdapter } from './providers/claude/claude-adapter'
 import { createProviderAdapter, providerSelectionFor } from './providers/provider-selection-ipc'
@@ -78,6 +79,7 @@ app
     })
     registerRunHandlers(runner)
     registerUsageHandlers(usageDeps)
+    registerThemeHandlers(app.getPath('userData'))
     // 스케줄러는 열린 회사 1개만 다룬다. 틱은 회사에 묶인 입력으로 틱마다 새로 만들고, 한도 카드 쿨다운만 공유한다.
     // 한도 점검은 CFO 사용량 집계(T-019)에 연결되어 있고, 점검이 실패하면 틱은 실행하지 않는다 (가장 보수적).
     const tickShared: TickShared = { lastLimitCardAt: 0 }

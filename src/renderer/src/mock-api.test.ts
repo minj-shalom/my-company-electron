@@ -76,6 +76,12 @@ describe('mockApi onboarding', () => {
     expect(got.ok && got.value).toEqual([{ provider: 'claude', amount: 20, unit: 'usd' }])
   })
 
+  it('keeps the theme preference', async () => {
+    expect(await mockApi.getTheme()).toEqual({ ok: true, value: 'system' })
+    await mockApi.saveTheme('dark')
+    expect(await mockApi.getTheme()).toEqual({ ok: true, value: 'dark' })
+  })
+
   it('rejects invalid or duplicate limits', async () => {
     const bad = await mockApi.saveWeeklyLimits({
       limits: [{ provider: 'claude', amount: -1, unit: 'usd' }]

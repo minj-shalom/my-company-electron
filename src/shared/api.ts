@@ -57,6 +57,7 @@ import type {
 } from './provider'
 import type { ProviderSelection } from './provider-selection'
 import type { ApiResult } from './result'
+import type { ThemePreference } from './theme'
 import type { UsageSettings, UsageWidgetData } from './usage'
 import type {
   Ticket,
@@ -224,6 +225,9 @@ export interface WindowApi {
   getUsageSettings: () => Promise<ApiResult<UsageSettings>>
   /** 전체 교체 저장. 범위 밖 값이 있으면 `invalid-request`로 거부한다 (validateUsageSettings). */
   saveUsageSettings: (req: UsageSettings) => Promise<ApiResult<UsageSettings>>
+  /** 앱 전역 테마(T-038, userData 저장). 저장된 값이 없으면 `system`. 허용 목록 밖 값은 `invalid-request`. */
+  getTheme: () => Promise<ApiResult<ThemePreference>>
+  saveTheme: (theme: ThemePreference) => Promise<ApiResult<ThemePreference>>
   /**
    * 오토파일럿 스케줄러(T-015). 설정(간격·활동 시간·켜기/끄기)은 `company/schedule.md`가 원본이고 이 API로는 쓰지 않는다.
    * `runSchedulerNow`는 설정과 무관하게 한 번 실행을 시작한다(틱 완료를 기다리지 않음). 이미 실행 중이면 `{ started: false, reason: 'busy' }`.
@@ -292,6 +296,8 @@ export const IPC_CHANNELS = {
   providerSelectionSave: 'provider:selection-save',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
   settingsWeeklyLimitsSave: 'settings:weekly-limits-save',
+  settingsThemeGet: 'settings:theme-get',
+  settingsThemeSave: 'settings:theme-save',
   usageWidget: 'usage:widget',
   usageSettingsGet: 'usage:settings-get',
   usageSettingsSave: 'usage:settings-save'

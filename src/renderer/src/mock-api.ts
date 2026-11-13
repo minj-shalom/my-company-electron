@@ -1,4 +1,5 @@
 import type { WindowApi } from '../../shared/api'
+import type { ThemePreference } from '../../shared/theme'
 import { USAGE_SETTINGS_DEFAULT } from '../../shared/usage'
 import {
   mockDetectProviders,
@@ -64,7 +65,10 @@ const mockEmployeeApi = createMockEmployeeApi(
 )
 
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
+let mockTheme: ThemePreference = 'system'
+
 export function resetMockApi(): void {
+  mockTheme = 'system'
   mockTicketApi.reset()
   mockDecisionApi.reset()
   mockProjectApi.reset()
@@ -139,6 +143,11 @@ export const mockApi: WindowApi = {
   saveProviderSelection: async (req) => ({ ok: true, value: req }),
   getWeeklyLimits: mockGetWeeklyLimits,
   saveWeeklyLimits: mockSaveWeeklyLimits,
+  getTheme: async () => ({ ok: true, value: mockTheme }),
+  saveTheme: async (theme) => {
+    mockTheme = theme
+    return { ok: true, value: theme }
+  },
   // 사용량 위젯 화면은 T-038(ui-dev)에서 시나리오 mock으로 바꾼다. 그 전까지는 빈 집계만 돌려준다.
   getUsageWidget: async () => ({
     ok: true,
