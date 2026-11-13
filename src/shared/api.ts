@@ -21,6 +21,16 @@ import type { OrgChart } from './employee'
 import type { FirstHireRequest, FirstHireResult, HirePmResult } from './company-hire'
 import type { OrgSnapshot } from './org'
 import type {
+  ProjectAddRequest,
+  ProjectChangeResult,
+  ProjectIdRequest,
+  ProjectList,
+  ProjectRenameRequest,
+  ProjectSelectFolderResult,
+  ProjectSetPmRequest,
+  ProjectSetTypeRequest
+} from './project'
+import type {
   ConnectionTestResult,
   ProviderCliId,
   ProviderDetection,
@@ -94,6 +104,25 @@ export interface WindowApi {
    */
   firstHire: (req?: FirstHireRequest) => Promise<ApiResult<FirstHireResult>>
   /**
+   * 프로젝트 관리 (T-037, 화면은 2단계). 원본은 회사 폴더의 `company/project.md`이고 모든 호출은 열린 회사 대상이다 (없으면 `no-company`).
+   * 호출자는 main이 항상 `ceo-ui`로 처리한다 (요청에 `actor`는 없다). 오류 문구는 고정 문구이며 경로를 담지 않는다.
+   * `selectProjectFolder`는 main의 폴더 선택 다이얼로그(새 폴더 만들기 허용)이고 취소하면 value가 null이다.
+   * `addProject`는 여기서 돌려받은 경로만 받는다 (직접 입력은 `path-not-allowed`). 경로 규칙 위반, 이름 중복, development의 git 검증 실패는 `invalid-request`/`conflict`.
+   * 보관(`archiveProject`)은 `project.md`의 상태만 바꾸며 폴더는 건드리지 않는다. 진행 중 티켓이 있으면 `conflict`.
+   * 담당 PM은 org.md의 PM 직급 직원만 지정할 수 있고(`setProjectPm`), 목록의 `state`가 `pm-required`면 티켓 실행 대상이 아니다.
+   * "현재 프로젝트"는 데이터가 아닌 UI 필터라 이 계약에 없다.
+   */
+  selectProjectFolder: () => Promise<ApiResult<ProjectSelectFolderResult>>
+  listProjects: () => Promise<ApiResult<ProjectList>>
+  addProject: (req: ProjectAddRequest) => Promise<ApiResult<ProjectChangeResult>>
+  renameProject: (req: ProjectRenameRequest) => Promise<ApiResult<ProjectChangeResult>>
+  archiveProject: (req: ProjectIdRequest) => Promise<ApiResult<ProjectChangeResult>>
+  restoreProject: (req: ProjectIdRequest) => Promise<ApiResult<ProjectChangeResult>>
+  /** development -> content/other는 바로, content/other -> development는 git 검증을 다시 통과해야 한다. */
+  setProjectType: (req: ProjectSetTypeRequest) => Promise<ApiResult<ProjectChangeResult>>
+  setProjectPm: (req: ProjectSetPmRequest) => Promise<ApiResult<ProjectChangeResult>>
+  clearProjectPm: (req: ProjectIdRequest) => Promise<ApiResult<ProjectChangeResult>>
+  /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
@@ -135,6 +164,15 @@ export const IPC_CHANNELS = {
   employeeRetire: 'employee:retire',
   companyHirePm: 'company:hire-pm',
   companyFirstHire: 'company:first-hire',
+  projectSelectFolder: 'project:select-folder',
+  projectList: 'project:list',
+  projectAdd: 'project:add',
+  projectRename: 'project:rename',
+  projectArchive: 'project:archive',
+  projectRestore: 'project:restore',
+  projectSetType: 'project:set-type',
+  projectSetPm: 'project:set-pm',
+  projectClearPm: 'project:clear-pm',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

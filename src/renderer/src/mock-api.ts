@@ -13,6 +13,7 @@ import { createMockHireApi, parseHireScenario } from './mock-hire'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
+import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -37,10 +38,17 @@ const mockHireApi = createMockHireApi(
   typeof location === 'undefined' ? 0 : 500
 )
 
+const mockProjectApi = createMockProjectApi(
+  parseProjectScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 400,
+  typeof location === 'undefined' ? '' : location.search
+)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
   mockTicketApi.reset()
   mockDecisionApi.reset()
+  mockProjectApi.reset()
   resetMockOnboarding()
   resetMockOrgState()
 }
@@ -68,6 +76,7 @@ export const mockApi: WindowApi = {
   updateEmployee: mockNotImplemented,
   moveEmployee: mockNotImplemented,
   retireEmployee: mockNotImplemented,
+  ...mockProjectApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,

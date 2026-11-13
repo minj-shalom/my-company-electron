@@ -146,3 +146,14 @@ my-company-electron/
 - **배포 (확정):** 제품 소개 랜딩 페이지(별도 레포 `my-company-landing`)에서 사용자가 macOS 또는 Windows 설치 파일을 내려받는다. 파일 호스팅은 GitHub Releases를 재사용한다. 설치 파일 이름에서 버전을 빼 `releases/latest/download/<파일명>` 고정 링크로 최신 파일을 가리킨다.
 - TODO: 패키지 매니저(Homebrew, winget) 병행 시점, 커스텀 도메인
 - TODO: Windows 코드 서명 방식 (인증서 종류와 조달)
+
+## 프로젝트 관리 (T-037 1단계, main)
+
+- 원본: 회사 폴더 `company/project.md`. 코드는 `src/main/project/`, 계약은 `src/shared/project.ts`.
+- 형식: 프로젝트마다 `## 프로젝트: 이름` 블록과 `- 키: 값` 줄(`id`, `유형`, `경로`, `dev 명령`, `기본 브랜치`, `상태`, `PM`). 알 수 없는 줄(`직원:`, 정책, 스크립트용 `- project_dir:` 등)과 다른 섹션은 원문 그대로 보존한다. `- 키: 값` 줄 파서(`field-lines.ts`)는 `PM:`·`직원:`(T-045)·T-052가 공용으로 쓴다.
+- 기존 단일 형식(`project_dir`, `extra_project_dirs`)은 읽을 때 프로젝트로 해석만 하고, 변경 저장 때 원문 뒤에 블록을 붙여 변환한다 (스크립트용 키는 그대로).
+- 쓰기: 쓰기 직렬화 큐(`runExclusive`) -> 재파싱 검증 -> 쓰기 직전 재읽기(conflict) -> 원자 쓰기(파일이 없으면 no-clobber) -> 읽어서 확인, 실패 시 롤백.
+- 경로: `project:select-folder`(main 다이얼로그)가 돌려준 경로의 실제 경로만 승인 목록(최대 8, 추가 성공 시 소비)에 들어가고 `project:add`가 그것만 받는다. 검증은 절대·`..`·실존·심볼릭 해소·회사 폴더 포함 관계·홈/루트·중복. development는 `.git`과 최상위 폴더 일치 필요.
+- git 조회는 `spawn` + 인자 배열의 `rev-parse`, `status --porcelain`만 (`--no-optional-locks`, `core.fsmonitor=false`, 최소 환경변수, 3초 시간 제한). 폴더에 `.git`이 없으면 조회하지 않는다. 레포 폴더는 쓰지 않는다.
+- `projectState(project, org)`: `ready | pm-required | archived`. PM이 없거나 org.md의 PM 직급 직원이 아니면 `pm-required`.
+- 채널: `project:select-folder|list|add|rename|archive|restore|set-type|set-pm|clear-pm` (모두 trustedHandler, 고정 오류 문구, ApiResult).
