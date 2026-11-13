@@ -25,4 +25,5 @@ export interface SchedulerStatus {
 }
 
 export type SchedulerRunNowResult =
-  { started: true } | { started: false; reason: 'busy' | 'no-company' | 'halted' }
+  | { started: true }
+  | { started: false; reason: 'busy' | 'no-company' | 'halted' | 'policy-unavailable' }

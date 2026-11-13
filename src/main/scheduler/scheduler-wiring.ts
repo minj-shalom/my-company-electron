@@ -30,7 +30,11 @@ export function companyBoundDeps(context: CompanyContext, userDataDir: string): 
       const out: PolicyHoursEntry[] = []
       for (const p of await readProjectItems(fs)) {
         const r = await svc.get({ projectId: p.id })
-        out.push({ projectId: p.id, hours: r.ok ? r.value.values.activeHours : null })
+        out.push(
+          r.ok
+            ? { projectId: p.id, hours: r.value.values.activeHours }
+            : { projectId: p.id, hours: null, unreadable: true }
+        )
       }
       return out
     },

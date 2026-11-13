@@ -233,7 +233,7 @@ describe('Scheduler', () => {
     const s = setup({ extra: { loadPolicyHours: async () => entries } })
     await s.sched.start()
     await s.sched.whenIdle()
-    expect(s.tick.mock.calls[0][0].allowedProjectIds).toEqual(['a', 'c', 'd'])
+    expect(s.tick.mock.calls[0][0].allowedProjectIds).toEqual(['a', 'c'])
     s.sched.stop()
 
     const blocked = setup({
@@ -246,6 +246,64 @@ describe('Scheduler', () => {
     await blocked.sched.whenIdle()
     expect(blocked.tick.mock.calls[0][0].allowedProjectIds).toEqual(['b'])
     blocked.sched.stop()
+  })
+
+  it('fails closed on unreadable policies, unparseable text and lookup errors', async () => {
+    const s = setup({
+      extra: {
+        loadPolicyHours: async () => [
+          { projectId: 'ok', hours: null },
+          { projectId: 'text', hours: '오전에만' },
+          { projectId: 'bad', hours: null, unreadable: true }
+        ]
+      }
+    })
+    await s.sched.start()
+    await s.sched.whenIdle()
+    expect(s.tick.mock.calls[0][0].allowedProjectIds).toEqual(['ok'])
+    expect(s.sched.getStatus().warnings).toHaveLength(2)
+    s.sched.stop()
+
+    const thrown = setup({
+      extra: {
+        loadPolicyHours: async () => {
+          throw new Error('x')
+        }
+      }
+    })
+    await thrown.sched.start()
+    expect(thrown.tick).not.toHaveBeenCalled()
+    expect(thrown.sched.getStatus().warnings).toHaveLength(1)
+    expect(await thrown.sched.runNow()).toEqual({ started: false, reason: 'policy-unavailable' })
+    expect(thrown.tick).not.toHaveBeenCalled()
+    thrown.sched.stop()
+  })
+
+  it('does not start two ticks when loadPolicyHours is slow (runNow vs poll race)', async () => {
+    const releases: (() => void)[] = []
+    const loadPolicyHours = async (): Promise<{ projectId: string; hours: string | null }[]> => {
+      await new Promise<void>((r) => releases.push(r))
+      return [{ projectId: 'a', hours: null }]
+    }
+    let finish: () => void = () => undefined
+    const s = setup({
+      tick: () => new Promise<void>((r) => (finish = r)),
+      extra: { loadPolicyHours }
+    })
+    const startP = s.sched.start() // evaluate가 정책 조회에서 대기
+    await flush()
+    const runP = s.sched.runNow() // 같은 지점에서 대기
+    await flush()
+    expect(releases).toHaveLength(2)
+    releases[1]() // runNow가 먼저 끝나 틱을 시작한다
+    await flush()
+    releases[0]() // evaluate는 잠금을 보고 물러나야 한다
+    await startP
+    expect(await runP).toEqual({ started: true })
+    expect(s.tick).toHaveBeenCalledTimes(1)
+    finish()
+    await s.sched.whenIdle()
+    s.sched.stop()
   })
 
   it('keeps last-run per company', async () => {

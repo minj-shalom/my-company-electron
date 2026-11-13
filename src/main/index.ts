@@ -77,7 +77,7 @@ app
     registerSchedulerHandlers(sched)
     tray = createAppTray({
       showWindow: showMainWindow,
-      runNow: () => void sched.runNow(),
+      runNow: () => void sched.runNow().catch(() => undefined),
       quit: () => app.quit()
     })
     createMainWindow()

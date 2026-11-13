@@ -26,6 +26,8 @@ export interface PolicyHoursEntry {
   projectId: string
   /** 프로젝트 정책의 `활동 요일·시간` 원문. 없으면 null. */
   hours: string | null
+  /** 정책을 읽지 못했다. 정책이 없는 것(hours null)과 달리 제외 대상이다. */
+  unreadable?: boolean
 }
 
 export interface TickContext {
@@ -50,7 +52,11 @@ export interface SchedulerDeps {
   loadSchedule: () => Promise<ParsedSchedule>
   loadPolicyHours?: () => Promise<PolicyHoursEntry[]>
   lastRuns: LastRunStore
-  /** 실제 틱 내용(COO 틱, T-016). 이 안에서의 푸시·머지·발행은 반드시 T-053 게이트를 거쳐야 한다. */
+  /**
+   * 실제 틱 내용(COO 틱, T-016). 이 안에서의 푸시·머지·발행은 반드시 T-053 게이트를 거쳐야 한다.
+   * 주의: 스케줄러는 틱 시작 전에만 킬 스위치를 확인한다. 진행 중에는 재확인하지 않으므로
+   * T-016은 ctx.signal 중단을 존중하고 푸시·머지·발행 직전마다 킬 스위치를 다시 확인해야 한다.
+   */
   tick: (ctx: TickContext) => Promise<void>
   /** 회사 전체 킬 스위치 등으로 자동 실행을 멈춰야 하면 true. 읽지 못하면 true로 답해야 안전하다. */
   isHalted?: () => Promise<boolean> | boolean
@@ -70,6 +76,7 @@ export class Scheduler {
   private lastRunAt: number | null = null
   private lastKey: string | null = null
   private lastResult: 'ok' | 'failed' | null = null
+  private policyWarnings: string[] = []
   private running: Promise<void> | null = null
   private abort: AbortController | null = null
   private cancelTimer: (() => void) | null = null
@@ -121,7 +128,7 @@ export class Scheduler {
       lastRunAt: this.lastRunAt,
       nextRunAt: next,
       lastResult: this.lastResult,
-      warnings: [...warnings]
+      warnings: [...warnings, ...this.policyWarnings]
     }
   }
 
@@ -131,9 +138,11 @@ export class Scheduler {
     if (key === null) return { started: false, reason: 'no-company' }
     if (this.running) return { started: false, reason: 'busy' }
     if (await this.halted()) return { started: false, reason: 'halted' }
-    // await 사이에 다른 틱이 시작됐을 수 있다.
-    if (this.running) return { started: false, reason: 'busy' }
     const allowed = await this.allowedProjects(false)
+    if (allowed.failed) return { started: false, reason: 'policy-unavailable' }
+    // await 사이에 다른 틱이 시작됐을 수 있다. 재검사부터 begin까지는 await 없이 이어 붙여 잠금 경쟁을 막는다.
+    if (this.running) return { started: false, reason: 'busy' }
+    if (this.deps.companyKey() !== key) return { started: false, reason: 'no-company' }
     void this.begin(key, 'run-now', allowed.ids)
     return { started: true }
   }
@@ -196,32 +205,49 @@ export class Scheduler {
     if (await this.halted()) return 'halted'
     const allowed = await this.allowedProjects(true)
     if (allowed.blocked) return 'policy-hours'
+    // 위 await 동안 다른 틱이 시작됐거나 회사가 바뀌었을 수 있다. 재검사와 begin 사이에는 await가 없다.
     if (this.running) return 'not-due'
+    if (this.deps.companyKey() !== key) return 'no-company'
     void this.begin(key, trigger, allowed.ids)
     return null
   }
 
+  /**
+   * 정책 활동 시간은 fail-closed다: 정책을 읽지 못했거나 해석할 수 없는 프로젝트는 제외하고 경고로 남긴다.
+   * 정책이 없는 프로젝트(hours null)만 제한 없이 허용한다. 목록 조회 자체가 실패하면 틱을 막는다(failed).
+   * 지금 실행(enforce=false)은 시간으로 걸러내지 않지만 읽지 못한 정책의 프로젝트는 똑같이 제외한다.
+   */
   private async allowedProjects(
     enforce: boolean
-  ): Promise<{ ids: string[] | null; blocked: boolean }> {
-    if (!this.deps.loadPolicyHours) return { ids: null, blocked: false }
+  ): Promise<{ ids: string[] | null; blocked: boolean; failed: boolean }> {
+    if (!this.deps.loadPolicyHours) return { ids: null, blocked: false, failed: false }
     let entries: PolicyHoursEntry[]
     try {
       entries = await this.deps.loadPolicyHours()
     } catch {
-      return { ids: null, blocked: false }
+      if (enforce) this.policyWarnings = ['프로젝트 정책을 읽지 못해 자동 실행을 건너뛰었어요.']
+      return { ids: [], blocked: true, failed: true }
     }
     const now = new Date(this.clock.now())
-    // 지금 실행은 정책 시간이 아니라 CEO의 명시적 요청이므로 프로젝트를 걸러내지 않는다.
-    const ids = entries
-      .filter((e) => {
-        if (!enforce || e.hours === null) return true
+    const warnings: string[] = []
+    const ids: string[] = []
+    for (const e of entries) {
+      if (e.unreadable) {
+        warnings.push(`${e.projectId}: 정책을 읽지 못해 이번 실행에서 제외했어요.`)
+        continue
+      }
+      if (enforce && e.hours !== null) {
         const w = parsePolicyHours(e.hours)
-        // 해석 못 하는 자유 텍스트는 좁히지 못한다. 회사 활동 시간은 그대로 적용된다.
-        return w === null || isWithinWindow(now, w)
-      })
-      .map((e) => e.projectId)
-    return { ids, blocked: enforce && entries.length > 0 && ids.length === 0 }
+        if (w === null) {
+          warnings.push(`${e.projectId}: 활동 요일·시간을 해석하지 못해 제외했어요.`)
+          continue
+        }
+        if (!isWithinWindow(now, w)) continue
+      }
+      ids.push(e.projectId)
+    }
+    if (enforce) this.policyWarnings = warnings
+    return { ids, blocked: enforce && entries.length > 0 && ids.length === 0, failed: false }
   }
 
   private begin(
