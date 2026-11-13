@@ -93,6 +93,20 @@ const api: WindowApi = {
   getUsageWidget: () => ipcRenderer.invoke(IPC_CHANNELS.usageWidget),
   getUsageSettings: () => ipcRenderer.invoke(IPC_CHANNELS.usageSettingsGet),
   saveUsageSettings: (req) => ipcRenderer.invoke(IPC_CHANNELS.usageSettingsSave, req),
+  sendChat: (req) => ipcRenderer.invoke(IPC_CHANNELS.chatSend, req),
+  cancelChat: () => ipcRenderer.invoke(IPC_CHANNELS.chatCancel),
+  getChatHistory: () => ipcRenderer.invoke(IPC_CHANNELS.chatHistory),
+  getChatState: () => ipcRenderer.invoke(IPC_CHANNELS.chatState),
+  resetChat: () => ipcRenderer.invoke(IPC_CHANNELS.chatReset),
+  getChatReferences: () => ipcRenderer.invoke(IPC_CHANNELS.chatReferences),
+  requestHrInstruction: (req) => ipcRenderer.invoke(IPC_CHANNELS.chatHrRequest, req),
+  getHrInstructionStatuses: () => ipcRenderer.invoke(IPC_CHANNELS.chatHrStatus),
+  onChatEvent: (listener) => {
+    const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]): void =>
+      listener(event)
+    ipcRenderer.on(IPC_CHANNELS.chatEvent, handler)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.chatEvent, handler)
+  },
   onRunEvent: (listener) => {
     // IpcRendererEvent를 renderer에 넘기지 않고 payload만 전달한다.
     const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]): void =>
