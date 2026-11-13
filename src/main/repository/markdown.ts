@@ -59,22 +59,32 @@ export function firstHeading(body: string): string | null {
  * 단독 `\r`이 줄 경계로 취급되어 줄을 위조할 수 있기 때문이다 (줄 경계는 `\n`, `\r\n`만).
  */
 export function metaValue(body: string, key: string): string | null {
-  const re = new RegExp(`^[ \\t]*[-*][ \\t]+\\*\\*${escapeRe(key)}:\\*\\*[ \\t]*(.*)$`)
-  for (const line of body.split(/\r?\n/)) {
-    const m = re.exec(line)
-    if (m) return m[1].trim()
+  const re = new RegExp(`^[ \\t]*[-*][ \\t]+\\*\\*${escapeRe(key)}:\\*\\*`)
+  return valueAfterPrefix(body, re)
+}
+
+/** 단독 `\r`, LS, PS는 `.`이 줄 끝으로 보던 문자다. 이런 문자가 낀 줄은 위조로 보고 값으로 읽지 않는다. */
+export const FORGED_LINE_BREAK = /[\r\u2028\u2029]/
+
+/**
+ * 줄 머리 `prefix`가 맞는 첫 줄의 나머지를 trim해 돌려준다. 값 부분에 정규식을 쓰지 않는다:
+ * `[ \t]*(.*)$`는 공백이 길고 중간에 단독 `\r`이 있는 줄에서 두 부분이 공백을 나눠 가지며 O(n²)가 된다.
+ */
+function valueAfterPrefix(text: string, prefix: RegExp): string | null {
+  for (const line of text.split(/\r?\n/)) {
+    const m = prefix.exec(line)
+    if (!m) continue
+    const rest = line.slice(m[0].length)
+    if (FORGED_LINE_BREAK.test(rest)) continue
+    return rest.trim()
   }
   return null
 }
 
 /** `- 라벨: 값` 불릿 줄에서 값을 읽는다 (콜론은 `:` 또는 `：`). 첫 일치. */
 export function bulletValue(text: string, label: string): string | null {
-  const re = new RegExp(`^[ \\t]*[-*][ \\t]+${escapeRe(label)}[ \\t]*[:：][ \\t]*(.*)$`)
-  for (const line of text.split(/\r?\n/)) {
-    const m = re.exec(line)
-    if (m) return m[1].trim()
-  }
-  return null
+  const re = new RegExp(`^[ \\t]*[-*][ \\t]+${escapeRe(label)}[ \\t]*[:：]`)
+  return valueAfterPrefix(text, re)
 }
 
 /** `## 제목` 아래 본문(다음 `##` 전까지). 제목은 접두어 일치. 코드 펜스를 존중한다. */

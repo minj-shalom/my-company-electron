@@ -10,6 +10,7 @@ import {
 import {
   asString,
   bulletValue,
+  FORGED_LINE_BREAK,
   firstHeading,
   metaValue,
   section,
@@ -153,7 +154,9 @@ export function withDecisionResolved(text: string, choice: string, memo: string)
   for (const [i, l] of lines.entries()) {
     if (/^##[ \t]/.test(l)) break
     if (/^[ \t]*[-*][ \t]+\*\*상태:\*\*/.test(l)) {
-      lines[i] = l.replace(/(\*\*상태:\*\*)[ \t]*.*$/, '$1 done')
+      // 뒤는 통째로 버리므로 정규식 없이 자른다 (`[ \t]*.*$`는 공백이 긴 줄에서 O(n²)). 줄바꿈 위조 문자가 낀 줄은 그대로 둔다.
+      const cut = l.indexOf('**상태:**') + '**상태:**'.length
+      if (!FORGED_LINE_BREAK.test(l.slice(cut))) lines[i] = `${l.slice(0, cut)} done`
       break
     }
   }

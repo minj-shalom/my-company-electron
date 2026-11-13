@@ -15,10 +15,17 @@ describe('main.css', () => {
     if (firstRule !== -1) expect(firstRule).toBeGreaterThan(lastImport)
   })
 
-  it.each(['tokens', 'base', 'components', 'shell', 'onboarding', 'org', 'office', 'decisions'])(
-    'imports %s.css',
-    (name) => {
-      expect(stripped).toContain(`@import './${name}.css'`)
-    }
-  )
+  it.each([
+    'tokens',
+    'base',
+    'components',
+    'shell',
+    'onboarding',
+    'org',
+    'office',
+    'decisions',
+    'tickets'
+  ])('imports %s.css', (name) => {
+    expect(stripped).toContain(`@import './${name}.css'`)
+  })
 })

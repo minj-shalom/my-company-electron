@@ -8,7 +8,8 @@ import {
 } from './mock-onboarding'
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario } from './mock-org'
-import { mockCompany, mockOrg, mockTickets } from './mock-data'
+import { mockCompany, mockOrg } from './mock-data'
+import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -18,8 +19,14 @@ const mockDecisionApi = createMockDecisionApi(
   typeof location === 'undefined' ? 0 : 400
 )
 
+const mockTicketApi = createMockTicketApi(
+  parseTicketScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 400
+)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
+  mockTicketApi.reset()
   mockDecisionApi.reset()
   resetMockOnboarding()
 }
@@ -35,16 +42,7 @@ export const mockApi: WindowApi = {
   listEmployees: async () => ({ ok: true, value: structuredClone(mockOrg) }),
   getOrg: (...args) =>
     mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
-  listTickets: async (status) => ({
-    ok: true,
-    value: structuredClone(mockTickets.filter((t) => !status || t.status === status))
-  }),
-  getTicket: async (id) => {
-    const t = mockTickets.find((x) => x.id === id)
-    return t
-      ? { ok: true, value: structuredClone(t) }
-      : { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
-  },
+  ...mockTicketApi.api,
   ...mockDecisionApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,

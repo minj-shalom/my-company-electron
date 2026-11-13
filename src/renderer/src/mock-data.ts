@@ -1,6 +1,5 @@
 import type { CompanyInfo } from '../../shared/company'
 import type { OrgChart } from '../../shared/employee'
-import type { Ticket } from '../../shared/ticket'
 
 export const mockCompany: CompanyInfo = {
   name: 'Mock Company',
@@ -58,27 +57,3 @@ export const mockOrg: OrgChart = {
     { name: '개발팀', employeeIds: ['developer'] }
   ]
 }
-
-export const mockTickets: Ticket[] = [
-  {
-    id: 'T-001',
-    title: '로그인 화면',
-    status: 'done',
-    assignee: 'developer',
-    body: '## 목표\n로그인 화면을 만든다.'
-  },
-  {
-    id: 'T-002',
-    title: '티켓 보드',
-    status: 'in-progress',
-    assignee: 'developer',
-    body: '## 목표\n칸반 보드를 만든다.'
-  },
-  {
-    id: 'T-003',
-    title: '사용량 표시',
-    status: 'backlog',
-    assignee: null,
-    body: '## 목표\n주간 사용량을 표시한다.'
-  }
-]

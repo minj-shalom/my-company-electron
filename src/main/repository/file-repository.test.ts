@@ -187,7 +187,9 @@ describe('move recovery and conflicts', () => {
     await put('company/tickets/in-progress/T-005-loader.md', TICKET)
     await put('company/tickets/done/T-005-loader.md', TICKET.replace('in-progress', 'done'))
     const repo = await FileCompanyRepository.open(dir)
-    expect((await repo.listTickets()).items).toHaveLength(2) // 중복이 그대로 드러난다
+    const dup = await repo.listTickets() // 중복은 한쪽만 보이고 나머지는 issue로 드러난다
+    expect(dup.items).toHaveLength(1)
+    expect(dup.issues).toMatchObject([{ reason: 'duplicate' }])
     expect(await repo.moveTicket('T-005', 'done')).toMatchObject({ ok: true })
     expect((await repo.listTickets()).items).toHaveLength(1)
     expect(existsSync(join(dir, 'company/tickets/in-progress/T-005-loader.md'))).toBe(false)

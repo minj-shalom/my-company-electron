@@ -116,6 +116,7 @@ CEO가 몇 시간에 한 번 방문해 결정만 내리면 회사가 자동으�
 - 개발 중 브라우저(`npm run dev -- --host`)에서는 mock 구현을 주입해 UI만 확인할 수 있게 한다.
 - 채널명 규칙: `도메인:동작` (예: `ticket:list`, `run:start`, `run:event`).
 - 모든 입력은 main에서 검증한다.
+- 도메인 쓰기 채널은 둘뿐이다: `decision:resolve`(카드 pending → done)와 `ticket:move`(티켓 상태 폴더 이동 + 상태 줄 갱신). 둘 다 열린 회사의 SafeFs로만 접근하고, 같은 프로세스의 쓰기는 한 줄로 직렬화하며, 새 위치에 먼저 쓰고(덮어쓰지 않음) 옛 파일을 지우고, 실패하면 되돌린다. 목록 조회(`decision:list`, `ticket:list`)는 읽지 못한 파일이 있어도 나머지를 돌려주고 `unreadable`로 알린다. 티켓 본문은 20만 자까지만 renderer로 보낸다.
 
 ## 폴더 구성
 

@@ -19,7 +19,7 @@ import type {
   WeeklyLimitsSaveRequest
 } from './provider'
 import type { ApiResult } from './result'
-import type { Ticket, TicketStatus } from './ticket'
+import type { Ticket, TicketList, TicketMoveRequest, TicketStatus } from './ticket'
 import type { RunEvent, RunStartRequest, RunStartResult } from './run'
 
 /** main/preload/renderer 공용 `window.api` 계약. 채널을 추가하면 여기와 preload를 함께 갱신한다. */
@@ -49,12 +49,15 @@ export interface WindowApi {
   listEmployees: () => Promise<ApiResult<OrgChart>>
   /** 조직도(T-011) 계약. main이 열린 회사에서 읽어 돌려주며 열린 회사가 없으면 `no-company`. 파싱 문제는 실패가 아니라 `org.issues`에 담긴다. */
   getOrg: () => Promise<ApiResult<OrgSnapshot>>
-  listTickets: (status?: TicketStatus) => Promise<ApiResult<Ticket[]>>
-  /** main은 id를 허용 형식(예: ^T-\d+$)만 받고, 경로를 id로 조합하지 말고 목록에서 찾아 쓴다. body는 마크다운이므로 renderer가 sanitize한다. */
+  /** 읽지 못한 티켓(손상, 너무 큼, 중복 id)은 `unreadable`로 알리고 나머지는 `items`로 돌려준다. 담당이 비거나 조직에 없는 티켓도 정상이다. */
+  listTickets: (status?: TicketStatus) => Promise<ApiResult<TicketList>>
+  /** main은 id를 `^T-\d{1,6}$`만 받고, 경로를 id로 조합하지 않고 폴더 목록에서 찾아 쓴다. body는 마크다운이므로 renderer가 sanitize한다. */
   getTicket: (id: string) => Promise<ApiResult<Ticket>>
+  /** 티켓을 다른 상태로 옮긴다 (마크다운 파일 이동 + 상태 줄 갱신). 이미 그 상태면 변경 없이 ok, 대상에 다른 파일이 있으면 `conflict`. */
+  moveTicket: (req: TicketMoveRequest) => Promise<ApiResult<Ticket>>
   /** 읽지 못한 카드(손상, 너무 큼, 중복 id)는 `unreadable`로 알린다. 같은 id가 pending과 done에 있으면 done만 `items`에 둔다. */
   listDecisions: (status?: Decision['status']) => Promise<ApiResult<DecisionList>>
-  /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것 하나뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
+  /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것과 `moveTicket`, 둘뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
   resolveDecision: (req: DecisionResolveRequest) => Promise<ApiResult<Decision>>
   /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
@@ -82,12 +85,13 @@ export const IPC_CHANNELS = {
   companySelectFolder: 'company:select-folder',
   companyOpen: 'company:open',
   companyCurrent: 'company:current',
-  // companyGet~ticketGet은 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
+  // companyGet~employeeList는 계약만 정의한다. main 핸들러가 생기기 전까지 preload는 이 채널을 호출하지 않는다.
   companyGet: 'company:get',
   employeeList: 'employee:list',
   orgGet: 'org:get',
   ticketList: 'ticket:list',
   ticketGet: 'ticket:get',
+  ticketMove: 'ticket:move',
   decisionList: 'decision:list',
   decisionResolve: 'decision:resolve',
   providerDetect: 'provider:detect',

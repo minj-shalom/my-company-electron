@@ -37,6 +37,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* 티켓 탭은 세 열이 들어가도록 패널을 넓힌다 (좁은 화면에서는 아래 미디어 쿼리의 하단 시트가 대신한다). */
+@media (min-width: 900px) {
+  .shell__body[data-panel='open'][data-wide='true'] {
+    grid-template-columns: minmax(0, 1fr) min(var(--side-width-wide), 62vw);
+  }
+}
+
 .map-area {
   position: relative;
   min-width: 0;

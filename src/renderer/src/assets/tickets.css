@@ -1,0 +1,149 @@
+/* 티켓 보드. 색은 tokens.css 변수만 쓴다. */
+
+.tboard {
+  min-width: 0;
+}
+.tfilters {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+.tfilters .dfilters {
+  margin-bottom: var(--space-1);
+}
+
+/* 좁은 화면에서는 열을 가로로 넘기고, 넓으면 세 열을 나란히 둔다. */
+.tboard__cols {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  scroll-snap-type: x proximity;
+}
+.tcol {
+  min-width: 0;
+  scroll-snap-align: start;
+  padding: var(--space-2);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.tcol__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-3);
+}
+.tcol__empty {
+  margin: var(--space-2) 0;
+}
+
+.tlist {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tcard {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  min-width: 0;
+  background: var(--bg-panel-raised);
+  border: var(--bw) solid var(--border);
+  box-shadow: 3px 3px 0 var(--shadow-color);
+}
+.tcard[data-status='backlog'] {
+  border-left: 6px solid var(--text-muted);
+}
+.tcard[data-status='in-progress'] {
+  border-left: 6px solid var(--warn);
+}
+.tcard[data-status='done'] {
+  border-left: 6px solid var(--ok);
+}
+.tcard__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-1);
+}
+.tcard__id {
+  font-family: var(--font-code);
+  color: var(--text-muted);
+}
+.tcard__dept {
+  padding: 0 var(--space-2);
+  color: var(--text);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+}
+.tcard__title {
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.tcard__title:hover {
+  text-decoration: underline;
+}
+.tcard__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+}
+.tcard__body[hidden],
+.tcard__menu[hidden] {
+  display: none;
+}
+.tcard__body {
+  border-top: 1px dashed var(--border);
+}
+/* 본문은 텍스트만 쓰고 줄바꿈만 보존한다 (마크다운은 렌더하지 않는다). */
+.tcard__text {
+  margin: var(--space-2) 0 0;
+  max-height: 260px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-2);
+}
+.tcard__actions {
+  display: flex;
+}
+.tcard__menu {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-inset);
+  border: var(--bw) dashed var(--accent);
+}
+.tcard__label {
+  font-size: var(--fs-2);
+  color: var(--text-muted);
+}
+.tcard__select {
+  width: 100%;
+}
+.tcard__menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.tcard__error {
+  margin: 0;
+  font-size: var(--fs-2);
+}
