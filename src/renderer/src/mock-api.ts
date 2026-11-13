@@ -10,6 +10,7 @@ import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario } from './mock-org'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
+import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -24,6 +25,11 @@ const mockTicketApi = createMockTicketApi(
   typeof location === 'undefined' ? 0 : 400
 )
 
+const mockRunApi = createMockRunApi(
+  parseRunScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 700
+)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
   mockTicketApi.reset()
@@ -33,8 +39,7 @@ export function resetMockApi(): void {
 
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
-  startRun: async () => ({ ok: false, code: 'cli-not-found', message: 'mock: runner unavailable' }),
-  cancelRun: async () => false,
+  ...mockRunApi,
   ...createMockCompanyApi(
     parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)
   ),
@@ -47,6 +52,5 @@ export const mockApi: WindowApi = {
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,
-  saveWeeklyLimits: mockSaveWeeklyLimits,
-  onRunEvent: () => () => {}
+  saveWeeklyLimits: mockSaveWeeklyLimits
 }
