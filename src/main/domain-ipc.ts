@@ -326,10 +326,11 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.policySave, write(h.savePolicy))
   handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())
   handle(IPC_CHANNELS.recurringList, () => h.listRecurring())
-  handle(IPC_CHANNELS.recurringAdd, h.addRecurring)
-  handle(IPC_CHANNELS.recurringUpdate, h.updateRecurring)
-  handle(IPC_CHANNELS.recurringSetStatus, h.setRecurringStatus)
-  handle(IPC_CHANNELS.recurringRemove, h.removeRecurring)
+  // `company/recurring.md`는 보호 대상이라 앱 쓰기로 감싼다.
+  handle(IPC_CHANNELS.recurringAdd, write(h.addRecurring))
+  handle(IPC_CHANNELS.recurringUpdate, write(h.updateRecurring))
+  handle(IPC_CHANNELS.recurringSetStatus, write(h.setRecurringStatus))
+  handle(IPC_CHANNELS.recurringRemove, write(h.removeRecurring))
   handle(IPC_CHANNELS.projectListTemplates, () => h.listProjectTemplates())
   // 정책 파일(`company/policies/**`)을 만들므로 앱 쓰기로 감싼다.
   handle(IPC_CHANNELS.projectApplyTemplate, write(h.applyProjectTemplate))
