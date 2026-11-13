@@ -269,6 +269,19 @@ describe('project.md, policies, PM state', () => {
     expect((await t.audit()).at(-1)).toContain('| ceo-ui | ok |')
   })
 
+  it('flags external publishing record edits but not app writes', async () => {
+    const t = await setup()
+    await t.write('company/publishing/blog.md', '# 발행 기록\n')
+    expect((await t.svc.reconcile()).status).toBe('flagged')
+    expect((await t.cards())[0].kind).toBe('revert-suggestion')
+    await t.svc.restore()
+    expect(await t.c.fs.exists('company/publishing/blog.md')).toBe(false)
+    await t.svc.withAppWrite('ceo-ui', () =>
+      t.appWrite('company/publishing/blog.md', '# 발행 기록 v2\n')
+    )
+    expect(await t.cards()).toHaveLength(1)
+  })
+
   it('flags external recurring.md edits but not app writes, and restores the snapshot', async () => {
     const t = await setup()
     await t.write('company/recurring.md', '# 반복 업무\n')

@@ -36,7 +36,8 @@ function shouldIgnore(root: string, abs: string): boolean {
       'reports',
       'archive',
       'policies',
-      'recurring.md'
+      'recurring.md',
+      'publishing'
     ].includes(parts[1])
   )
     return true

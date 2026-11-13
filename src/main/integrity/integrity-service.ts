@@ -9,6 +9,7 @@ import {
   filesWithSecrets,
   isAppOnlyPath,
   isPolicyPath,
+  isPublishingPath,
   isProtectedPath,
   readProtectedFiles,
   sha256,
@@ -208,7 +209,9 @@ export class IntegrityService {
           file: f,
           message: isPolicyPath(f)
             ? '정책 파일이 앱 밖에서 바뀌었습니다.'
-            : '반복 업무 정의가 앱 밖에서 바뀌었습니다.',
+            : isPublishingPath(f)
+              ? '발행 기록이 앱 밖에서 바뀌었습니다.'
+              : '반복 업무 정의가 앱 밖에서 바뀌었습니다.',
           severity: 'violation'
         })
     for (const f of filesWithSecrets(cur))
