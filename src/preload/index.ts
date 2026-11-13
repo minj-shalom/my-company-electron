@@ -46,6 +46,8 @@ const api: WindowApi = {
   assignProjectEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.projectAssignEmployee, req),
   unassignProjectEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.projectUnassignEmployee, req),
   listEmployeeProjects: (req) => ipcRenderer.invoke(IPC_CHANNELS.employeeProjects, req),
+  getSchedulerStatus: () => ipcRenderer.invoke(IPC_CHANNELS.schedulerStatus),
+  runSchedulerNow: () => ipcRenderer.invoke(IPC_CHANNELS.schedulerRunNow),
   getPolicy: (req) => ipcRenderer.invoke(IPC_CHANNELS.policyGet, req),
   savePolicy: (req) => ipcRenderer.invoke(IPC_CHANNELS.policySave, req),
   listPolicySummaries: () => ipcRenderer.invoke(IPC_CHANNELS.policyListSummaries),
@@ -55,6 +57,7 @@ const api: WindowApi = {
   getQuarantinedEmployees: () => ipcRenderer.invoke(IPC_CHANNELS.employeeQuarantined),
   restoreIntegrity: (req) => ipcRenderer.invoke(IPC_CHANNELS.integrityRestore, req),
   acceptIntegrity: (req) => ipcRenderer.invoke(IPC_CHANNELS.integrityAccept, req),
+  applyProposal: (req) => ipcRenderer.invoke(IPC_CHANNELS.proposalApply, req),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),

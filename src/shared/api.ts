@@ -26,6 +26,7 @@ import type {
   KillSwitchSetRequest,
   KillSwitchState
 } from './gate'
+import type { ProposalApplyRequest, ProposalApplyResult } from './proposal'
 import type { IntegrityActionRequest, IntegrityActionResult } from './integrity'
 import type {
   PolicyGetRequest,
@@ -64,6 +65,7 @@ import type {
   TicketUpdateRequest
 } from './ticket'
 import type { RunEvent, RunStartRequest, RunStartResult } from './run'
+import type { SchedulerRunNowResult, SchedulerStatus } from './scheduler'
 
 /** main/preload/renderer 공용 `window.api` 계약. 채널을 추가하면 여기와 preload를 함께 갱신한다. */
 export interface WindowApi {
@@ -193,6 +195,8 @@ export interface WindowApi {
   getQuarantinedEmployees: () => Promise<ApiResult<string[]>>
   restoreIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
   acceptIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
+  /** 결재함 승인 카드(T-046) 처리. 승인/거절 클릭 이벤트에서만 호출한다. 적용 대상은 카드 본문이 정하며 renderer가 경로나 값을 넘기지 않는다. */
+  applyProposal: (req: ProposalApplyRequest) => Promise<ApiResult<ProposalApplyResult>>
   /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
@@ -205,6 +209,12 @@ export interface WindowApi {
   getWeeklyLimits: () => Promise<ApiResult<WeeklyLimit[]>>
   /** 주간 한도 전체를 교체 저장한다. 목록에 없는 제공자는 한도 없음. 토큰/인증 정보는 이 계약에 없다. */
   saveWeeklyLimits: (req: WeeklyLimitsSaveRequest) => Promise<ApiResult<WeeklyLimit[]>>
+  /**
+   * 오토파일럿 스케줄러(T-015). 설정(간격·활동 시간·켜기/끄기)은 `company/schedule.md`가 원본이고 이 API로는 쓰지 않는다.
+   * `runSchedulerNow`는 설정과 무관하게 한 번 실행을 시작한다(틱 완료를 기다리지 않음). 이미 실행 중이면 `{ started: false, reason: 'busy' }`.
+   */
+  getSchedulerStatus: () => Promise<ApiResult<SchedulerStatus>>
+  runSchedulerNow: () => Promise<ApiResult<SchedulerRunNowResult>>
   /** run 이벤트 구독. 반환된 함수로 해제한다. */
   onRunEvent: (listener: (event: RunEvent) => void) => () => void
 }
@@ -252,12 +262,15 @@ export const IPC_CHANNELS = {
   policyGet: 'policy:get',
   policySave: 'policy:save',
   policyListSummaries: 'policy:list-summaries',
+  schedulerStatus: 'scheduler:status',
+  schedulerRunNow: 'scheduler:run-now',
   gateKillSwitchGet: 'gate:kill-switch-get',
   gateKillSwitchSet: 'gate:kill-switch-set',
   auditSummary: 'audit:summary',
   employeeQuarantined: 'employee:quarantined',
   integrityRestore: 'integrity:restore',
   integrityAccept: 'integrity:accept',
+  proposalApply: 'proposal:apply',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

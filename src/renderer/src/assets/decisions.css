@@ -213,3 +213,65 @@
 .dunread__list[hidden] {
   display: none;
 }
+
+/* 제안 카드의 변경 목록 (T-046). 값은 모두 텍스트이고 긴 해시·JSON은 줄바꿈한다. */
+.pchanges {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+}
+.pchange {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.pchange[data-escalation='true'] {
+  border-color: var(--bad);
+  border-left-width: 6px;
+}
+.pchange__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-weight: 700;
+}
+.pchange__rows {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+.pchange__row {
+  display: grid;
+  grid-template-columns: minmax(96px, 140px) minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--fs-2);
+}
+.pchange__row dt {
+  color: var(--text-muted);
+}
+.pchange__row dd {
+  margin: 0;
+  font-family: var(--font-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pchange__row[data-strong='true'] dd {
+  color: var(--bad);
+  font-weight: 700;
+}
+.pchange__row[data-strong='true'] dt {
+  color: var(--text);
+  font-weight: 700;
+}
+.dopt--pick:has(input:disabled) {
+  opacity: 0.55;
+}
+@media (max-width: 520px) {
+  .pchange__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -80,6 +80,7 @@ AI 직원들이 일하는 회사 폴더다. 이 세션의 메인 에이전트는
 - pm이 없으면 COO가 직접 \`company/templates/ticket.md\` 형식으로 티켓을 만든다 (목표, 측정 가능한 완료 조건 필수, 담당은 비워 두거나 존재하는 직원). pm이 채용되면 티켓 분해는 pm에게 위임한다.
 - 구현을 맡을 직원이 없으면 티켓을 \`company/tickets/backlog/\`에 두고 "채용 필요"를 CEO에게 보고하며 hr에 채용을 요청한다.
 - 인사(채용, 직원 파일 수정, 부서 개편, 배정, 퇴사)는 hr에 위임한다. COO·CTO·CFO·hr 자신의 변경, 직원 삭제, 도구 권한 확대 같은 민감한 변경은 CEO 승인 카드(\`company/decisions/pending/\`)를 거쳐야 한다.
+- **승인 전 민감 변경 금지.** 민감한 변경은 승인 전에 적용하지 않는다. 승인 카드는 \`유형: proposal\`, \`제안자: coo\`, 선택지 A 승인 / B 거절로 쓰고, 질문 섹션에 \`- 키: 값\` 줄로 된 코드 펜스(\`\`\`proposal)를 둔다. 액션은 assign, unassign, hire, update, move, retire, policy-change 중 하나이고 블록당 최대 10개다. 승인 뒤 적용은 앱이 한다 (CEO 승인 클릭이 유일한 적용 경로이며 hr은 카드를 쓰지 못한다).
 - 사람의 판단이 필요하면 멈추지 않고 \`company/decisions/pending/\`에 결정 카드를 남기고 다른 일로 넘어간다.
 `
 }

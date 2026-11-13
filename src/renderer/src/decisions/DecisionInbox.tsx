@@ -5,12 +5,19 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Tabs } from '../ui/Tabs'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
+import {
+  PROPOSAL_SUCCESS_TEXT,
+  proposalFailureText,
+  shouldRefreshAfterApplyFailure,
+  usesApplyApi
+} from './proposal-view'
 import { DecisionCard } from './DecisionCard'
 import {
   countByKind,
   filterByKind,
   filterUnreadable,
   KIND_META,
+  kindOf,
   resolveErrorText,
   shouldRefreshAfterError,
   splitDecisions,
@@ -34,7 +41,31 @@ export function DecisionInbox({ state, refresh, markResolved }: UseDecisions): R
   const [openId, setOpenId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
 
+  /** 제안·무결성 카드는 결재함 승인 이벤트로 앱 함수(`applyProposal`)를 부른다. 카드 이동은 main이 한다. */
+  const apply = async (req: DecisionResolveRequest): Promise<string | null> => {
+    try {
+      const r = await window.api.applyProposal({ id: req.id, choice: req.choice })
+      if (!r.ok) return resolveErrorText(r.code)
+      if (r.value.ok) {
+        setOpenId(null)
+        setNotice({ tone: 'ok', text: `${req.id} ${PROPOSAL_SUCCESS_TEXT[r.value.status]}` })
+        await refresh({ force: true })
+        return null
+      }
+      const text = proposalFailureText(r.value.code)
+      if (shouldRefreshAfterApplyFailure(r.value.code)) {
+        setNotice({ tone: 'warn', text: `${req.id} ${text}` })
+        await refresh({ force: true })
+      }
+      return text
+    } catch {
+      return resolveErrorText('unknown')
+    }
+  }
+
   const resolve = async (req: DecisionResolveRequest): Promise<string | null> => {
+    const target = state.kind === 'ready' ? state.items.find((d) => d.id === req.id) : undefined
+    if (target && usesApplyApi(kindOf(target))) return apply(req)
     try {
       const r = await window.api.resolveDecision(req)
       if (r.ok) {

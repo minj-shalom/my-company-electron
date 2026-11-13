@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, type Tray } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './window'
 import { registerIpcHandlers } from './ipc'
@@ -12,11 +12,30 @@ import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
 import { registerRunHandlers } from './run-ipc'
 import { ClaudeAdapter } from './providers/claude/claude-adapter'
 import type { ProviderAdapter } from './providers/types'
+import { Scheduler } from './scheduler/scheduler'
+import { createLastRunStore } from './scheduler/last-run-store'
+import { companyBoundDeps } from './scheduler/scheduler-wiring'
+import { registerSchedulerHandlers } from './scheduler/scheduler-ipc'
+import { createTickRunner, type TickShared } from './tick/tick-runner'
+import { tickDepsFor } from './tick/tick-wiring'
+import { createAppTray, shouldQuitWhenAllWindowsClosed } from './scheduler/tray'
 
 const RESTORE_TIMEOUT_MS = 5000
 
 let runner: ProviderAdapter | undefined
 let providers: ProviderService | undefined
+let scheduler: Scheduler | undefined
+let tray: Tray | undefined
+
+function showMainWindow(): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) createMainWindow()
+  else {
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+  }
+}
 
 app
   .whenReady()
@@ -49,7 +68,31 @@ app
     // 회사 폴더 설정은 후속 티켓에서 도입한다. 그 전까지는 앱 실행 디렉터리를 cwd로 쓴다.
     runner = new ClaudeAdapter({ cwd: process.cwd() })
     registerRunHandlers(runner)
+    // 스케줄러는 열린 회사 1개만 다룬다. 틱은 회사에 묶인 입력으로 틱마다 새로 만들고, 한도 카드 쿨다운만 공유한다.
+    // 한도 점검(T-019)이 연결되기 전에는 틱이 COO를 실행하지 않고 브리핑만 남긴다 (가장 보수적).
+    const tickShared: TickShared = { lastLimitCardAt: 0 }
+    const sched = new Scheduler({
+      ...companyBoundDeps(companyContext, app.getPath('userData')),
+      lastRuns: createLastRunStore(app.getPath('userData')),
+      tick: async (ctx) => {
+        if (companyContext.getOpenCompany() === null) return
+        const deps = tickDepsFor({
+          context: companyContext,
+          userDataDir: app.getPath('userData'),
+          createAdapter: (cwd) => new ClaudeAdapter({ cwd })
+        })
+        await createTickRunner(deps, tickShared)(ctx)
+      }
+    })
+    scheduler = sched
+    registerSchedulerHandlers(sched)
+    tray = createAppTray({
+      showWindow: showMainWindow,
+      runNow: () => void sched.runNow().catch(() => undefined),
+      quit: () => app.quit()
+    })
     createMainWindow()
+    void sched.start()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
@@ -62,10 +105,13 @@ app
   })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // 트레이가 있으면 창을 닫아도 백그라운드 스케줄러가 계속 돈다. 종료는 트레이 메뉴의 '종료'로 한다.
+  if (shouldQuitWhenAllWindowsClosed(process.platform, tray !== undefined)) app.quit()
 })
 
 app.on('before-quit', () => {
+  scheduler?.stop()
+  tray?.destroy()
   runner?.cancelAll()
   providers?.shutdown()
 })
