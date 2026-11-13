@@ -554,3 +554,56 @@ describe('git probing', () => {
     expect(g.calls).toEqual([])
   })
 })
+
+describe('project:add default branch detection (T-062)', () => {
+  const runner =
+    (develop: boolean, current: string | null): GitRunner =>
+    async (args) => {
+      const a = args.join(' ')
+      if (a.startsWith('rev-parse --show-toplevel')) return { kind: 'unavailable' }
+      if (a.startsWith('show-ref')) return { kind: 'done', code: develop ? 0 : 1, stdout: '' }
+      if (a.startsWith('symbolic-ref'))
+        return current === null
+          ? { kind: 'done', code: 128, stdout: '' }
+          : { kind: 'done', code: 0, stdout: `${current}\n` }
+      return { kind: 'unavailable' }
+    }
+  async function branchLine(git: GitRunner, extra: Record<string, unknown> = {}): Promise<string> {
+    const t = await setup({ projectMd: null, git })
+    await addRepo(t, 'app', extra)
+    return (await projectText(t)).split('\n').find((l) => l.startsWith('- 기본 브랜치:')) ?? ''
+  }
+  it('prefers develop, then the current branch', async () => {
+    expect(await branchLine(runner(true, 'feature/x'))).toBe('- 기본 브랜치: develop')
+    expect(await branchLine(runner(false, 'trunk'))).toBe('- 기본 브랜치: trunk')
+  })
+  it('falls back to an internal default when nothing can be determined', async () => {
+    expect(await branchLine(runner(false, null))).toBe('- 기본 브랜치: main')
+  })
+  it('keeps an explicit value and does not write dev command', async () => {
+    expect(await branchLine(runner(true, null), { defaultBranch: 'release' })).toBe(
+      '- 기본 브랜치: release'
+    )
+    const t = await setup({ projectMd: null, git: runner(true, null) })
+    await addRepo(t, 'app')
+    expect(await projectText(t)).not.toContain('dev 명령')
+  })
+  it('does not record a branch for non-development types', async () => {
+    const t = await setup({ projectMd: null, git: runner(true, 'x') })
+    const dir = await makeDir(t.ws, 'docs', false)
+    ok(await t.svc.add({ path: await pick(t.svc, dir), name: 'docs', type: 'content' }))
+    expect(await projectText(t)).not.toContain('기본 브랜치')
+  })
+})
+
+describe('project:add keeps existing project.md lines (T-062)', () => {
+  it('only appends a block; existing lines stay byte-identical and the branch round-trips', async () => {
+    const t = await setup({ git: async () => ({ kind: 'unavailable' }) })
+    const before = await projectText(t)
+    await addRepo(t, 'newapp')
+    const after = await projectText(t)
+    expect(after.startsWith(before.trimEnd())).toBe(true)
+    const p = ok(await t.svc.list()).items.find((i) => i.id === 'newapp')
+    expect(p?.defaultBranch).toBe('main')
+  })
+})

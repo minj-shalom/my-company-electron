@@ -21,7 +21,7 @@ import { loadOrg } from '../org/org-store'
 import { splitFrontmatter } from '../repository/markdown'
 import { AGENTS_DIR } from '../repository/parse-org'
 import { FsGuardError, MAX_FILE_BYTES, type SafeFs } from '../repository/safe-fs'
-import { gitToplevel, probeGit, spawnGit, type GitRunner } from './git-probe'
+import { detectDefaultBranch, gitToplevel, probeGit, spawnGit, type GitRunner } from './git-probe'
 import {
   MAX_MEMBERS,
   MAX_PROJECTS,
@@ -200,13 +200,17 @@ export class ProjectService {
         stop('conflict', '이미 등록된 폴더예요. 보관된 프로젝트라면 복원하세요.')
       await this.requireGitFor(input.type, real)
       if (input.pm !== null) this.requirePm(org, input.pm)
+      // 화면이 기본 브랜치를 묻지 않으므로 development는 git으로 판정해 기록한다.
+      const defaultBranch =
+        input.defaultBranch ??
+        (input.type === 'development' ? await detectDefaultBranch(this.git, real) : null)
       const project: DocProject = {
         id: makeProjectId(input.name, new Set(view.items.map((p) => p.id))),
         name: input.name,
         type: input.type,
         path: real,
         devCommand: input.devCommand,
-        defaultBranch: input.defaultBranch,
+        defaultBranch,
         status: 'active',
         pmId: input.pm,
         memberIds: []
