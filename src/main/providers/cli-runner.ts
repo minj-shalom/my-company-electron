@@ -1,8 +1,9 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import type { RunErrorCode, RunEvent, RunEventBody, RunStartRequest } from '../../shared/run'
+import { buildCliEnv } from './cli-env'
 import { LineBuffer } from './line-buffer'
-import type { StartResult } from './types'
+import type { RunLaunchOptions, RunToolOptions, StartResult } from './types'
 
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 export const MAX_TIMEOUT_MS = 60 * 60 * 1000
@@ -19,7 +20,7 @@ export interface CliRunnerOptions {
   displayName: string
   spawnFn?: SpawnFn
   /** 프롬프트를 CLI 인자 배열로 만든다. 프롬프트가 옵션으로 해석되지 않게 하는 책임은 어댑터에 있다. */
-  buildArgs: (prompt: string) => string[]
+  buildArgs: (prompt: string, tools?: RunToolOptions) => string[]
   /** stdout 한 줄을 공통 이벤트로 변환한다. */
   parseLine: (line: string) => RunEventBody[]
   /** parseLine과 별개로 원문 stdout 줄을 관찰한다 (사용량 추출용). */
@@ -61,24 +62,39 @@ export class CliRunner {
     this.spawnFn = options.spawnFn ?? nodeSpawn
   }
 
-  start(req: unknown, emit: (event: RunEvent) => void): StartResult {
+  start(req: unknown, emit: (event: RunEvent) => void, launch?: RunLaunchOptions): StartResult {
+    let cleaned = false
+    // 정리는 한 번만, 실패해도 실행 결과에 영향을 주지 않는다.
+    const cleanup = (): void => {
+      if (cleaned) return
+      cleaned = true
+      void Promise.resolve()
+        .then(() => launch?.onFinish?.())
+        .catch(() => undefined)
+    }
     const checked = validateRequest(req)
-    if (!checked.ok) return { ok: false, code: 'invalid-request', message: checked.message }
+    if (!checked.ok) {
+      cleanup()
+      return { ok: false, code: 'invalid-request', message: checked.message }
+    }
     const { prompt, timeoutMs } = checked.value
 
     const name = this.options.displayName
     const runId = randomUUID()
     const send = (body: RunEventBody): void => emit({ ...body, runId })
 
-    const args = this.options.buildArgs(prompt)
+    let args: string[]
     let child: ChildProcess
     try {
+      args = this.options.buildArgs(prompt, launch?.tools)
       child = this.spawnFn(this.options.command, args, {
         cwd: this.options.cwd,
         shell: false,
+        env: buildCliEnv(),
         stdio: ['ignore', 'pipe', 'pipe']
       })
     } catch {
+      cleanup()
       return { ok: false, code: 'spawn-failed', message: `Failed to start ${name} CLI` }
     }
 
@@ -122,6 +138,7 @@ export class CliRunner {
       clearTimeout(timeoutTimer)
       clearTimeout(killTimer)
       this.runs.delete(runId)
+      cleanup()
       handleLines(stdoutBuf.flush())
       handleStderr(stderrBuf.flush())
 

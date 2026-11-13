@@ -31,6 +31,8 @@ import {
   okLine,
   okOutDir,
   okPrefix,
+  HISTORY_HEADING,
+  historyLine,
   parsePolicy,
   serializePolicy,
   summarizeChange,
@@ -321,6 +323,29 @@ export class PolicyService {
         })
       }
       return { ok: true as const, value: out }
+    })
+  }
+
+  /**
+   * 게이트 이벤트(킬 스위치 등)를 변경 이력 맨 끝에 한 줄 덧붙인다. 값 줄과 활성화 기록은 건드리지 않는다
+   * (재직렬화하면 낡은 활성화 지문이 새 값에 맞춰 갱신될 수 있다). 정책 파일이 없으면 이력만을 위해 만들지 않는다.
+   */
+  appendHistory(projectId: string, summary: string): Promise<void> {
+    return this.deps.exclusive(async () => {
+      const p = await this.project(projectId)
+      const old = await this.readText(p.id)
+      if (old === null) return
+      const entry: PolicyHistoryEntry = {
+        at: (this.deps.now?.() ?? new Date()).toISOString(),
+        actor: '게이트',
+        summary: summary.replace(/[\r\n|]+/g, ' ').slice(0, 200)
+      }
+      const base = old.replace(/\n*$/, '\n')
+      const out = base.split('\n').some((l) => l.trimEnd() === HISTORY_HEADING)
+        ? `${base}${historyLine(entry)}\n`
+        : `${base}\n${HISTORY_HEADING}\n${historyLine(entry)}\n`
+      if (Buffer.byteLength(out, 'utf8') > MAX_POLICY_BYTES) return
+      await this.deps.fs.writeText(policyPath(p.id), out)
     })
   }
 

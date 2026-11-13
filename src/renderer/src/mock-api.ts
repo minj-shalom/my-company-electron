@@ -14,6 +14,7 @@ import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
+import { createMockGateApi, parseGateScenario } from './mock-gate'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
@@ -67,12 +68,22 @@ export function resetMockApi(): void {
   mockDecisionApi.reset()
   mockProjectApi.reset()
   mockPolicyApi.reset()
+  mockGateApi.reset()
   resetMockOnboarding()
   resetMockOrgState()
 }
 
+const mockGateApi = createMockGateApi(
+  parseGateScenario(typeof location === 'undefined' ? '' : location.search)
+)
+
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
+  ...mockGateApi.api,
+  // 인사 변경 가드레일(T-052)의 UI는 T-046이 만든다. 그 전까지 격리된 직원은 없고 복원·승인은 no-op이다.
+  getQuarantinedEmployees: async () => ({ ok: true, value: [] }),
+  restoreIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
+  acceptIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
   ...mockRunApi,
   ...createMockCompanyApi(
     parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)

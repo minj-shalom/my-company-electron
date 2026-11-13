@@ -36,7 +36,8 @@ app
     registerDomainHandlers({
       context: companyContext,
       providers,
-      limits: createWeeklyLimitsStore(app.getPath('userData'))
+      limits: createWeeklyLimitsStore(app.getPath('userData')),
+      userDataDir: app.getPath('userData')
     })
     // 창이 뜨기 전에 마지막 회사를 복원해 첫 company:current부터 최종 상태를 돌려준다.
     // 느린 디스크(네트워크 드라이브 등)가 창 표시를 막지 않도록 기다리는 시간에 상한을 둔다.

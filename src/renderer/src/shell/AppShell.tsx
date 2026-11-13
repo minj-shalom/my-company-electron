@@ -2,6 +2,10 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { DecisionInbox } from '../decisions/DecisionInbox'
 import { pendingCount } from '../decisions/decision-view'
 import { useDecisions } from '../decisions/use-decisions'
+import { KillSwitchControl } from '../gate/KillSwitchControl'
+import { useAuditSummary } from '../gate/use-audit-summary'
+import { useKillSwitch } from '../gate/use-kill-switch'
+import { usePolicySummaries } from '../policy/use-policy'
 import { FirstHireScreen } from '../hire/FirstHireScreen'
 import { OfficeView } from '../office/OfficeView'
 import { OrgView } from '../org/OrgView'
@@ -69,6 +73,12 @@ export function AppShell({
   const tickets = useTickets()
   const runLog = useRunLog()
   const projects = useProjects()
+  const ks = useKillSwitch()
+  const audit = useAuditSummary()
+  const policies = usePolicySummaries()
+  const autoProjectCount = [...policies.byId.values()].filter(
+    (p) => p.autoActions.length > 0
+  ).length
   // 현재 프로젝트는 보기 필터일 뿐이라 저장하지 않는다. null = 전체, '' = 회사 공통.
   // 보관 등으로 사라지면 전체로 돌아간다. 티켓 보드의 프로젝트 칩과 이 값을 공유한다.
   const [currentProject, setCurrentProject] = useState<string | null>(null)
@@ -100,6 +110,7 @@ export function AppShell({
         <Badge tone={pending > 0 ? 'warn' : 'neutral'}>
           <span aria-live="polite">결재 {pending}</span>
         </Badge>
+        <KillSwitchControl ks={ks} autoProjectCount={autoProjectCount} />
         <ProjectFilter items={projectItems} value={scope} onChange={setCurrentProject} />
         <ThemeToggle />
         <Button
@@ -147,7 +158,11 @@ export function AppShell({
                 }}
               />
             ) : view === 'projects' ? (
-              <ProjectsView {...projects} currentId={currentId} />
+              <ProjectsView
+                {...projects}
+                currentId={currentId}
+                gate={{ ks, audit: audit.load, onReload: audit.reload }}
+              />
             ) : view === 'org' ? (
               <OrgView onFirstHire={() => setHiring(true)} />
             ) : (
