@@ -1,3 +1,4 @@
+import type { PermissionDenial } from '../../shared/run'
 import type { OrgModel } from '../../shared/org'
 import type { PolicyState } from '../../shared/policy'
 import type { ProjectInfo } from '../../shared/project'
@@ -98,6 +99,16 @@ export interface TickDeps {
     provider: { toolBridge: boolean }
   ) => Promise<GateRunLaunch>
   requests?: TickRequests
+  /**
+   * 비대화형 실행에서 거부된 동작을 결정 카드로 올린다(T-017). 회사 공통 티켓(cwd가 회사 폴더)에서만 부른다.
+   * 허용 규칙은 사용자 승인 뒤에만 쓰이므로 이 연결점은 카드만 만든다. 없으면 브리핑에만 적는다.
+   */
+  permissions?: {
+    raise(
+      ticketId: string,
+      denials: readonly PermissionDenial[]
+    ): Promise<{ cardIds: string[]; skipped: number }>
+  }
   /** hr 전용 실행(T-052) 연결점. 대기 중인 요청이 있을 때만 run을 부른다. COO 세션에서 hr을 부르지 않는다. */
   hr?: { pending: () => Promise<number>; run: (signal: AbortSignal) => Promise<void> }
   /** 틱 직전 정기 티켓 생성(T-049)이 남긴 막힌 점·경고. 한 번 읽으면 비워지고 브리핑 "막힌 점"에 실린다. */

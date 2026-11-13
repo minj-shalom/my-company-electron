@@ -460,4 +460,81 @@ describe('createTickRunner', () => {
     await h.run()
     expect(briefing(h)).toContain('````````text')
   })
+
+  describe('permission denials', () => {
+    const denials = [{ tool: 'Bash', command: 'npm test', path: null }]
+    function denyingAdapter(cwd: string, h: { starts: Start[] }): ProviderAdapter {
+      const base = fakeAdapter(cwd, h.starts, 'hang', [])
+      return {
+        ...base,
+        start: (_req, emit) => {
+          queueMicrotask(() => {
+            const e = (x: Record<string, unknown>): void => emit({ runId: 'r1', ...x } as RunEvent)
+            e({
+              type: 'result',
+              success: true,
+              subtype: 'success',
+              text: '',
+              costUsd: null,
+              durationMs: null,
+              numTurns: null,
+              denials
+            })
+            e({ type: 'exit', exitCode: 0, signal: null })
+          })
+          return { ok: true, runId: 'r1' }
+        }
+      }
+    }
+
+    it('raises denials of a company ticket as permission cards and lists them in the briefing', async () => {
+      const raised: unknown[] = []
+      const h = harness({
+        snap: { tickets: [ticket('T-009')], projects: [] },
+        deps: {
+          createAdapter: (cwd) => denyingAdapter(cwd, { starts: [] }),
+          permissions: {
+            raise: async (id, d) => {
+              raised.push([id, d])
+              return { cardIds: ['D-077'], skipped: 1 }
+            }
+          }
+        }
+      })
+      await h.run()
+      expect(raised).toEqual([['T-009', denials]])
+      expect(briefing(h)).toContain('D-077')
+      expect(briefing(h)).toContain('1건')
+    })
+
+    it('does not raise cards for project tickets (settings are per company folder)', async () => {
+      const raise = async (): Promise<{ cardIds: string[]; skipped: number }> => {
+        throw new Error('must not be called')
+      }
+      const h = harness({
+        deps: {
+          createAdapter: (cwd) => denyingAdapter(cwd, { starts: [] }),
+          permissions: { raise }
+        }
+      })
+      await h.run()
+      expect(briefing(h)).toContain('거부된 동작 1건')
+    })
+
+    it('keeps the tick result when card creation fails', async () => {
+      const h = harness({
+        snap: { tickets: [ticket('T-009')], projects: [] },
+        deps: {
+          createAdapter: (cwd) => denyingAdapter(cwd, { starts: [] }),
+          permissions: {
+            raise: async () => {
+              throw new Error('x')
+            }
+          }
+        }
+      })
+      await expect(h.run()).resolves.toBeUndefined()
+      expect(briefing(h)).toContain('권한 결정 카드를 만들지 못함')
+    })
+  })
 })

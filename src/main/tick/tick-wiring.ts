@@ -5,6 +5,7 @@ import type { CompanyContext } from '../company/company-context'
 import { createFileGateCards } from '../gate/gate-cards'
 import { gateRuntimeFor } from '../gate/gate-runtime'
 import { prepareGateRun } from '../gate/tool-bridge'
+import { permissionServiceFor } from '../permission/permission-runtime'
 import { hrRunnerFor } from '../hr/hr-runtime'
 import { integrityFor } from '../integrity/integrity-runtime'
 import { loadOrg, agentIdSet } from '../org/org-store'
@@ -125,6 +126,13 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
     checkLimit: o.checkLimit,
     takeNotes: o.takeNotes,
     requests: o.requests,
+    permissions: {
+      raise: (ticketId, denials) =>
+        permissionServiceFor({ context: o.context, userDataDir: o.userDataDir }).raise(
+          ticketId,
+          denials
+        )
+    },
     // hr 전용 실행(T-059): 요청 파일이 있을 때만 돌고, 제공자가 경로 제한을 지원하지 않으면 실행하지 않는다.
     hr:
       o.hr ??

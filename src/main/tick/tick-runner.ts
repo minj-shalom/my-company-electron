@@ -196,6 +196,7 @@ export function createTickRunner(
         ctx.signal
       )
       r.resultText = res.text
+      await raisePermissions(sel, res, r)
       if (res.error === 'cancelled') r.outcome = 'cancelled'
       else if (res.error === 'timeout') {
         r.outcome = 'timeout'
@@ -206,6 +207,28 @@ export function createTickRunner(
       } else r.outcome = 'ok'
     } finally {
       await launch?.dispose().catch(() => undefined)
+    }
+  }
+
+  /**
+   * 거부된 동작을 결정 카드로 올린다. 카드는 승인 전에 아무 규칙도 바꾸지 않는다.
+   * 프로젝트 티켓(cwd가 프로젝트 폴더)은 회사 폴더의 로컬 설정이 적용되지 않으므로 기록만 남긴다.
+   */
+  async function raisePermissions(sel: Selected, res: ExecResult, r: Report): Promise<void> {
+    if (res.denials.length === 0) return
+    if (sel.project !== null || !deps.permissions) {
+      r.notes.push(`권한이 없어 거부된 동작 ${res.denials.length}건을 처리하지 못했어요.`)
+      return
+    }
+    try {
+      const raised = await deps.permissions.raise(sel.ticket.id, res.denials)
+      for (const id of raised.cardIds) r.decisions.push(`권한 결정 카드 ${id}`)
+      if (raised.skipped > 0)
+        r.notes.push(
+          `허용 규칙으로 바꿀 수 없거나 이미 요청된 거부 ${raised.skipped}건은 카드로 올리지 않았어요.`
+        )
+    } catch {
+      r.notes.push('권한 결정 카드를 만들지 못함')
     }
   }
 
