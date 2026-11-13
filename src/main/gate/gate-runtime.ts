@@ -14,9 +14,12 @@ import { AuditLog } from './audit-log'
 import { createCommandRunner, type CommandRunner } from './command-runner'
 import { createFileGateCards } from './gate-cards'
 import { GateService } from './gate-service'
-import type { Planner, ProjectRuntime } from './gate-types'
+import type { ProjectRuntime } from './gate-types'
 import { KillSwitch } from './kill-switch'
 import { GateLedger } from './ledger'
+import { fsDraftReader, type DraftReader } from './draft-reader'
+import { createPlanPublish } from './plan-publish'
+import type { Publisher } from './publisher'
 import { createPlanMerge, planPush } from './plan-git'
 import { createReportReviewChecker } from './review-checker'
 import { createJsonStateStore } from './state-store'
@@ -27,8 +30,9 @@ export interface GateRuntimeDeps {
   userDataDir: string
   homeDir?: string
   runner?: CommandRunner
-  /** 추가 계획기(T-054 발행 등). 기본은 푸시·머지만. */
-  extraPlanners?: (fs: SafeFs) => Partial<Record<'publish', Planner>>
+  /** 발행 어댑터(T-054가 채운다). 없으면 모든 발행은 컨펌 카드로 대체된다. */
+  publishers?: ReadonlyMap<string, Publisher>
+  drafts?: DraftReader
   timeZone?: string
 }
 
@@ -92,7 +96,10 @@ export function gateRuntimeFor(deps: GateRuntimeDeps): GateRuntime {
     planners: {
       push: planPush,
       merge: createPlanMerge(createReportReviewChecker(fs)),
-      ...deps.extraPlanners?.(fs)
+      publish: createPlanPublish({
+        publishers: deps.publishers ?? new Map(),
+        drafts: deps.drafts ?? fsDraftReader
+      })
     }
   })
   const rt: GateRuntime = { service, killSwitch, audit }

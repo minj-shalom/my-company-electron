@@ -73,18 +73,23 @@ export function policyState(over: {
   activated?: boolean
   usePr?: boolean
   review?: 'required' | 'recommended'
+  publish?: 'every' | 'batch' | 'auto'
+  adapter?: string
 }): PolicyState {
   const modes = {
     push: over.push ?? 'auto',
     merge: over.merge ?? 'every',
-    publish: 'every',
+    publish: over.publish ?? 'every',
     'draft-approve': 'every'
   } as PolicyState['effective']['modes']
   return {
     projectId: 'my-company',
     exists: true,
     revision: 'r',
-    values: {} as PolicyState['values'],
+    values: {
+      outputDir: 'drafts',
+      publishAdapter: over.adapter ?? 'fake'
+    } as PolicyState['values'],
     effective: {
       flow: 'dev-git-pr',
       modes,
