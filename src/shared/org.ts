@@ -88,6 +88,18 @@ export interface OrgDepartmentInput {
   lead: Omit<OrgMemberInput, 'department'>
 }
 
+import type { AssignmentIssue } from './project'
+
+/** 직원의 담당 프로젝트 한 건 (T-045). */
+export interface OrgAgentProject {
+  id: string
+  name: string
+  /** 없으면 `member`. */
+  role?: 'pm' | 'member'
+  /** 보관된 프로젝트의 배정은 보존되지만 비활성이다. 없으면 활성. */
+  active?: boolean
+}
+
 /** 조직도 화면용 에이전트 상세. 원본은 `.claude/agents/<id>.md`의 frontmatter. */
 export interface OrgAgentDetail {
   id: string
@@ -97,6 +109,11 @@ export interface OrgAgentDetail {
   model: string | null
   /** frontmatter `tools`를 나눈 목록. 없거나 비어 있으면 빈 배열. */
   tools: string[]
+  /**
+   * 담당 프로젝트 (T-045, `company/project.md`의 `PM:`·`직원:` 줄). 없거나 비어 있으면 미배정이다.
+   * 필드가 없는 응답도 "미배정"으로 읽는다 (하위 호환). 각 항목의 `role`이 없으면 `member`로 본다.
+   */
+  projects?: OrgAgentProject[]
 }
 
 /** 새 회사의 기본 직원(T-051). 직원 템플릿 id와 org.md 직급이다. */
@@ -116,4 +133,6 @@ export interface OrgSnapshot {
    * 조직표를 읽지 못한 경우(직원 0명)는 판단할 수 없어 빈 배열이다.
    */
   missingBaseRoles: BaseRoleId[]
+  /** `project.md`의 `직원:`·`PM:` 줄에서 찾은 경고 (알 수 없는 직원 등). 없으면 생략. */
+  assignmentIssues?: AssignmentIssue[]
 }

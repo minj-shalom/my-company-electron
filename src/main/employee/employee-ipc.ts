@@ -4,7 +4,8 @@ import type { ApiResult } from '../../shared/result'
 import { NoCompanyError, type CompanyContext } from '../company/company-context'
 import type { FileCompanyRepository } from '../repository/file-repository'
 import type { SafeFs } from '../repository/safe-fs'
-import { EmployeeService, NO_ASSIGNMENTS, type AssignmentSource } from './employee-service'
+import { createAssignmentSource } from '../project/assignments-store'
+import { EmployeeService, type AssignmentSource } from './employee-service'
 import { EMPLOYEE_TEMPLATES } from './templates'
 
 export interface EmployeeIpcDeps {
@@ -43,7 +44,7 @@ export function createEmployeeHandlers(deps: EmployeeIpcDeps): EmployeeHandlers 
           const d = await repo.getDecision(id)
           return d.ok && d.value.status === 'done' && d.value.chosen !== null
         },
-        assignments: deps.assignments ?? NO_ASSIGNMENTS
+        assignments: deps.assignments ?? createAssignmentSource(fs)
       })
       services.set(fs, svc)
     }

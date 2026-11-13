@@ -22,6 +22,7 @@ const P = (over: Partial<DocProject> = {}): DocProject => ({
   defaultBranch: null,
   status: 'active',
   pmId: null,
+  memberIds: [],
   ...over
 })
 
@@ -124,7 +125,7 @@ describe('block format', () => {
       text
         .replace('## 프로젝트: 웹 앱', '## 프로젝트: 웹 앱 2')
         // 새 필드는 마지막 알려진 필드 줄 뒤에 들어간다.
-        .replace('- 경로: /abs/web\n', '- 경로: /abs/web\n- PM: pm\n')
+        .replace('- 직원: dev-a, dev-b\n', '- 직원: dev-a, dev-b\n- PM: pm\n')
     )
   })
   it('removes a field line when its value is cleared and keeps the rest', () => {

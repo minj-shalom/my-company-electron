@@ -21,7 +21,10 @@ import type { OrgChart } from './employee'
 import type { FirstHireRequest, FirstHireResult, HirePmResult } from './company-hire'
 import type { OrgSnapshot } from './org'
 import type {
+  EmployeeProjectsRequest,
+  EmployeeProjectsResult,
   ProjectAddRequest,
+  ProjectAssignEmployeeRequest,
   ProjectChangeResult,
   ProjectIdRequest,
   ProjectList,
@@ -137,6 +140,21 @@ export interface WindowApi {
   setProjectPm: (req: ProjectSetPmRequest) => Promise<ApiResult<ProjectChangeResult>>
   clearProjectPm: (req: ProjectIdRequest) => Promise<ApiResult<ProjectChangeResult>>
   /**
+   * 프로젝트 배정 (T-045). 원본은 `company/project.md` 프로젝트 블록의 `직원:`(일반 배정)과 `PM:`(담당 PM) 줄이다.
+   * `assignProjectEmployee`/`unassignProjectEmployee`는 멱등이며 `employeeId`는 org.md의 직원 파일 id다. 담당 PM은 이 호출이 아니라 `setProjectPm`/`clearProjectPm`을 쓴다.
+   * 거부: CEO/COO는 `forbidden`, 조직도에 없는 직원·프로젝트는 `not-found`, 보관된 프로젝트 배정·이미 PM인 직원의 배정·PM 직원의 일반 해제는 `conflict`.
+   * 결과의 `stateAfter`가 `pm-required`면 그 프로젝트는 PM 필요 상태다 (`clearProjectPm`, 대체 PM 없는 변경 뒤 확인 대화에 사용).
+   * `listEmployeeProjects`는 직원 한 명의 담당 프로젝트(PM 먼저, 보관 프로젝트는 `active: false`)와 경고를 돌려준다. 퇴사는 배정이 있으면 `conflict`.
+   * 배정은 `getOrg().agents[].projects`에도 합쳐져 있다 (필드가 없으면 미배정).
+   */
+  assignProjectEmployee: (
+    req: ProjectAssignEmployeeRequest
+  ) => Promise<ApiResult<ProjectChangeResult>>
+  unassignProjectEmployee: (
+    req: ProjectAssignEmployeeRequest
+  ) => Promise<ApiResult<ProjectChangeResult>>
+  listEmployeeProjects: (req: EmployeeProjectsRequest) => Promise<ApiResult<EmployeeProjectsResult>>
+  /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
@@ -189,6 +207,9 @@ export const IPC_CHANNELS = {
   projectSetType: 'project:set-type',
   projectSetPm: 'project:set-pm',
   projectClearPm: 'project:clear-pm',
+  projectAssignEmployee: 'project:assign-employee',
+  projectUnassignEmployee: 'project:unassign-employee',
+  employeeProjects: 'employee:projects',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

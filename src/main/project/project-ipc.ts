@@ -1,6 +1,7 @@
 import type { ApiResult } from '../../shared/result'
 import {
   PROJECT_ID,
+  type EmployeeProjectsResult,
   type ProjectChangeResult,
   type ProjectList,
   type ProjectSelectFolderResult
@@ -29,6 +30,9 @@ export interface ProjectHandlers {
   setType: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
   setPm: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
   clearPm: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
+  assignEmployee: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
+  unassignEmployee: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
+  employeeProjects: (req: unknown) => Promise<ApiResult<EmployeeProjectsResult>>
 }
 
 /** 진행 중 티켓의 프로젝트 소속. 본문의 `- **프로젝트:** id` 줄만 읽는다 (T-042 전의 임시 규칙, 없으면 소속 불명). */
@@ -91,6 +95,9 @@ export function createProjectHandlers(deps: ProjectIpcDeps): ProjectHandlers {
     restore: call((s, r: unknown) => s.restore(r)),
     setType: call((s, r: unknown) => s.setType(r)),
     setPm: call((s, r: unknown) => s.setPm(r)),
-    clearPm: call((s, r: unknown) => s.clearPm(r))
+    clearPm: call((s, r: unknown) => s.clearPm(r)),
+    assignEmployee: call((s, r: unknown) => s.assignEmployee(r)),
+    unassignEmployee: call((s, r: unknown) => s.unassignEmployee(r)),
+    employeeProjects: call((s, r: unknown) => s.employeeProjects(r))
   }
 }

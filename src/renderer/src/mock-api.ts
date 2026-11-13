@@ -76,6 +76,21 @@ export const mockApi: WindowApi = {
   ...mockHireApi.api,
   ...mockEmployeeApi.api,
   ...mockProjectApi.api,
+  // 배정 화면은 T-045 2단계(ui-dev)에서 시나리오 mock으로 바꾼다. 그 전까지는 빈 결과/실패로 계약만 맞춘다.
+  assignProjectEmployee: async () => ({
+    ok: false,
+    code: 'internal',
+    message: '브라우저 개발 모드에서는 지원하지 않습니다.'
+  }),
+  unassignProjectEmployee: async () => ({
+    ok: false,
+    code: 'internal',
+    message: '브라우저 개발 모드에서는 지원하지 않습니다.'
+  }),
+  listEmployeeProjects: async (req) => ({
+    ok: true,
+    value: { employeeId: req.id, projects: [], issues: [] }
+  }),
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,

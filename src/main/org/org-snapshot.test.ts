@@ -82,7 +82,8 @@ describe('org:get', () => {
       name: 'hr',
       description: 'hr desc',
       model: 'sonnet',
-      tools: ['Read', 'Grep', 'Bash']
+      tools: ['Read', 'Grep', 'Bash'],
+      projects: []
     })
   })
 

@@ -239,6 +239,9 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.projectSetType, h.setType)
   handle(IPC_CHANNELS.projectSetPm, h.setPm)
   handle(IPC_CHANNELS.projectClearPm, h.clearPm)
+  handle(IPC_CHANNELS.projectAssignEmployee, h.assignEmployee)
+  handle(IPC_CHANNELS.projectUnassignEmployee, h.unassignEmployee)
+  handle(IPC_CHANNELS.employeeProjects, h.employeeProjects)
   // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).
   ipcMain.handle(IPC_CHANNELS.projectSelectFolder, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted sender')

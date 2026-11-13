@@ -9,6 +9,7 @@ import {
   projectState,
   type ProjectChangeAction,
   type ProjectChangeRecord,
+  type EmployeeProjectsResult,
   type ProjectChangeResult,
   type ProjectGit,
   type ProjectInfo,
@@ -22,7 +23,9 @@ import { AGENTS_DIR } from '../repository/parse-org'
 import { FsGuardError, MAX_FILE_BYTES, type SafeFs } from '../repository/safe-fs'
 import { gitToplevel, probeGit, spawnGit, type GitRunner } from './git-probe'
 import {
+  MAX_MEMBERS,
   MAX_PROJECTS,
+  PROJECT_FILE,
   addProject,
   emptyProjectDoc,
   makeProjectId,
@@ -41,9 +44,19 @@ import {
   hasGitEntry,
   type PathContext
 } from './project-path'
-import { parseAdd, parseId, parseRename, parseSetPm, parseSetType, type Parsed } from './requests'
+import {
+  parseAdd,
+  parseAssign,
+  parseEmployeeProjects,
+  parseId,
+  parseRename,
+  parseSetPm,
+  parseSetType,
+  type Parsed
+} from './requests'
+import { assignability, employeeProjects } from './assignments-store'
 
-export const PROJECT_FILE = 'company/project.md'
+export { PROJECT_FILE }
 const MAX_APPROVED_PATHS = 8
 const GIT_CONCURRENCY = 4
 
@@ -88,6 +101,7 @@ interface Change {
   changedFields: string[]
   pmBefore: string | null
   pmAfter: string | null
+  employeeId?: string
   /** 변경 없음. 파일을 쓰지 않는다. */
   noop?: boolean
   /** 쓰기가 끝난 뒤에 실행한다 (경로 승인 소비 등). */
@@ -194,7 +208,8 @@ export class ProjectService {
         devCommand: input.devCommand,
         defaultBranch: input.defaultBranch,
         status: 'active',
-        pmId: input.pm
+        pmId: input.pm,
+        memberIds: []
       }
       return {
         next: addProject(doc, project),
@@ -275,6 +290,70 @@ export class ProjectService {
       const cur = this.find(viewProjectDoc(doc).items, id)
       return this.patched(doc, cur, 'clear-pm', { pmId: null }, cur.pmId !== null ? ['pm'] : [])
     })
+  }
+
+  /** 일반 배정(`직원:` 줄). 멱등이다. 담당 PM은 `setPm`을 쓴다. 보관된 프로젝트에는 새로 배정하지 않는다. */
+  assignEmployee(raw: unknown): Promise<ApiResult<ProjectChangeResult>> {
+    return this.mutate(raw, parseAssign, async ({ id, employeeId }, doc, org) => {
+      const cur = this.find(viewProjectDoc(doc).items, id)
+      if (org === null) return stop('internal', '조직도를 읽지 못했어요.')
+      const a = assignability(org, employeeId)
+      if (a === 'protected') return stop('forbidden', 'CEO와 COO는 프로젝트에 배정할 수 없습니다.')
+      if (a === 'unknown') return stop('not-found', '조직도에 없는 직원입니다.')
+      if (cur.status === 'archived')
+        return stop('conflict', '보관된 프로젝트에는 배정할 수 없어요. 먼저 복원하세요.')
+      if (cur.pmId === employeeId)
+        return stop('conflict', '이미 담당 PM입니다. PM은 일반 배정이 아니라 PM 지정으로 관리해요.')
+      if (cur.memberIds.includes(employeeId))
+        return { ...this.patched(doc, cur, 'assign-employee', {}, []), employeeId }
+      if (cur.memberIds.length >= MAX_MEMBERS)
+        return stop('conflict', '이 프로젝트에 배정할 수 있는 직원 수를 넘었어요.')
+      return {
+        ...this.patched(
+          doc,
+          cur,
+          'assign-employee',
+          { memberIds: [...cur.memberIds, employeeId] },
+          ['members']
+        ),
+        employeeId
+      }
+    })
+  }
+
+  /** 일반 배정 해제. 멱등이다. 담당 PM은 거부한다 (PM 해제가 프로젝트를 "PM 필요"로 돌리므로 `clearPm`으로 따로 한다). 조직도에 없는 직원의 남은 줄도 지울 수 있다. */
+  unassignEmployee(raw: unknown): Promise<ApiResult<ProjectChangeResult>> {
+    return this.mutate(raw, parseAssign, async ({ id, employeeId }, doc) => {
+      const cur = this.find(viewProjectDoc(doc).items, id)
+      if (cur.pmId === employeeId)
+        return stop('conflict', '담당 PM입니다. PM 해제 또는 교체로 바꿔 주세요.')
+      const had = cur.memberIds.includes(employeeId)
+      return {
+        ...this.patched(
+          doc,
+          cur,
+          'unassign-employee',
+          { memberIds: cur.memberIds.filter((m) => m !== employeeId) },
+          had ? ['members'] : []
+        ),
+        employeeId
+      }
+    })
+  }
+
+  /** 직원별 담당 프로젝트 (읽기 전용). 보관된 프로젝트는 `active: false`. */
+  async employeeProjects(raw: unknown): Promise<ApiResult<EmployeeProjectsResult>> {
+    const parsed = parseEmployeeProjects(raw)
+    if (!parsed.ok) return fail('invalid-request', parsed.message)
+    try {
+      const { doc } = await this.read()
+      return {
+        ok: true,
+        value: employeeProjects(viewProjectDoc(doc).items, await this.org(), parsed.value.id)
+      }
+    } catch (e) {
+      return e instanceof Stop ? e.result : fail('internal', '프로젝트 배정을 읽지 못했습니다.')
+    }
   }
 
   // ---- 내부: 검증 도우미 ----
@@ -400,11 +479,12 @@ export class ProjectService {
           pmBefore: change.pmBefore,
           pmAfter: change.pmAfter,
           changedFields: change.changedFields,
+          ...(change.employeeId === undefined ? {} : { employeeId: change.employeeId }),
           at: (this.deps.now?.() ?? new Date()).toISOString()
         }
         return info === undefined
           ? fail('internal', '요청을 처리하지 못했습니다.')
-          : { ok: true as const, value: { record, project: info } }
+          : { ok: true as const, value: { record, project: info, stateAfter: info.state } }
       } catch (e) {
         if (e instanceof Stop) return e.result
         return fail('internal', '요청을 처리하지 못했습니다.')
@@ -513,6 +593,7 @@ export class ProjectService {
       defaultBranch: p.defaultBranch,
       status: p.status,
       pmId: p.pmId,
+      memberIds: p.memberIds,
       pm,
       state,
       git: await this.gitInfo(p)
