@@ -1,6 +1,7 @@
 import type { WindowApi } from '../../../shared/api'
 import type { DomainErrorCode } from '../../../shared/result'
 import {
+  isProtectedBranch,
   LIMITED_ACTIONS,
   MAX_DAILY_LIMIT,
   PROTECTED_MERGE_MAX_DAILY,
@@ -103,12 +104,7 @@ export function uniqueMessages(texts: string[]): string[] {
   return [...new Set(texts)]
 }
 
-const PROTECTED = new Set(['master', 'main', 'release', 'production', 'prod'])
-/** 서버가 최종 판단한다. 화면에서 이름 확인 입력란을 보일지 정하는 용도다. */
-export function isProtectedBranch(name: string): boolean {
-  const n = name.trim().toLowerCase()
-  return PROTECTED.has(n) || n.startsWith('release/')
-}
+export { isProtectedBranch }
 
 export const hasProtectedTarget = (branches: string[]): boolean => branches.some(isProtectedBranch)
 

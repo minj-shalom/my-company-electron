@@ -270,7 +270,7 @@ describe('auto mode', () => {
     const push = {
       modes: { ...s.values.modes, push: 'auto' as const },
       dailyLimits: { push: 5 },
-      autoPushPrefixes: ['main']
+      autoPushPrefixes: ['main/']
     }
     expect(violations(await svc.save(req(s, push, { confirmAuto: true })))).toContain(
       'auto-target-invalid'
@@ -398,5 +398,65 @@ describe('path safety and errors', () => {
     const g = await svc.get({ projectId: ID })
     expect(code(g)).toBe('internal')
     for (const x of [r, g]) if (!x.ok) expect(x.message).not.toContain(t.ws)
+  })
+})
+
+describe('protected branch detection', () => {
+  const merge = (branches: string[]): Partial<PolicyValues> => ({
+    ...autoMerge,
+    autoMergeBranches: branches
+  })
+  it('treats ref-style and case variants of protected names as protected (needs confirmation)', async () => {
+    const { svc } = await setup()
+    const s = await get(svc)
+    for (const b of ['Main', 'MASTER', 'trunk', 'stable', 'production', 'release/1.0'])
+      expect(violations(await svc.save(req(s, merge([b]), { confirmAuto: true })))).toContain(
+        'protected-merge-unconfirmed'
+      )
+  })
+  it('rejects ref-style names as auto targets and still flags them as protected', async () => {
+    const { svc } = await setup()
+    const s = await get(svc)
+    for (const b of [
+      'refs/heads/main',
+      'heads/main',
+      'origin/main',
+      'refs/remotes/origin/master'
+    ]) {
+      const v = violations(await svc.save(req(s, merge([b]), { confirmAuto: true })))
+      expect(v).toContain('auto-target-invalid')
+      expect(v).toContain('protected-merge-unconfirmed')
+    }
+  })
+  it('rejects push prefixes that cover protected names or lack a trailing slash', async () => {
+    const { svc } = await setup()
+    const s = await get(svc)
+    const push = (p: string[]): Partial<PolicyValues> => ({
+      modes: { ...s.values.modes, push: 'auto' },
+      dailyLimits: { push: 5 },
+      autoPushPrefixes: p
+    })
+    for (const p of [
+      'ma/',
+      'mas/',
+      'pro/',
+      'main/',
+      'Trunk/',
+      'stable/',
+      'release/',
+      'refs/heads/',
+      'origin/main/'
+    ])
+      expect(violations(await svc.save(req(s, push([p]), { confirmAuto: true })))).toContain(
+        'auto-target-invalid'
+      )
+    for (const p of ['ma', 'mas', 'pro', 'feature'])
+      expect(violations(await svc.save(req(s, push([p]), { confirmAuto: true })))).toContain(
+        'invalid-value'
+      )
+    expect(
+      saved(await svc.save(req(s, push(['feature/', 'fix/']), { confirmAuto: true }))).effective
+        .autoPushPrefixes
+    ).toEqual(['feature/', 'fix/'])
   })
 })

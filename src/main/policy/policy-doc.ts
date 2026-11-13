@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
 import {
   APPROVAL_MODES,
+  hasRefPrefix,
+  isProtectedBranch,
+  prefixCoversProtected,
   LIMITED_ACTIONS,
   MAX_DAILY_LIMIT,
   MAX_DAILY_OUTPUT_GOAL,
@@ -109,11 +112,6 @@ const IMMUTABLE_KEYS: ReadonlySet<string> = new Set([
 ])
 const IMMUTABLE_OK: ReadonlySet<string> = new Set(['금지', '항상 유지'])
 
-/** 보호(릴리스) 브랜치 이름. 이 브랜치의 자동 머지는 이중 확인이 필요하다. */
-export function isProtectedBranch(name: string): boolean {
-  return /^(master|main|trunk|production|prod|stable|release(\/.*)?)$/i.test(name)
-}
-
 // ---- 값 검증 (파일 읽기와 저장 요청이 같은 규칙을 쓴다) ----
 
 const MAX_LIST = 10
@@ -130,8 +128,14 @@ export function okOutDir(v: unknown): v is string {
     okLine(v, MAX_OUT_DIR) && OUT_DIR.test(v) && v.split('/').every((s) => s !== '.' && s !== '..')
   )
 }
+/** 푸시 접두어는 `/`로 끝나야 한다 (`ma` 같은 비슬래시 접두어는 master 등과 겹친다). */
 export function okPrefix(v: unknown): v is string {
-  return typeof v === 'string' && v.length <= MAX_BRANCH && isValidBranch(v.replace(/\/$/, ''))
+  return (
+    typeof v === 'string' &&
+    v.length <= MAX_BRANCH &&
+    v.endsWith('/') &&
+    isValidBranch(v.slice(0, -1))
+  )
 }
 export function okBranch(v: unknown): v is string {
   return typeof v === 'string' && isValidBranch(v)
@@ -204,12 +208,17 @@ export function autoProblems(
   if (action === 'push') {
     if (v.autoPushPrefixes.length === 0)
       add('auto-target-missing', '자동 푸시를 허용할 브랜치 접두어가 필요해요.')
-    else if (v.autoPushPrefixes.some((p) => isProtectedBranch(p.replace(/\/$/, ''))))
-      add('auto-target-invalid', '보호 브랜치는 자동 푸시 대상으로 쓸 수 없어요.')
+    else if (v.autoPushPrefixes.some((p) => hasRefPrefix(p) || prefixCoversProtected(p)))
+      add('auto-target-invalid', '보호 브랜치나 ref 형태의 이름은 자동 푸시 대상으로 쓸 수 없어요.')
   }
   if (action === 'merge') {
     if (v.autoMergeBranches.length === 0)
       add('auto-target-missing', '자동 머지를 허용할 브랜치를 이름으로 적어야 해요.')
+    else if (v.autoMergeBranches.some(hasRefPrefix))
+      add(
+        'auto-target-invalid',
+        '자동 머지 대상은 refs/, heads/, origin/ 없이 브랜치 이름만 적어야 해요.'
+      )
     if (!v.usePr || v.reviewStage !== 'required')
       add('auto-requirement-missing', '자동 머지는 PR 사용과 reviewer-qa 필수 검수가 있어야 해요.')
     if (v.autoMergeBranches.some(isProtectedBranch)) {

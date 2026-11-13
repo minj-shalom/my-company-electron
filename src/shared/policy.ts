@@ -160,3 +160,40 @@ export interface PolicySummary {
   protectedMergeEnabled: boolean
   warningCount: number
 }
+
+const PROTECTED_BRANCHES: ReadonlySet<string> = new Set([
+  'master',
+  'main',
+  'trunk',
+  'production',
+  'prod',
+  'stable',
+  'release'
+])
+
+/** `refs/heads/`, `refs/remotes/<remote>/`, `heads/`, `origin/`을 벗긴 소문자 이름. 보호 판정 전에 쓴다. */
+export function normalizeBranchName(name: string): string {
+  let n = name.trim().toLowerCase()
+  for (;;) {
+    const next = n.replace(/^(refs\/heads\/|refs\/remotes\/[^/]+\/|heads\/|origin\/)/, '')
+    if (next === n) return n
+    n = next
+  }
+}
+
+/** ref 형태(`refs/`, `heads/`, `remotes/`, `origin/`)로 쓴 이름. 자동 대상으로는 거부한다. */
+export const hasRefPrefix = (name: string): boolean =>
+  /^(refs|heads|remotes|origin)\//i.test(name.trim())
+
+/** 보호(릴리스) 브랜치 이름. 서버(자동 대상 검증)와 UI(확인 입력란 표시)가 같은 규칙을 쓴다. */
+export function isProtectedBranch(name: string): boolean {
+  const n = normalizeBranchName(name)
+  return PROTECTED_BRANCHES.has(n) || n.startsWith('release/')
+}
+
+/** 푸시 접두어가 보호 브랜치를 포함할 수 있는지 (`ma/`뿐 아니라 `ma`, `mas`처럼 보호 이름의 앞부분이면 true). */
+export function prefixCoversProtected(prefix: string): boolean {
+  const n = normalizeBranchName(prefix.replace(/\/$/, ''))
+  if (n === '') return true
+  return isProtectedBranch(n) || [...PROTECTED_BRANCHES].some((b) => b.startsWith(n))
+}
