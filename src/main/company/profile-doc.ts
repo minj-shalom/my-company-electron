@@ -20,12 +20,31 @@ interface Block {
   lines: string[]
 }
 
+/** CommonMark식 펜스 추적: 같은 문자로, 여는 길이 이상이고 뒤에 공백만 있는 줄이 닫는다. */
+function nextFence(open: string | null, line: string): string | null {
+  if (open === null) {
+    const m = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    // 백틱 펜스의 info 문자열에는 백틱이 올 수 없다.
+    return m && !(m[1][0] === '`' && line.slice(m[0].length).includes('`')) ? m[1] : null
+  }
+  const c = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line)
+  return c && c[1][0] === open[0] && c[1].length >= open.length ? null : open
+}
+
+/** 본문이 열린 코드 펜스로 끝나면 true. 뒤따르는 섹션이 펜스 안으로 들어가 버린다. */
+export function endsInsideFence(text: string): boolean {
+  let open: string | null = null
+  for (const line of text.split('\n')) open = nextFence(open, line)
+  return open !== null
+}
+
 function split(text: string): Block[] {
   const blocks: Block[] = [{ heading: null, lines: [] }]
-  let fence = false
+  let fence: string | null = null
   for (const line of text.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) fence = !fence
-    const m = !fence ? /^##[ \t]+(.+?)[ \t]*$/.exec(line) : null
+    const wasOpen = fence !== null
+    fence = nextFence(fence, line)
+    const m = !wasOpen && fence === null ? /^##[ \t]+(.+?)[ \t]*$/.exec(line) : null
     if (m) blocks.push({ heading: m[1], lines: [line] })
     else blocks[blocks.length - 1].lines.push(line)
   }

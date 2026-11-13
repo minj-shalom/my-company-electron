@@ -6,7 +6,13 @@ import {
 } from '../../shared/company-profile'
 import { validateCompanyName } from '../../shared/company-name'
 import { FsGuardError, type SafeFs } from '../repository/safe-fs'
-import { applyProfile, parseProfile, revisionOf, type ParsedProfile } from './profile-doc'
+import {
+  applyProfile,
+  endsInsideFence,
+  parseProfile,
+  revisionOf,
+  type ParsedProfile
+} from './profile-doc'
 
 export interface ProfileServiceDeps {
   fs: SafeFs
@@ -51,8 +57,9 @@ function parseRequest(raw: unknown): Parsed {
     principles: clean(principles).trim()
   }
   // 본문 줄이 `## `로 시작하면 저장 후 섹션이 갈라져 구조가 깨진다.
-  for (const v of Object.values(body))
-    if (/^##[ \t]/m.test(v)) return { error: '본문 줄은 "## "로 시작할 수 없습니다.' }
+  for (const v of Object.values(body)) {
+    if (endsInsideFence(v)) return { error: '코드 블록(```, ~~~)이 닫히지 않았습니다.' }
+  }
   const bytes = Buffer.byteLength(body.vision + body.mission + body.principles, 'utf8')
   if (bytes > MAX_PROFILE_BODY_BYTES) return { error: '본문이 너무 깁니다. (합계 64KB 이하)' }
   return { req: { name: cleanName, ...body, revision } }
@@ -88,6 +95,15 @@ export class ProfileService {
       if (revisionOf(r.value) !== revision)
         return fail('conflict', '다른 곳에서 회사 정보가 바뀌었습니다. 새로 불러오세요.')
       const text = applyProfile(r.value, next)
+      // 왕복 검증: 새 문서를 다시 읽었을 때 입력과 같지 않으면 구조가 깨지는 입력이라 저장하지 않는다.
+      const back = parseProfile(text)
+      if (
+        back.name !== next.name ||
+        back.vision !== next.vision ||
+        back.mission !== next.mission ||
+        back.principles !== next.principles
+      )
+        return fail('invalid-request', '문서 구조를 깨뜨리는 입력이라 저장할 수 없습니다.')
       try {
         if (text !== r.value) await this.deps.fs.writeText(PROFILE_PATH, text)
       } catch {

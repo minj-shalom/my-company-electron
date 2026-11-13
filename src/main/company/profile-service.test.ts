@@ -118,6 +118,27 @@ describe('company profile', () => {
     expect(await readFile(file, 'utf8')).toBe(DOC)
   })
 
+  it('rejects unclosed fences and keeps fenced headings', async () => {
+    const { svc, file } = await setup()
+    const p = ok(await svc.get())
+    for (const v of ['a\n```js', 'a\n~~~', '````\nx\n```'])
+      expect(code(await svc.save(req(p, { vision: v })))).toBe('invalid-request')
+    expect(await readFile(file, 'utf8')).toBe(DOC)
+    const fenced = '```\n## 안의 제목\n```'
+    const s = ok(await svc.save(req(p, { vision: fenced })))
+    expect(s.vision).toBe(fenced)
+    expect(ok(await svc.get())).toMatchObject({ mission: '옛 미션', principles: '- 원칙 1' })
+  })
+
+  it('rejects colon names and round-trips names that look like the title pattern', async () => {
+    const { svc } = await setup()
+    const p = ok(await svc.get())
+    expect(code(await svc.save(req(p, { name: 'A: 미션' })))).toBe('invalid-request')
+    const s = ok(await svc.save(req(p, { name: 'A) (B' })))
+    expect(s.name).toBe('A) (B')
+    expect(ok(await svc.get()).name).toBe('A) (B')
+  })
+
   it('strips control characters', async () => {
     const { svc } = await setup()
     const p = ok(await svc.get())
