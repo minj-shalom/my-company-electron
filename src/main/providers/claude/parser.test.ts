@@ -57,3 +57,36 @@ describe('parseLine', () => {
     expect(e).toMatchObject({ type: 'result', success: false, subtype: 'error_max_turns' })
   })
 })
+
+describe('permission_denials', () => {
+  it('keeps only tool name, command and path from denials', () => {
+    const [e] = parseLine(
+      JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        permission_denials: [
+          {
+            tool_name: 'Bash',
+            tool_use_id: 'x',
+            tool_input: { command: 'npm test', other: 'drop' }
+          },
+          { tool_name: 'Write', tool_input: { file_path: 'docs/a.md', content: 'secret' } },
+          { nope: true }
+        ]
+      })
+    )
+    expect(e).toMatchObject({
+      type: 'result',
+      denials: [
+        { tool: 'Bash', command: 'npm test', path: null },
+        { tool: 'Write', command: null, path: 'docs/a.md' }
+      ]
+    })
+    expect(JSON.stringify(e)).not.toContain('secret')
+  })
+
+  it('omits denials when the CLI does not report them', () => {
+    const [e] = parseLine('{"type":"result","subtype":"success"}')
+    expect(e).not.toHaveProperty('denials')
+  })
+})
