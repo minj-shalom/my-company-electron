@@ -127,12 +127,12 @@ const EASY: PolicyWording = {
   autoProtectedWarn: '최종본 반영이 포함돼 있어요. 잘못 반영되면 바로 결과물에 나타날 수 있어요.',
   autoLimitHint: '작업 공유 50, 최종본 반영 10, 발행 20',
   pushPrefixLabel: '자동 공유를 허용할 작업 버전 이름 앞부분',
-  pushPrefixHint: '쉼표로 여러 개를 적을 수 있어요. 최종본(master, main 등)은 안 돼요.',
+  pushPrefixHint: '쉼표로 여러 개를 적을 수 있어요. 최종본으로 쓰는 이름은 안 돼요.',
   mergeTargetLabel: '자동 반영을 허용할 작업 버전 (이름으로 정확히)',
   mergeTargetHint: '검토 요청이 있고 검수 담당이 통과한 것만 반영돼요.',
   protectedGroupLabel: '최종본 확인',
   protectedDanger:
-    '최종본(master, main 등)에 컨펌 없이 반영돼요. 결과물에 바로 나타날 수 있어요. 하루 1~2회까지만 허용돼요.',
+    '최종본에 컨펌 없이 반영돼요. 결과물에 바로 나타날 수 있어요. 하루 1~2회까지만 허용돼요.',
   badgeProtected: '최종본 포함',
   describePush: (t, n) => `${t}로 시작하는 작업 버전을 하루 최대 ${n}회까지 컨펌 없이 공유해요.`,
   describeMerge: (t, n) =>
@@ -140,7 +140,7 @@ const EASY: PolicyWording = {
   limitSummary: '일일 상한이 허용 범위를 넘었어요 (작업 공유 50, 최종본 반영 10, 발행 20 이하).',
   targetMissing: '자동 모드에는 허용 대상(작업 버전)이 필요해요.',
   pushTargetInvalid:
-    '허용 대상으로 쓸 수 없는 이름이에요. 작업 공유는 feature/ 같은 앞부분만 돼요.',
+    '허용 대상으로 쓸 수 없는 이름이에요. 최종본이 아닌 작업용 이름의 앞부분만 쓸 수 있어요.',
   requirement:
     '자동 반영에는 검토 요청과 검수 담당 필수가 필요해요. 자동 발행에는 발행 어댑터가 필요해요.',
   protectedUnconfirmed: '최종본 자동 반영은 프로젝트 이름을 정확히 입력해야 해요.',

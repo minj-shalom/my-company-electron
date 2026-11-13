@@ -87,7 +87,7 @@ export function parseAdd(raw: unknown): Parsed<AddInput> {
       o.devCommand !== o.devCommand.trim() ||
       hasForbiddenChar(o.devCommand)
     )
-      return bad('dev 명령이 올바르지 않습니다.')
+      return bad('프로젝트 설정 값이 올바르지 않아요.')
     devCommand = o.devCommand
   }
   let defaultBranch: string | null = null
@@ -98,7 +98,7 @@ export function parseAdd(raw: unknown): Parsed<AddInput> {
       o.defaultBranch.length > MAX_BRANCH ||
       !isValidBranch(o.defaultBranch)
     )
-      return bad('기본 브랜치 이름이 올바르지 않습니다.')
+      return bad('프로젝트 설정 값이 올바르지 않아요.')
     defaultBranch = o.defaultBranch
   }
   if (o.pm !== undefined && !employeeId(o.pm)) return bad('직원 id가 올바르지 않습니다.')

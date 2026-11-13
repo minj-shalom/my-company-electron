@@ -424,7 +424,9 @@ describe('write safety', () => {
     })
     dir = t.c.dir
     const d = await makeDir(t.ws, 'app', true)
-    expect(code(await t.svc.add({ path: await pick(t.svc, d), name: 'App' }))).toBe('conflict')
+    const r = await t.svc.add({ path: await pick(t.svc, d), name: 'App' })
+    expect(code(r)).toBe('conflict')
+    expect(r.ok ? '' : r.message).not.toMatch(/project\.md|\.sh/)
     expect(await projectText(t)).toBe('# 누군가 고침\n')
   })
   it('does not clobber a project.md that appeared while creating it', async () => {
@@ -605,5 +607,15 @@ describe('project:add keeps existing project.md lines (T-062)', () => {
     expect(after.startsWith(before.trimEnd())).toBe(true)
     const p = ok(await t.svc.list()).items.find((i) => i.id === 'newapp')
     expect(p?.defaultBranch).toBe('main')
+  })
+})
+
+describe('project errors hide file names (T-062)', () => {
+  it('does not mention project.md when the settings grow too large', async () => {
+    const t = await setup({ projectMd: `# 프로젝트 설정\n${'x'.repeat(1024 * 1024 + 10)}\n` })
+    const d = await makeDir(t.ws, 'app', true)
+    const r = await t.svc.add({ path: await pick(t.svc, d), name: 'App' })
+    expect(r.ok).toBe(false)
+    expect(r.ok ? '' : r.message).not.toMatch(/project\.md/)
   })
 })

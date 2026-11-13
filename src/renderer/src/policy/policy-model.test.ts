@@ -179,13 +179,13 @@ describe('submitPolicy', () => {
 })
 
 describe('project type wording (D-024)', () => {
-  const JARGON = /PR|머지|푸시|브랜치/
+  const JARGON = /PR|머지|푸시|브랜치|feature\/|master|main|reviewer-qa/
   const autoDraft = (): PolicyValues => ({
     ...base(),
     modes: { push: 'auto', merge: 'auto', publish: 'every', 'draft-approve': 'every' },
     dailyLimits: { push: 3, merge: 2 },
-    autoPushPrefixes: ['feature/'],
-    autoMergeBranches: ['master'],
+    autoPushPrefixes: ['work/'],
+    autoMergeBranches: ['release'],
     confirmInput: 'x'
   })
 
