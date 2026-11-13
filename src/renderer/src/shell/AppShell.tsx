@@ -9,6 +9,8 @@ import { ProjectFilter } from '../projects/ProjectFilter'
 import { ProjectsView } from '../projects/ProjectsView'
 import { pmRequiredCount, resolveCurrent } from '../projects/project-model'
 import { useProjects } from '../projects/use-projects'
+import { ProjectStatusView } from '../status/ProjectStatusView'
+import { buildStatusView } from '../status/status-model'
 import { RunLogView } from '../runs/RunLogView'
 import { useRunLog } from '../runs/use-run-log'
 import { TicketBoard } from '../tickets/TicketBoard'
@@ -28,7 +30,8 @@ const SIDE_TABS: readonly TabItem[] = [
 const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'map', label: '사무실 맵' },
   { id: 'org', label: '조직도' },
-  { id: 'projects', label: '프로젝트' }
+  { id: 'projects', label: '프로젝트' },
+  { id: 'status', label: '현황' }
 ]
 
 /** 앱 셸. 사이드 패널 탭: 직원 로그(실행 이벤트), 티켓 보드, 결재함. */
@@ -66,10 +69,17 @@ export function AppShell({
   const tickets = useTickets()
   const runLog = useRunLog()
   const projects = useProjects()
-  // 현재 프로젝트는 보기 필터일 뿐이라 저장하지 않는다. 보관 등으로 사라지면 전체로 돌아간다.
+  // 현재 프로젝트는 보기 필터일 뿐이라 저장하지 않는다. null = 전체, '' = 회사 공통.
+  // 보관 등으로 사라지면 전체로 돌아간다. 티켓 보드의 프로젝트 칩과 이 값을 공유한다.
   const [currentProject, setCurrentProject] = useState<string | null>(null)
   const projectItems = projects.load.kind === 'ready' ? projects.load.list.items : []
-  const currentId = resolveCurrent(currentProject, projectItems)
+  const scope = currentProject === '' ? '' : resolveCurrent(currentProject, projectItems)
+  const currentId = scope === '' ? null : scope
+  const statusView = buildStatusView(tickets.state, projects.load, decisions.state)
+  const goAssignPm = (): void => {
+    setHiring(false)
+    setView('projects')
+  }
   const needPm = pmRequiredCount(projectItems)
   const mainViews = MAIN_VIEWS.map((v) =>
     v.id === 'projects' && needPm > 0
@@ -90,7 +100,7 @@ export function AppShell({
         <Badge tone={pending > 0 ? 'warn' : 'neutral'}>
           <span aria-live="polite">결재 {pending}</span>
         </Badge>
-        <ProjectFilter items={projectItems} value={currentId} onChange={setCurrentProject} />
+        <ProjectFilter items={projectItems} value={scope} onChange={setCurrentProject} />
         <ThemeToggle />
         <Button
           size="small"
@@ -121,6 +131,21 @@ export function AppShell({
           >
             {hiring ? (
               <FirstHireScreen onClose={closeHiring} />
+            ) : view === 'status' ? (
+              <ProjectStatusView
+                view={statusView}
+                current={scope}
+                onRetry={() => {
+                  void tickets.refresh({ force: true })
+                  projects.reload()
+                }}
+                onAssignPm={goAssignPm}
+                onViewTickets={(next) => {
+                  setCurrentProject(next)
+                  setTab('tickets')
+                  setPanelOpen(true)
+                }}
+              />
             ) : view === 'projects' ? (
               <ProjectsView {...projects} currentId={currentId} />
             ) : view === 'org' ? (
@@ -137,10 +162,10 @@ export function AppShell({
             ) : tab === 'tickets' ? (
               <TicketBoard
                 {...tickets}
-                onAssignPm={() => {
-                  setHiring(false)
-                  setView('projects')
-                }}
+                onAssignPm={goAssignPm}
+                projects={projects.load.kind === 'ready' ? projectItems : null}
+                scope={scope}
+                onScopeChange={setCurrentProject}
               />
             ) : (
               <RunLogView {...runLog} />

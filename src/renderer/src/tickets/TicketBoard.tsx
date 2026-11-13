@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { ProjectInfo } from '../../../shared/project'
 import { TICKET_STATUSES, type Ticket, type TicketStatus } from '../../../shared/ticket'
 import { runExclusive } from '../lib/refresh'
 import { Badge } from '../ui/Badge'
@@ -6,6 +7,13 @@ import { Button } from '../ui/Button'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
 import { TicketCard } from './TicketCard'
 import { TicketFilters } from './TicketFilters'
+import {
+  applyProjectScope,
+  needsPmNote,
+  projectBadge,
+  projectOptions,
+  type ProjectScope
+} from './ticket-project'
 import { TicketFormDialog, type TicketFormMode } from './TicketFormDialog'
 import {
   applyFilters,
@@ -32,10 +40,18 @@ export function TicketBoard({
   state,
   refresh,
   markMoved,
-  onAssignPm
+  onAssignPm,
+  projects = null,
+  scope = null,
+  onScopeChange
 }: UseTickets & {
   /** 폼의 "PM 지정" 링크가 프로젝트 화면으로 보낸다. */
   onAssignPm?: () => void
+  /** 등록 프로젝트. 읽지 못했거나 아직 없으면 null이라 프로젝트 배지·칩을 숨긴다. */
+  projects?: readonly ProjectInfo[] | null
+  /** 상단 "현재 프로젝트"와 공유하는 보기 범위. */
+  scope?: ProjectScope
+  onScopeChange?: (scope: ProjectScope) => void
 }): React.JSX.Element {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -125,7 +141,8 @@ export function TicketBoard({
     )
   }
 
-  const visible = applyFilters(state.items, filters)
+  const scoped = applyProjectScope(state.items, scope)
+  const visible = applyFilters(scoped, filters)
   const columns = groupByStatus(visible)
   return (
     <section className="tboard" aria-label="티켓 보드" ref={root}>
@@ -182,7 +199,20 @@ export function TicketBoard({
         <p className="empty-state">아직 티켓이 없어요.</p>
       ) : (
         <>
-          <TicketFilters items={state.items} filters={filters} onChange={setFilters} />
+          <TicketFilters
+            items={scoped}
+            filters={filters}
+            onChange={setFilters}
+            project={
+              projects && onScopeChange
+                ? {
+                    options: projectOptions(state.items, projects, scope),
+                    value: scope,
+                    onChange: onScopeChange
+                  }
+                : undefined
+            }
+          />
           <div className="tboard__cols">
             {TICKET_STATUSES.map((s) => (
               <Column
@@ -191,6 +221,7 @@ export function TicketBoard({
                 items={columns[s]}
                 filtered={visible.length === 0}
                 hired={hired}
+                projects={projects}
                 openId={openId}
                 setOpenId={setOpenId}
                 menuId={menuId}
@@ -212,6 +243,7 @@ function Column({
   items,
   filtered,
   hired,
+  projects,
   openId,
   setOpenId,
   menuId,
@@ -225,6 +257,7 @@ function Column({
   /** 필터 때문에 모든 열이 비었다. */
   filtered: boolean
   hired: ReadonlySet<string> | null
+  projects: readonly ProjectInfo[] | null
   openId: string | null
   setOpenId: (id: string | null) => void
   menuId: string | null
@@ -250,6 +283,8 @@ function Column({
               key={t.id}
               ticket={t}
               hired={hired}
+              project={projectBadge(t, projects)}
+              pmNote={needsPmNote(t, projects)}
               expanded={openId === t.id}
               onToggle={() => setOpenId(openId === t.id ? null : t.id)}
               menuOpen={menuId === t.id}

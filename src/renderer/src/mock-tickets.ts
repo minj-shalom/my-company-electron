@@ -3,6 +3,8 @@ import type { Ticket, TicketStatus, UnreadableTicket } from '../../shared/ticket
 
 /**
  * 브라우저 개발 모드 전용. `?mock-tickets=empty|many|error|conflict|noassignee`로 상태를 고른다 (없으면 기본 샘플).
+ * 프로젝트 소속(T-042): 기본 샘플에 등록 프로젝트, 회사 공통, 보관됨(old-app), 미등록(ghost-project)이 섞여 있다.
+ *   현황 화면의 로딩·오류는 `?mock-tickets=error` 또는 `?mock-projects=error|loading`, 빈 상태는 `?mock-tickets=empty&mock-projects=empty`로 본다.
  * - noassignee: 담당 없음, 조직에 없는 직원(mock 조직에 없는 id), unreadable 샘플
  * - conflict: 이동과 편집 저장이 conflict를 돌려준다
  * - saveerror: 새 티켓/편집 저장이 internal 오류를 돌려준다
@@ -54,19 +56,21 @@ const ticket = (
   title: string,
   assignee: string | null,
   department: string | null,
-  body = `## 목표\n${title}\n\n<b>마크다운과 HTML은 그대로 글자로 보여요.</b>`
+  body = `## 목표\n${title}\n\n<b>마크다운과 HTML은 그대로 글자로 보여요.</b>`,
+  projectId?: string | null
 ): Ticket => ({
   id: `T-${String(n).padStart(3, '0')}`,
   title,
   status,
   assignee,
   department,
-  body
+  body,
+  ...(projectId === undefined ? {} : { projectId })
 })
 
 const SAMPLES: Ticket[] = [
-  ticket(1, 'done', '로그인 화면', 'developer', '개발팀'),
-  ticket(2, 'in-progress', '티켓 보드', 'ui-dev', '개발팀'),
+  ticket(1, 'done', '로그인 화면', 'developer', '개발팀', undefined, 'my-company'),
+  ticket(2, 'in-progress', '티켓 보드', 'ui-dev', '개발팀', undefined, 'my-company'),
   ticket(
     3,
     'backlog',
@@ -79,7 +83,8 @@ const SAMPLES: Ticket[] = [
       '상태 바에 이번 주 사용량을 보여 준다.',
       ['한도 대비 비율이 보인다'],
       null
-    )
+    ),
+    null
   ),
   ticket(
     4,
@@ -93,14 +98,20 @@ const SAMPLES: Ticket[] = [
       '첫 화면 문구와 레이아웃 초안을 만든다.',
       ['히어로 영역이 있다', '모바일에서 깨지지 않는다'],
       'landing'
-    )
-  )
+    ),
+    'landing'
+  ),
+  ticket(5, 'done', '블로그 첫 글 발행', 'pm', '기획팀', undefined, 'blog'),
+  ticket(6, 'done', '프로젝트 목록 화면', 'ui-dev', '개발팀', undefined, 'my-company'),
+  ticket(7, 'backlog', '옛날 앱 정리', null, '개발팀', undefined, 'old-app'),
+  ticket(8, 'backlog', '등록되지 않은 프로젝트의 티켓', null, null, undefined, 'ghost-project')
 ]
 
 const MANY: Ticket[] = (() => {
   const people = ['developer', 'ui-dev', 'pm', 'cto', 'reviewer-qa', 'devops', null]
   const depts = ['개발팀', 'R&D', '기획팀', '재무', null]
   const statuses: TicketStatus[] = ['backlog', 'in-progress', 'done']
+  const owners = ['my-company', 'landing', 'blog', null, 'video']
   const list = Array.from({ length: 30 }, (_, i) =>
     ticket(
       i + 1,
@@ -109,7 +120,9 @@ const MANY: Ticket[] = (() => {
         ? `아주 긴 제목의 티켓입니다 ${i + 1}: 사용자에게 보이는 문구를 한국어로 정리하고 접근성 레이블을 점검한다`
         : `샘플 티켓 ${i + 1}`,
       people[i % people.length],
-      depts[i % depts.length]
+      depts[i % depts.length],
+      undefined,
+      owners[i % owners.length]
     )
   )
   list[3] = { ...list[3], bodyTruncated: true, body: '본문이 아주 긴 티켓입니다.\n'.repeat(40) }
@@ -192,7 +205,8 @@ export function createMockTicketApi(scenario: TicketScenario, delayMs = 0): Mock
           status: 'backlog',
           assignee: req.assignee ?? null,
           department: req.department ?? null,
-          body: renderBody(n, req.title, req.goal, req.criteria, req.projectId ?? null)
+          body: renderBody(n, req.title, req.goal, req.criteria, req.projectId ?? null),
+          projectId: req.projectId ?? null
         }
         state.items.push(created)
         return { ok: true, value: structuredClone(created) }
@@ -209,6 +223,7 @@ export function createMockTicketApi(scenario: TicketScenario, delayMs = 0): Mock
           return { ok: false, code: 'conflict', message: '티켓이 다른 곳에서 바뀌었습니다.' }
         t.title = req.title
         t.assignee = req.assignee
+        t.projectId = req.projectId
         t.department = req.department
         t.body = renderBody(Number(t.id.slice(2)), req.title, req.goal, req.criteria, req.projectId)
         return { ok: true, value: structuredClone(t) }

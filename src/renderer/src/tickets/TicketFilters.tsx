@@ -37,18 +37,29 @@ function ChipGroup({
   )
 }
 
-/** 부서와 담당 필터. 프로젝트 필터(T-042)는 같은 모양의 ChipGroup을 하나 더 끼우면 된다. */
+/** 프로젝트(T-042), 부서, 담당 필터. */
 export function TicketFilters({
   items,
   filters,
-  onChange
+  onChange,
+  project
 }: {
   items: readonly Ticket[]
   filters: Filters
   onChange: (f: Filters) => void
+  /** 프로젝트 칩. 프로젝트 목록을 읽지 못했으면 생략한다. */
+  project?: { options: FilterOption[]; value: FilterValue; onChange: (v: FilterValue) => void }
 }): React.JSX.Element {
   return (
     <div className="tfilters">
+      {project && (
+        <ChipGroup
+          label="프로젝트 필터"
+          options={project.options}
+          value={project.value}
+          onChange={project.onChange}
+        />
+      )}
       <ChipGroup
         label="부서 필터"
         options={departmentOptions(items, filters)}

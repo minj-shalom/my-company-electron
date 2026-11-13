@@ -102,7 +102,7 @@ describe('mock ticket create/update', () => {
   it('creates with the next number and edits only backlog tickets', async () => {
     const { api } = createMockTicketApi('samples')
     const c = await api.createTicket({ ...fields, assignee: null, projectId: 'a' })
-    expect(c.ok && c.value.id).toBe('T-005')
+    expect(c.ok && c.value.id).toBe('T-009')
     if (!c.ok) return
     expect(c.value.body).toContain('- **프로젝트:** a')
     const u = await api.updateTicket({

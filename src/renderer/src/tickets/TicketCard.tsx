@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { Ticket, TicketStatus } from '../../../shared/ticket'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { PM_PENDING_NOTE, type ProjectBadgeView } from './ticket-project'
 import {
   ASSIGNEE_BADGE_TEXT,
   ASSIGNEE_BADGE_TONE,
@@ -30,6 +31,10 @@ interface Props {
   onMove: (ticket: Ticket, to: TicketStatus) => Promise<string | null>
   /** 주어지면 backlog 카드에 편집 버튼을 보인다 (잘린 본문은 편집할 수 없다). */
   onEdit?: (ticket: Ticket) => void
+  /** 프로젝트 소속 배지. 프로젝트 목록을 읽지 못했으면 생략한다. */
+  project?: ProjectBadgeView | null
+  /** PM이 필요한 프로젝트의 대기 티켓이면 실행되지 않는다는 안내를 붙인다. */
+  pmNote?: boolean
 }
 
 /** 티켓 카드. 제목, 담당, 본문은 모두 React 텍스트 노드로만 그린다 (HTML·마크다운 렌더 없음). */
@@ -43,7 +48,9 @@ export function TicketCard({
   busy,
   locked,
   onMove,
-  onEdit
+  onEdit,
+  project = null,
+  pmNote = false
 }: Props): React.JSX.Element {
   const bodyId = useId()
   const menuId = useId()
@@ -81,6 +88,11 @@ export function TicketCard({
       <div className="tcard__top">
         <span className="tcard__id">{t.id}</span>
         {dept && <span className="tcard__dept">{dept}</span>}
+        {project && (
+          <span className="tcard__project">
+            <Badge tone={project.tone}>{project.label}</Badge>
+          </span>
+        )}
       </div>
       <button
         type="button"
@@ -96,6 +108,7 @@ export function TicketCard({
         {assignee !== null && <span className="tcard__assignee">담당 {assignee}</span>}
         {badge && <Badge tone={ASSIGNEE_BADGE_TONE[badge]}>{ASSIGNEE_BADGE_TEXT[badge]}</Badge>}
       </div>
+      {pmNote && <p className="hint tcard__pmnote">{PM_PENDING_NOTE}</p>}
       <div id={bodyId} className="tcard__body" hidden={!expanded}>
         {expanded && (
           <>

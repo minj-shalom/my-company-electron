@@ -203,3 +203,12 @@
 .tform__pm {
   margin: var(--space-2) 0 0;
 }
+
+.tcard__project {
+  margin-left: auto;
+}
+.tcard__pmnote {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-left: 3px solid var(--warn);
+}
