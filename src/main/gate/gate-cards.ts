@@ -12,6 +12,7 @@ export interface GateCardRequest {
     | 'integrity-warning'
     | 'revert-suggestion'
     | 'proposal'
+    | 'permission'
   >
   title: string
   ticketId: string | null
