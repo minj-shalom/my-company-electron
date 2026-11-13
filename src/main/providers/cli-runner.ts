@@ -22,7 +22,12 @@ export interface CliRunnerOptions {
   /** 이 제공자에만 추가로 통과시킬 환경변수 접두어. */
   envPrefixes?: readonly string[]
   /** 프롬프트를 CLI 인자 배열로 만든다. 프롬프트가 옵션으로 해석되지 않게 하는 책임은 어댑터에 있다. */
-  buildArgs: (prompt: string, tools?: RunToolOptions, hr?: RunHrOptions) => string[]
+  buildArgs: (
+    prompt: string,
+    tools?: RunToolOptions,
+    hr?: RunHrOptions,
+    resumeSessionId?: string
+  ) => string[]
   /** stdout 한 줄을 공통 이벤트로 변환한다. */
   parseLine: (line: string) => RunEventBody[]
   /** parseLine과 별개로 원문 stdout 줄을 관찰한다 (사용량 추출용). */
@@ -88,7 +93,7 @@ export class CliRunner {
     let args: string[]
     let child: ChildProcess
     try {
-      args = this.options.buildArgs(prompt, launch?.tools, launch?.hr)
+      args = this.options.buildArgs(prompt, launch?.tools, launch?.hr, launch?.resumeSessionId)
       child = this.spawnFn(this.options.command, args, {
         cwd: this.options.cwd,
         shell: false,

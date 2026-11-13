@@ -2,6 +2,7 @@ import { GATE_SERVER_NAME, GATE_TOOL_NAMES } from '../../../shared/gate'
 import { CliRunner, type SpawnFn } from '../cli-runner'
 import { HR_TOOLS } from '../../hr/hr-scope'
 import type { ProviderAdapter, ProviderUsage, RunHrOptions, RunToolOptions } from '../types'
+import { SESSION_ID } from '../session-id'
 import { probeVersion } from '../version-probe'
 import { claudeAgentTranslator } from './agent-translator'
 import { parseLine } from './parser'
@@ -74,8 +75,9 @@ export class ClaudeAdapter implements ProviderAdapter {
       displayName: 'claude',
       spawnFn: options.spawnFn,
       // 프롬프트가 '-'로 시작해도 옵션으로 해석되지 않도록 `--` 뒤에 둔다.
-      buildArgs: (prompt, tools, hr) => {
+      buildArgs: (prompt, tools, hr, resume) => {
         if (tools && hr) throw new Error('Tools and hr options are exclusive')
+        if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('Invalid session id')
         return [
           '-p',
           '--output-format',
@@ -83,6 +85,7 @@ export class ClaudeAdapter implements ProviderAdapter {
           '--verbose',
           ...(tools ? toolArgs(tools) : []),
           ...(hr ? hrArgs(hr) : []),
+          ...(resume !== undefined ? ['--resume', resume] : []),
           '--',
           prompt
         ]
