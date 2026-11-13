@@ -126,7 +126,8 @@ const NORMAL: OrgSnapshot = {
     issues: []
   },
   agents: AGENTS,
-  missingBaseRoles: []
+  missingBaseRoles: [],
+  emptyDepartments: ['법무팀']
 }
 
 /** 직원 20명, 부서 6개. 맵 성능과 방 배치가 부서/직원 수에 따라 늘어나는지 확인하는 시나리오. */

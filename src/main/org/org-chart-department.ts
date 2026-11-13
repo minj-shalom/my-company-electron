@@ -81,3 +81,26 @@ export function removeDepartmentFromChart(text: string, name: string): ChartResu
   }
   return { ok: true, text: join(lines, seps) }
 }
+
+/**
+ * 조직도 블록에만 있고 직원 표에는 없는 부서 이름 (`removeDepartment`로 지울 수 있는 항목).
+ * 직원 직급 줄(`CFO`, `CEO (사용자)`), 표에 직원이 있는 부서, 하위 항목이 있는 줄은 제외한다. 블록이 없으면 빈 배열.
+ */
+export function findEmptyDepartments(org: OrgModel): string[] {
+  // 너무 긴 블록은 일부만 읽힌 것이라 판단하지 않는다 (지우기도 거부된다).
+  if (org.issues.some((i) => i.code === 'too-many-rows' && i.message.includes('조직도'))) return []
+  const known = new Set([
+    ...org.departments.map((d) => d.name),
+    ...org.members.map((m) => m.title.toLowerCase())
+  ])
+  const parents = new Set(org.chart.map((c) => c.parent))
+  const out: string[] = []
+  for (const c of org.chart) {
+    if (parents.has(c.label)) continue
+    // `개발팀`(군더더기 없는 줄) 또는 `CTO ── 법무팀`(괄호 없는 직급 줄의 부서 표기)만 본다.
+    const name = c.detail === '' ? c.label : c.detail.includes('(') ? '' : c.detail
+    if (name === '' || known.has(name) || known.has(name.toLowerCase())) continue
+    if (!out.includes(name)) out.push(name)
+  }
+  return out
+}

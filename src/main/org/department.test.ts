@@ -11,6 +11,7 @@ import type { SafeFs } from '../repository/safe-fs'
 import { createWeeklyLimitsStore } from '../settings/weekly-limits-store'
 import { DepartmentService } from './department-service'
 import { removeDepartment, renameDepartment } from './department-store'
+import { buildOrgSnapshot } from './org-snapshot'
 import { addMember, loadOrg } from './org-store'
 
 const dirs: string[] = []
@@ -394,5 +395,64 @@ describe('org-store hardening carried over from T-064', () => {
     const after = await org()
     expect(after.split('\r\n')).toHaveLength(2)
     expect(after.split('\n')).toHaveLength(mixed.length + 1)
+  })
+})
+
+describe('emptyDepartments in org:get (T-040)', () => {
+  const empties = async (c: TestCompany): Promise<string[] | undefined> =>
+    (await buildOrgSnapshot(c.fs)).emptyDepartments
+
+  it('is empty for the real org and lists chart-only departments', async () => {
+    const { c, org } = await setup()
+    expect(await empties(c)).toEqual([])
+    const text = (await org()).replace(
+      '     └─ 기획팀 (pm)\n',
+      '     ├─ 기획팀 (pm)\n     ├─ 콘텐츠팀\n     └─ 법무팀\n'
+    )
+    await put(c.dir, 'company/org.md', text)
+    expect(await empties(c)).toEqual(['콘텐츠팀', '법무팀'])
+  })
+
+  it('drops a department as soon as the table has an employee in it', async () => {
+    const { c, org } = await setup()
+    await put(
+      c.dir,
+      'company/org.md',
+      (await org()).replace('     └─ 기획팀 (pm)\n', '     ├─ 기획팀 (pm)\n     └─ 콘텐츠팀\n')
+    )
+    await put(c.dir, '.claude/agents/writer.md', '---\nname: writer\n---\n')
+    await addMember(c.fs, {
+      title: '작가',
+      agentId: 'writer',
+      department: '콘텐츠팀',
+      reportsTo: 'COO',
+      role: 'r'
+    })
+    expect(await empties(c)).toEqual([])
+  })
+
+  it('returns an empty list and keeps the rest when the chart cannot be parsed', async () => {
+    const { c, org } = await setup()
+    const lines = Array.from({ length: 205 }, (_, i) => `└─ 팀${i}`).join('\n')
+    await put(
+      c.dir,
+      'company/org.md',
+      (await org()).replace('     └─ 기획팀 (pm)\n```', `     └─ 기획팀 (pm)\n${lines}\n\`\`\``)
+    )
+    const snap = await buildOrgSnapshot(c.fs)
+    expect(snap.emptyDepartments).toEqual([])
+    expect(snap.org.members.length).toBeGreaterThan(0)
+  })
+
+  it('refuses to rewrite a chart over the 200 line limit and leaves the file alone', async () => {
+    const { c, org } = await setup()
+    const lines = Array.from({ length: 205 }, (_, i) => `     └─ 팀${i}`).join('\n')
+    const big = (await org()).replace(
+      '     └─ 기획팀 (pm)\n```',
+      `     └─ 기획팀 (pm)\n${lines}\n\`\`\``
+    )
+    await put(c.dir, 'company/org.md', big)
+    expect(await renameDepartment(c.fs, '개발팀', '제품팀')).toMatchObject({ ok: false })
+    expect(await org()).toBe(big)
   })
 })
