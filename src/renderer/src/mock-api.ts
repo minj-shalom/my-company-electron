@@ -1,6 +1,7 @@
 import type { CompanyProfile } from '../../shared/company-profile'
 import type { WindowApi } from '../../shared/api'
 import type { ThemePreference } from '../../shared/theme'
+import type { CredentialAdapterStatus } from '../../shared/publisher'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
@@ -89,6 +90,15 @@ const mockUsageApi = createMockUsageApi(
 )
 
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
+/** 값 없는 상태만 있다. 개발 모드 전용이며 프로덕션 번들에 넣지 않는다. */
+const mockCredential: CredentialAdapterStatus = {
+  adapterId: 'demo',
+  displayName: '데모 블로그',
+  scopes: [{ id: 'post:write', description: '글 게시만 허용 (읽기·삭제 없음)' }],
+  state: 'disconnected',
+  accounts: [],
+  encryptionAvailable: true
+}
 let mockTheme: ThemePreference = 'system'
 const MOCK_PROFILE: CompanyProfile = {
   name: 'My Company',
@@ -196,6 +206,11 @@ export const mockApi: WindowApi = {
     mockProfile = { ...req, revision: `r${Number(mockProfile.revision.slice(1)) + 1}` }
     return { ok: true, value: mockProfile }
   },
+  getCredentialStatus: async () => ({ ok: true, value: [mockCredential] }),
+  disconnectCredential: async (req) =>
+    req.adapterId === mockCredential.adapterId
+      ? { ok: true, value: { status: mockCredential, revoked: false } }
+      : { ok: false, code: 'invalid-request', message: '알 수 없는 연결입니다.' },
   getTheme: async () => ({ ok: true, value: mockTheme }),
   saveTheme: async (theme) => {
     mockTheme = theme

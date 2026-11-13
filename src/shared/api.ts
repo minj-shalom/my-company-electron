@@ -89,6 +89,11 @@ import type {
 import type { ProviderSelection } from './provider-selection'
 import type { ApiResult } from './result'
 import type { ThemePreference } from './theme'
+import type {
+  CredentialAdapterStatus,
+  CredentialDisconnectRequest,
+  CredentialDisconnectResult
+} from './publisher'
 import type { UsageSettings, UsageWidgetData } from './usage'
 import type {
   Ticket,
@@ -316,6 +321,15 @@ export interface WindowApi {
    */
   getCompanyProfile: () => Promise<ApiResult<CompanyProfile>>
   saveCompanyProfile: (req: CompanyProfileSaveRequest) => Promise<ApiResult<CompanyProfile>>
+  /**
+   * 외부 발행 자격 증명 상태(T-054). 어댑터별 상태·만료 시각·계정 표시명·스코프 설명만 돌려준다.
+   * 자격 증명 값을 읽는 API는 존재하지 않는다. 제공자 CLI(Claude 등) 로그인은 이 API와 무관하다.
+   */
+  getCredentialStatus: () => Promise<ApiResult<CredentialAdapterStatus[]>>
+  /** 로컬 값을 모두 삭제하고 가능하면 서버 측 토큰도 폐기한다. 허용 목록 밖 어댑터 id는 `invalid-request`. */
+  disconnectCredential: (
+    req: CredentialDisconnectRequest
+  ) => Promise<ApiResult<CredentialDisconnectResult>>
   getTheme: () => Promise<ApiResult<ThemePreference>>
   saveTheme: (theme: ThemePreference) => Promise<ApiResult<ThemePreference>>
   /**
@@ -406,6 +420,8 @@ export const IPC_CHANNELS = {
   providerSelectionSave: 'provider:selection-save',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
   settingsWeeklyLimitsSave: 'settings:weekly-limits-save',
+  credentialsStatus: 'credentials:status',
+  credentialsDisconnect: 'credentials:disconnect',
   settingsThemeGet: 'settings:theme-get',
   settingsThemeSave: 'settings:theme-save',
   usageWidget: 'usage:widget',
