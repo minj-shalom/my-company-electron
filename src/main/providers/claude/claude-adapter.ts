@@ -1,5 +1,6 @@
+import { GATE_SERVER_NAME, GATE_TOOL_NAMES } from '../../../shared/gate'
 import { CliRunner, type SpawnFn } from '../cli-runner'
-import type { ProviderAdapter, ProviderUsage } from '../types'
+import type { ProviderAdapter, ProviderUsage, RunToolOptions } from '../types'
 import { probeVersion } from '../version-probe'
 import { claudeAgentTranslator } from './agent-translator'
 import { parseLine } from './parser'
@@ -14,9 +15,32 @@ export interface ClaudeAdapterOptions {
   onUsage?: (runId: string, usage: ProviderUsage) => void
 }
 
+const SAFE_PATH = /^\/[^\0\r\n]+$|^[A-Za-z]:[\\/][^\0\r\n]+$/
+
+/** 도구 옵션을 CLI 인자로 바꾼다. 허용 목록 이름은 `mcp__gate__<도구>`로 고정하고 경로는 절대 경로만 받는다. */
+export function toolArgs(tools: RunToolOptions): string[] {
+  if (!SAFE_PATH.test(tools.toolConfigPath) || !SAFE_PATH.test(tools.settingsPath))
+    throw new Error('Invalid tool config path')
+  if (
+    tools.allowedTools.length === 0 ||
+    tools.allowedTools.some((t) => !GATE_TOOL_NAMES.includes(t))
+  )
+    throw new Error('Invalid tool list')
+  return [
+    '--mcp-config',
+    tools.toolConfigPath,
+    '--strict-mcp-config',
+    '--settings',
+    tools.settingsPath,
+    '--allowedTools',
+    tools.allowedTools.map((t) => `mcp__${GATE_SERVER_NAME}__${t}`).join(',')
+  ]
+}
+
 /** Claude Code CLI(`claude -p --output-format stream-json`) 어댑터. */
 export class ClaudeAdapter implements ProviderAdapter {
   readonly id = 'claude' as const
+  readonly capabilities = { toolBridge: true } as const
   readonly agentTranslator = claudeAgentTranslator
   private readonly runner: CliRunner
   private readonly command: string
@@ -32,7 +56,15 @@ export class ClaudeAdapter implements ProviderAdapter {
       displayName: 'claude',
       spawnFn: options.spawnFn,
       // 프롬프트가 '-'로 시작해도 옵션으로 해석되지 않도록 `--` 뒤에 둔다.
-      buildArgs: (prompt) => ['-p', '--output-format', 'stream-json', '--verbose', '--', prompt],
+      buildArgs: (prompt, tools) => [
+        '-p',
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        ...(tools ? toolArgs(tools) : []),
+        '--',
+        prompt
+      ],
       parseLine,
       onStdoutLine: onUsage
         ? (line, runId) => {
@@ -44,7 +76,7 @@ export class ClaudeAdapter implements ProviderAdapter {
   }
 
   checkInstall: ProviderAdapter['checkInstall'] = () => probeVersion(this.command, this.spawnFn)
-  start: ProviderAdapter['start'] = (req, emit) => this.runner.start(req, emit)
+  start: ProviderAdapter['start'] = (req, emit, launch) => this.runner.start(req, emit, launch)
   cancel: ProviderAdapter['cancel'] = (runId) => this.runner.cancel(runId)
   cancelAll: ProviderAdapter['cancelAll'] = () => this.runner.cancelAll()
   extractUsage: ProviderAdapter['extractUsage'] = extractClaudeUsage
