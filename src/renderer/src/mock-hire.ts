@@ -59,6 +59,56 @@ export const MOCK_TEMPLATES: EmployeeTemplateInfo[] = [
     body: '# 디자이너\n'
   },
   {
+    id: 'pm-dev',
+    title: '개발 PM',
+    department: '기획팀',
+    role: '개발 프로젝트 관리',
+    description: '티켓을 나누고 브랜치와 검수 흐름을 챙겨요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 개발 PM\n'
+  },
+  {
+    id: 'pm-content',
+    title: '콘텐츠 PM',
+    department: '기획팀',
+    role: '콘텐츠 프로젝트 관리',
+    description: '하루 산출 계획과 승인 흐름을 챙겨요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 콘텐츠 PM\n'
+  },
+  {
+    id: 'writer',
+    title: '작가',
+    department: '콘텐츠팀',
+    role: '글 초안 작성',
+    description: '글 초안을 써요. 승인 전에는 발행하지 않아요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 작가\n'
+  },
+  {
+    id: 'editor',
+    title: '편집자',
+    department: '콘텐츠팀',
+    role: '초안 검토',
+    description: '초안을 다듬고 검토해요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 편집자\n'
+  },
+  {
+    id: 'script-writer',
+    title: '대본 작가',
+    department: '콘텐츠팀',
+    role: '대본 초안 작성',
+    description: '영상 대본 초안을 써요.',
+    model: 'sonnet',
+    tools: ['Read', 'Write', 'Edit', 'Grep', 'Glob'],
+    body: '# 대본 작가\n'
+  },
+  {
     id: 'researcher',
     title: '리서처',
     department: '리서치팀',

@@ -58,7 +58,7 @@ describe('groupTemplates', () => {
     const names = groups.map((g) => g.department)
     expect(new Set(names).size).toBe(names.length)
     expect(names).toContain('콘텐츠팀')
-    expect(groups.find((g) => g.department === '콘텐츠팀')?.templates).toHaveLength(5)
+    expect(groups.find((g) => g.department === '콘텐츠팀')?.templates).toHaveLength(8)
     const ids = groups.flatMap((g) => g.templates.map((t) => t.id))
     expect(ids).not.toEqual(expect.arrayContaining(['cto']))
     expect(ids).not.toContain('hr')

@@ -12,7 +12,8 @@ import type { UseKillSwitch } from '../gate/use-kill-switch'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
-import { AddProjectDialog, ConfirmDialog, PmDialog, RenameDialog } from './ProjectDialogs'
+import { AddProjectDialog } from './AddProjectDialog'
+import { ConfirmDialog, PmDialog, RenameDialog } from './ProjectDialogs'
 import { ProjectCard, type ProjectAction } from './ProjectCard'
 import {
   LEGACY_NOTE,
@@ -158,7 +159,15 @@ export function ProjectsView({
       {dialog?.kind === 'add' && load.kind === 'ready' && (
         <AddProjectDialog
           pms={pms}
+          snapshot={orgSnapshot}
+          api={window.api}
           onCancel={close}
+          onFinished={(message) => {
+            setNotice(message)
+            org.refresh()
+            reload()
+            close()
+          }}
           onPickFolder={() => pickFolder(window.api)}
           onSubmit={async (input) => {
             const outcome = await addProjectFlow(window.api, input)
