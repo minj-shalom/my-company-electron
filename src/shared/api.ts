@@ -43,6 +43,11 @@ import type {
   PolicySummary
 } from './policy'
 import type {
+  ProjectApplyTemplateRequest,
+  ProjectApplyTemplateResult,
+  ProjectTemplateInfo
+} from './project-template'
+import type {
   EmployeeProjectsRequest,
   EmployeeProjectsResult,
   ProjectAddRequest,
@@ -200,6 +205,15 @@ export interface WindowApi {
   savePolicy: (req: PolicySaveRequest) => Promise<ApiResult<PolicySaveResult>>
   listPolicySummaries: () => Promise<ApiResult<PolicySummary[]>>
   /**
+   * 프로젝트 유형 템플릿 (T-048). `listProjectTemplates`: 내장 템플릿 3종(설명, 기본 정책 요약, 추천 직원). 회사가 없어도 동작한다.
+   * `applyProjectTemplate`: 정책 파일 기본값만 만든다 (모든 동작 매번 컨펌). 정책 파일이 이미 있으면 `conflict`, 알 수 없는 템플릿·유형 불일치는 `invalid-request`.
+   * 직원 채용·배정은 하지 않는다. `recommendedStaff`(PM이 첫 항목)는 제안 목록이며 UI 확인이나 인사팀 요청으로 처리한다.
+   */
+  listProjectTemplates: () => Promise<ApiResult<ProjectTemplateInfo[]>>
+  applyProjectTemplate: (
+    req: ProjectApplyTemplateRequest
+  ) => Promise<ApiResult<ProjectApplyTemplateResult>>
+  /**
    * 자동 모드 게이트(T-053). `getKillSwitch`/`setKillSwitch`: 회사 전체 또는 프로젝트별 즉시 중지(`engaged: true`)와 해제.
    * 켜면 모든 자동 동작이 `매번 컨펌`으로 대체되고 진행 중인 게이트 작업이 중단된다. 상태를 읽지 못하면 중지된 것으로 본다.
    * `getAuditSummary`: 기간 [from, to) 안의 프로젝트별 자동 실행 건수(동작×결과)와 실패·차단 목록(방문 요약, 자동 실행 기록).
@@ -309,6 +323,8 @@ export const IPC_CHANNELS = {
   policyGet: 'policy:get',
   policySave: 'policy:save',
   policyListSummaries: 'policy:list-summaries',
+  projectListTemplates: 'project:list-templates',
+  projectApplyTemplate: 'project:apply-template',
   schedulerStatus: 'scheduler:status',
   schedulerRunNow: 'scheduler:run-now',
   gateKillSwitchGet: 'gate:kill-switch-get',

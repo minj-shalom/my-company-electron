@@ -20,6 +20,7 @@ import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
+import { mockProjectTemplateApi } from './mock-project-templates'
 import { createMockUsageApi, parseUsageScenario } from './mock-usage'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
@@ -166,6 +167,7 @@ export const mockApi: WindowApi = {
   ),
   ...mockProjectApi.api,
   ...mockPolicyApi.api,
+  ...mockProjectTemplateApi,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   ...mockUsageApi.api,

@@ -322,6 +322,9 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.policyGet, h.getPolicy)
   handle(IPC_CHANNELS.policySave, write(h.savePolicy))
   handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())
+  handle(IPC_CHANNELS.projectListTemplates, () => h.listProjectTemplates())
+  // 정책 파일(`company/policies/**`)을 만들므로 앱 쓰기로 감싼다.
+  handle(IPC_CHANNELS.projectApplyTemplate, write(h.applyProjectTemplate))
   handle(IPC_CHANNELS.gateKillSwitchGet, () => h.getKillSwitch())
   // 킬 스위치 변경은 정책 변경 이력(`company/policies/**`)에 쓰므로 앱 쓰기로 감싼다.
   handle(IPC_CHANNELS.gateKillSwitchSet, write(h.setKillSwitch))
