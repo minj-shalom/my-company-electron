@@ -49,6 +49,9 @@ const api: WindowApi = {
   getPolicy: (req) => ipcRenderer.invoke(IPC_CHANNELS.policyGet, req),
   savePolicy: (req) => ipcRenderer.invoke(IPC_CHANNELS.policySave, req),
   listPolicySummaries: () => ipcRenderer.invoke(IPC_CHANNELS.policyListSummaries),
+  getKillSwitch: () => ipcRenderer.invoke(IPC_CHANNELS.gateKillSwitchGet),
+  setKillSwitch: (req) => ipcRenderer.invoke(IPC_CHANNELS.gateKillSwitchSet, req),
+  getAuditSummary: (req) => ipcRenderer.invoke(IPC_CHANNELS.auditSummary, req),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),

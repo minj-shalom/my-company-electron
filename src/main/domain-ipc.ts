@@ -22,6 +22,7 @@ import { createEmployeeHandlers, type EmployeeHandlers } from './employee/employ
 import type { AssignmentSource } from './employee/employee-service'
 import { createTicketWriteHandlers, type TicketWriteHandlers } from './ticket/ticket-ipc'
 import { createProjectHandlers, type ProjectHandlers } from './project/project-ipc'
+import { createGateHandlers, type GateHandlers } from './gate/gate-ipc'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
@@ -34,6 +35,8 @@ export interface DomainDeps {
   assignments?: AssignmentSource
   /** 프로젝트 경로 검증에서 "홈 폴더"로 볼 경로. 테스트에서만 바꾼다. */
   homeDir?: string
+  /** 앱 userData. 게이트 상태(킬 스위치, 일일 카운트) 저장 위치. */
+  userDataDir?: string
 }
 
 const fail = (
@@ -105,11 +108,17 @@ export function createDomainHandlers(deps: DomainDeps): {
 } & EmployeeHandlers &
   ProjectHandlers &
   PolicyHandlers &
+  GateHandlers &
   TicketWriteHandlers {
   return {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createPolicyHandlers({ context: deps.context }),
+    ...createGateHandlers({
+      context: deps.context,
+      userDataDir: deps.userDataDir,
+      homeDir: deps.homeDir
+    }),
     ...createEmployeeHandlers({
       context: deps.context,
       repository: () => repositoryFor(deps),
@@ -248,6 +257,9 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.policyGet, h.getPolicy)
   handle(IPC_CHANNELS.policySave, h.savePolicy)
   handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())
+  handle(IPC_CHANNELS.gateKillSwitchGet, () => h.getKillSwitch())
+  handle(IPC_CHANNELS.gateKillSwitchSet, h.setKillSwitch)
+  handle(IPC_CHANNELS.auditSummary, h.getAuditSummary)
   // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).
   ipcMain.handle(IPC_CHANNELS.projectSelectFolder, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted sender')

@@ -21,6 +21,12 @@ import type { OrgChart } from './employee'
 import type { FirstHireRequest, FirstHireResult, HirePmResult } from './company-hire'
 import type { OrgSnapshot } from './org'
 import type {
+  AuditSummary,
+  AuditSummaryRequest,
+  KillSwitchSetRequest,
+  KillSwitchState
+} from './gate'
+import type {
   PolicyGetRequest,
   PolicySaveRequest,
   PolicySaveResult,
@@ -172,6 +178,14 @@ export interface WindowApi {
   savePolicy: (req: PolicySaveRequest) => Promise<ApiResult<PolicySaveResult>>
   listPolicySummaries: () => Promise<ApiResult<PolicySummary[]>>
   /**
+   * 자동 모드 게이트(T-053). `getKillSwitch`/`setKillSwitch`: 회사 전체 또는 프로젝트별 즉시 중지(`engaged: true`)와 해제.
+   * 켜면 모든 자동 동작이 `매번 컨펌`으로 대체되고 진행 중인 게이트 작업이 중단된다. 상태를 읽지 못하면 중지된 것으로 본다.
+   * `getAuditSummary`: 기간 [from, to) 안의 프로젝트별 자동 실행 건수(동작×결과)와 실패·차단 목록(방문 요약, 자동 실행 기록).
+   */
+  getKillSwitch: () => Promise<ApiResult<KillSwitchState>>
+  setKillSwitch: (req: KillSwitchSetRequest) => Promise<ApiResult<KillSwitchState>>
+  getAuditSummary: (req: AuditSummaryRequest) => Promise<ApiResult<AuditSummary>>
+  /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
@@ -230,6 +244,9 @@ export const IPC_CHANNELS = {
   policyGet: 'policy:get',
   policySave: 'policy:save',
   policyListSummaries: 'policy:list-summaries',
+  gateKillSwitchGet: 'gate:kill-switch-get',
+  gateKillSwitchSet: 'gate:kill-switch-set',
+  auditSummary: 'audit:summary',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

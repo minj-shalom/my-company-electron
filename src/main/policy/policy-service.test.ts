@@ -459,4 +459,16 @@ describe('protected branch detection', () => {
         .autoPushPrefixes
     ).toEqual(['feature/', 'fix/'])
   })
+
+  it('appendHistory adds a history line without touching value lines or the activation record', async () => {
+    const { svc, file } = await setup()
+    const st = await get(svc)
+    saved(await svc.save(req(st, { memo: '메모' })))
+    const before = await readFile(file, 'utf8')
+    await svc.appendHistory(ID, '킬 스위치 켬: 회사 전체')
+    const after = await readFile(file, 'utf8')
+    expect(after.startsWith(before.replace(/\n*$/, '\n'))).toBe(true)
+    expect(after.split('\n').filter((l) => l.includes('킬 스위치 켬'))).toHaveLength(1)
+    expect((await get(svc)).history.at(-1)?.summary).toBe('킬 스위치 켬: 회사 전체')
+  })
 })
