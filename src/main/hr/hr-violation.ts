@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { IntegrityActionResult } from '../../shared/integrity'
 import type { StateStore } from '../gate/state-store'
 import type { SafeFs } from '../repository/safe-fs'
-import type { Manifest, ManifestChange } from './hr-manifest'
+import { hashOfPath, type Manifest, type ManifestChange } from './hr-manifest'
 
 /** 결재함이 이 라벨의 선택지를 복원 호출로 연결한다. 카드 생성 쪽과 같은 값을 써야 한다. */
 export const OUT_OF_SCOPE_RESTORE = '범위 밖 복원'
@@ -23,6 +23,8 @@ export interface ViolationRecord {
   stateHash: string
   at: string
   files: ViolationFile[]
+  /** 변경이 상한(200건)을 넘어 일부만 담았다. 이 경우 자동 복원하지 않는다. */
+  truncated?: boolean
 }
 
 const sha = (v: string): string => createHash('sha256').update(v, 'utf8').digest('hex')
@@ -48,9 +50,17 @@ export function buildViolation(
     let prior: ViolationFile['before']
     if (c.kind === 'added') prior = null
     else prior = b?.text ?? 'unrestorable'
+    // 링크와 특수 파일은 SafeFs로 지우거나 덮어쓸 수 없고, 변경 후 상태가 이것이면 앱이 안전하게 되돌릴 수 없다.
+    const h = a?.hash ?? ''
+    if (h.startsWith('symlink:') || h === 'other') prior = 'unrestorable'
     return { path: c.path, kind: c.kind, before: prior, afterHash: a?.hash ?? DELETED }
   })
-  return { stateHash: violationHash(files), at: at.toISOString(), files }
+  return {
+    stateHash: violationHash(files),
+    at: at.toISOString(),
+    files,
+    ...(changes.length > MAX_FILES ? { truncated: true } : {})
+  }
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
@@ -70,7 +80,12 @@ function parse(raw: unknown): ViolationRecord[] {
         (f.before === null || typeof f.before === 'string')
       )
         files.push({ path: f.path, kind: f.kind, before: f.before, afterHash: f.afterHash })
-    out.push({ stateHash: r.stateHash, at: typeof r.at === 'string' ? r.at : '', files })
+    out.push({
+      stateHash: r.stateHash,
+      at: typeof r.at === 'string' ? r.at : '',
+      files,
+      ...(r.truncated === true ? { truncated: true } : {})
+    })
   }
   return out
 }
@@ -107,6 +122,7 @@ export class ViolationStore {
       const rec = parse(await this.store.load()).find((r) => r.stateHash === expectedHash)
       if (rec === undefined) return { ok: false, code: 'no-baseline', files: [] }
       const stuck = rec.files.filter((f) => f.before === 'unrestorable').map((f) => f.path)
+      if (rec.truncated === true) return { ok: false, code: 'not-restorable', files: stuck }
       if (stuck.length > 0) return { ok: false, code: 'not-restorable', files: stuck }
       return this.exclusive(async () => {
         for (const f of rec.files) {
@@ -122,13 +138,7 @@ export class ViolationStore {
     })
   }
 
-  private async currentHash(path: string): Promise<string> {
-    try {
-      return createHash('sha256')
-        .update(await this.fs.readText(path), 'utf8')
-        .digest('hex')
-    } catch {
-      return DELETED
-    }
+  private currentHash(path: string): Promise<string> {
+    return hashOfPath(this.fs.root, path)
   }
 }

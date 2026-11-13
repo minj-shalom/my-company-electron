@@ -30,8 +30,12 @@ export const MANIFEST_LIMITS = {
   maxTotalTextBytes: 8 * 1024 * 1024
 } as const
 
-/** 버전 관리 메타데이터와 의존성 폴더는 회사 문서가 아니고 크기가 커서 비교에서 뺀다. */
-const SKIP_DIRS: ReadonlySet<string> = new Set(['.git', 'node_modules'])
+/**
+ * 의존성 폴더는 회사 문서가 아니고 크기가 커서 비교에서 뺀다. `.git`은 코드 실행 경로인 `config`와 `hooks`만 비교한다
+ * (나머지 객체·refs는 크고 hr이 쓸 이유가 없다). 한계: 빈 디렉터리의 생성·삭제는 파일이 없어 감지하지 못한다.
+ */
+const SKIP_DIRS: ReadonlySet<string> = new Set(['node_modules'])
+const GIT_WATCHED: ReadonlySet<string> = new Set(['config', 'hooks'])
 
 const sha = (v: string | Buffer): string => createHash('sha256').update(v).digest('hex')
 
@@ -62,6 +66,7 @@ export async function takeManifest(root: string): Promise<Manifest> {
         truncated = true
         return
       }
+      if (rel === '.git' && !GIT_WATCHED.has(name)) continue
       const childRel = rel === '' ? name : `${rel}/${name}`
       const childAbs = join(root, childRel)
       const st = await lstat(childAbs).catch(() => null)
@@ -108,4 +113,14 @@ export function diffManifests(before: Manifest, after: Manifest): ManifestChange
   for (const path of after.entries.keys())
     if (!before.entries.has(path)) out.push({ path, kind: 'added' })
   return out.sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : 0))
+}
+
+/** manifest와 같은 방식으로 한 경로의 지문을 계산한다 (없으면 `deleted`). 복원 직전 현재 상태 확인용. */
+export async function hashOfPath(root: string, rel: string): Promise<string> {
+  const abs = join(root, rel)
+  const st = await lstat(abs).catch(() => null)
+  if (st === null) return 'deleted'
+  if (st.isSymbolicLink()) return `symlink:${sha(await readlink(abs).catch(() => ''))}`
+  if (st.isFile()) return hashStream(abs).catch(() => 'deleted')
+  return st.isDirectory() ? 'dir' : 'other'
 }

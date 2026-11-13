@@ -128,7 +128,8 @@ export function createHrRunner(deps: HrRunDeps): {
     if (before.truncated || after.truncated) notes.push('파일이 너무 많아 비교가 불완전합니다')
     if (out.length > 0) {
       const rec = buildViolation(out, before, after, now())
-      const restorable = rec.files.every((f) => f.before !== 'unrestorable')
+      const restorable =
+        rec.truncated !== true && rec.files.every((f) => f.before !== 'unrestorable')
       await deps.violations.save(rec)
       const id = await deps.cards.create({
         kind: restorable ? 'revert-suggestion' : 'integrity-warning',
@@ -158,7 +159,7 @@ export function createHrRunner(deps: HrRunDeps): {
                 description: '크기 상한 등으로 자동 복원할 수 없습니다. 파일을 직접 복원하세요.'
               }
             ],
-        impact: `${restorable ? '' : '복원 불가 파일이 있어 대상 파일만 알립니다. '}상태 해시: ${rec.stateHash}`,
+        impact: `${restorable ? '' : '복원 불가 파일이 있거나 변경이 너무 많아 대상 파일만 알립니다. '}상태 해시: ${rec.stateHash}`,
         reason: 'hr은 허용 목록 안에서만 쓸 수 있습니다.'
       })
       notes.push(`범위 밖 변경 ${out.length}건, 카드 ${id}`)

@@ -69,6 +69,8 @@ describe('hr write scope', () => {
       '.claude/agents/cfo.md',
       '.claude/agents/hr.md',
       '.claude/agents/coo.md',
+      '.claude/agents/CTO.md',
+      '.claude/agents/Cfo.md',
       '.claude/agents/sub/x.md',
       '.claude/agents/x.txt',
       'company/archive',

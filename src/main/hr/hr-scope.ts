@@ -56,7 +56,9 @@ export function buildHrSettings(): { permissions: { allow: string[]; deny: strin
  * 앱이 hr 실행 뒤 변경을 판정할 때 쓰는 허용 판정 (허용 목록의 코드 형태). 회사 폴더 기준 상대 경로.
  * 보호 직원 파일은 허용 목록의 `*.md`에 걸리지만 쓰기 금지이므로 여기서 뺀다.
  */
-export function isHrWritablePath(rel: string): boolean {
+export function isHrWritablePath(raw: string): boolean {
+  // macOS·Windows 기본 파일 시스템은 대소문자를 구분하지 않아 `CTO.md`가 `cto.md`와 같은 파일이다.
+  const rel = raw.toLowerCase()
   if (rel.includes('\\') || rel.includes('\0') || rel.split('/').includes('..')) return false
   if (rel === 'company/org.md' || rel === 'company/project.md') return true
   if (rel.startsWith('company/archive/')) return rel.length > 'company/archive/'.length
