@@ -69,7 +69,9 @@ export function createGatePublishers(deps: {
 
         // 같은 멱등 키는 한 번만 어댑터에 간다. 결과를 모르는 키는 사람이 확인하기 전까지 다시 보내지 않는다.
         const key = sha256(`${adapter.id}|${req.idempotencyKey}`)
-        if (!(await records.begin(key))) {
+        const started = await records.begin(key)
+        if (started === 'failed') return { ok: false, code: 'unknown' }
+        if (started === 'exists') {
           return records.get(key) === 'published'
             ? { ok: true }
             : { ok: false, code: 'confirm-required' }

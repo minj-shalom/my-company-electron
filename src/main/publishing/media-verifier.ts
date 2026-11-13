@@ -6,6 +6,8 @@ import type { MediaKind, PublisherMedia, VerifiedMedia } from '../../shared/publ
 import { MEDIA_KINDS } from '../../shared/publisher'
 
 export const MAX_MEDIA_COUNT = 10
+/** 한 요청의 합계 상한. 임의 값이며 플랫폼별 한도는 어댑터 티켓에서 조정한다. */
+export const MAX_MEDIA_TOTAL_BYTES = 1024 * 1024 * 1024
 export const MEDIA_PATH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/
 const HASH = /^[0-9a-f]{64}$/
 
@@ -98,10 +100,12 @@ async function readHead(abs: string): Promise<Buffer> {
  */
 export async function verifyMedia(
   outputRoot: string,
-  items: readonly PublisherMedia[]
+  items: readonly PublisherMedia[],
+  maxTotalBytes = MAX_MEDIA_TOTAL_BYTES
 ): Promise<MediaVerifyResult> {
   if (items.length > MAX_MEDIA_COUNT) return { ok: false, code: 'media-invalid' }
   const out: VerifiedMedia[] = []
+  let total = 0
   try {
     const root = await realpath(outputRoot)
     for (const m of items) {
@@ -130,6 +134,8 @@ export async function verifyMedia(
       const st = await lstat(abs)
       if (!st.isFile() || st.size === 0 || st.size > fmt.maxBytes)
         return { ok: false, code: 'media-invalid' }
+      total += st.size
+      if (total > maxTotalBytes) return { ok: false, code: 'media-invalid' }
       if (!fmt.magic(await readHead(abs))) return { ok: false, code: 'media-invalid' }
       if ((await sha256File(abs)) !== m.contentHash) return { ok: false, code: 'hash-mismatch' }
       out.push({ ...m, mime: fmt.mime, size: st.size, absPath: abs })

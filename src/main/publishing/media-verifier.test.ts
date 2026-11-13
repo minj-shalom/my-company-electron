@@ -88,4 +88,13 @@ describe('verifyMedia', () => {
       code: 'media-invalid'
     })
   })
+
+  it('rejects when the combined size exceeds the total limit', async () => {
+    const items = [img('a.png'), img('a.png')]
+    expect((await verifyMedia(root, items, PNG.length * 2)).ok).toBe(true)
+    expect(await verifyMedia(root, items, PNG.length * 2 - 1)).toEqual({
+      ok: false,
+      code: 'media-invalid'
+    })
+  })
 })

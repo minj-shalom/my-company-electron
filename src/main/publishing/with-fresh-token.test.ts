@@ -108,4 +108,27 @@ describe('withFreshToken', () => {
     expect(calls).toBe(1)
     expect(new Set(rs.map((r) => (r.ok ? r.token : 'fail'))).size).toBe(1)
   })
+
+  it('returns auth when refresh hangs past the deadline or the signal aborts', async () => {
+    const { service, ctx } = await setup(at(10))
+    const aborted = await setup(at(10))
+    {
+      const p = withFreshToken(ctx, {
+        accountId: 'default',
+        now: () => NOW,
+        timeoutMs: 20,
+        refresh: () => new Promise(() => undefined)
+      })
+      expect(await p).toEqual({ ok: false, code: 'auth' })
+      expect((await service.statusOf('fake')).state).toBe('expiring')
+
+      const ac = new AbortController()
+      const q = withFreshToken(
+        { ...aborted.ctx, signal: ac.signal },
+        { accountId: 'default', now: () => NOW, refresh: () => new Promise(() => undefined) }
+      )
+      ac.abort()
+      expect(await q).toEqual({ ok: false, code: 'auth' })
+    }
+  })
 })

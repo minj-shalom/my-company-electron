@@ -193,3 +193,42 @@ describe('no credential strings in logs or errors', () => {
     expect(seen).not.toContain('boom')
   })
 })
+
+describe('file record store', () => {
+  const key = (n: number): string => sha(`k${n}`)
+
+  it('survives concurrent begin/set/clear without leaving keys stuck', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mc-rs-'))
+    const file = join(dir, 'r.json')
+    const store = await createFileRecordStore(file)
+    const ks = Array.from({ length: 25 }, (_, i) => key(i))
+    const began = await Promise.all(ks.map((k) => store.begin(k)))
+    expect(began.every((b) => b === 'started')).toBe(true)
+    await Promise.all(ks.map((k, i) => (i % 2 ? store.set(k, 'published') : store.clear(k))))
+    const reread = await createFileRecordStore(file)
+    ks.forEach((k, i) => expect(reread.get(k)).toBe(i % 2 ? 'published' : undefined))
+  })
+
+  it('rolls back and reports failed when begin cannot save, and swallows later save failures', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mc-rs-'))
+    const blocker = join(dir, 'blocker')
+    await writeFile(blocker, 'x') // 파일 아래에는 디렉터리를 만들 수 없다
+    const store = await createFileRecordStore(join(blocker, 'r.json'))
+    expect(await store.begin(key(1))).toBe('failed')
+    expect(store.get(key(1))).toBeUndefined()
+    await expect(store.set(key(2), 'published')).resolves.toBeUndefined()
+    expect(store.get(key(2))).toBe('published')
+  })
+
+  it('does not call the adapter when begin fails', async () => {
+    const failing = {
+      get: () => undefined,
+      begin: async () => 'failed' as const,
+      set: async () => undefined,
+      clear: async () => undefined
+    }
+    const s = await setup(async () => ({ ok: true }), failing)
+    expect(await s.pub.publish(base, sig())).toEqual({ ok: false, code: 'unknown' })
+    expect(s.fake.published).toHaveLength(0)
+  })
+})
