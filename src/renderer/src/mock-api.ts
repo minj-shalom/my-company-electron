@@ -1,12 +1,12 @@
 import type { WindowApi } from '../../shared/api'
 import type { ThemePreference } from '../../shared/theme'
-import { USAGE_SETTINGS_DEFAULT } from '../../shared/usage'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
   mockSaveWeeklyLimits,
   mockTestConnection,
-  resetMockOnboarding
+  resetMockOnboarding,
+  seedMockLimits
 } from './mock-onboarding'
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario, resetMockOrgState } from './mock-org'
@@ -18,6 +18,7 @@ import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
+import { createMockUsageApi, parseUsageScenario } from './mock-usage'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -64,6 +65,18 @@ const mockEmployeeApi = createMockEmployeeApi(
   MOCK_TEMPLATES
 )
 
+const mockUsageApi = createMockUsageApi(
+  parseUsageScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 300,
+  {
+    get: async () => {
+      const r = await mockGetWeeklyLimits()
+      return r.ok ? r : { ok: false }
+    },
+    seed: seedMockLimits
+  }
+)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 let mockTheme: ThemePreference = 'system'
 
@@ -75,6 +88,7 @@ export function resetMockApi(): void {
   mockPolicyApi.reset()
   mockGateApi.reset()
   resetMockOnboarding()
+  mockUsageApi.reset()
   resetMockOrgState()
 }
 
@@ -135,39 +149,12 @@ export const mockApi: WindowApi = {
   ...mockPolicyApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
-  // 2단계(T-038 설정 화면)에서 UI와 함께 시나리오를 확장한다. 그 전까지는 저장 없이 기본값만 돌려준다.
-  getProviderSelection: async () => ({
-    ok: true,
-    value: { defaultProvider: 'claude', overrides: {} }
-  }),
-  saveProviderSelection: async (req) => ({ ok: true, value: req }),
+  ...mockUsageApi.api,
   getWeeklyLimits: mockGetWeeklyLimits,
   saveWeeklyLimits: mockSaveWeeklyLimits,
   getTheme: async () => ({ ok: true, value: mockTheme }),
   saveTheme: async (theme) => {
     mockTheme = theme
     return { ok: true, value: theme }
-  },
-  // 사용량 위젯 화면은 T-038(ui-dev)에서 시나리오 mock으로 바꾼다. 그 전까지는 빈 집계만 돌려준다.
-  getUsageWidget: async () => ({
-    ok: true,
-    value: {
-      windowStart: '2026-01-05T00:00:00.000Z',
-      windowEnd: '2026-01-12T00:00:00.000Z',
-      settings: { ...USAGE_SETTINGS_DEFAULT },
-      providers: [],
-      byProject: [],
-      byEmployee: [],
-      total: {
-        requests: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheCreationTokens: 0,
-        costUsd: null
-      }
-    }
-  }),
-  getUsageSettings: async () => ({ ok: true, value: { ...USAGE_SETTINGS_DEFAULT } }),
-  saveUsageSettings: async (req) => ({ ok: true, value: req })
+  }
 }

@@ -7,6 +7,8 @@ describe('shouldCollapsePanel', () => {
     expect(shouldCollapsePanel('org', 'org', true)).toBe(false)
     expect(shouldCollapsePanel('map', 'org', false)).toBe(false)
     expect(shouldCollapsePanel('org', 'map', true)).toBe(false)
+    expect(shouldCollapsePanel('map', 'settings', true)).toBe(true)
+    expect(shouldCollapsePanel('org', 'settings', true)).toBe(false)
   })
 })
 

@@ -13,6 +13,7 @@ import { ProjectFilter } from '../projects/ProjectFilter'
 import { ProjectsView } from '../projects/ProjectsView'
 import { pmRequiredCount, resolveCurrent } from '../projects/project-model'
 import { useProjects } from '../projects/use-projects'
+import { SettingsView } from '../settings/SettingsView'
 import { ProjectStatusView } from '../status/ProjectStatusView'
 import { buildStatusView } from '../status/status-model'
 import { RunLogView } from '../runs/RunLogView'
@@ -35,7 +36,8 @@ const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'map', label: '사무실 맵' },
   { id: 'org', label: '인사 관리' },
   { id: 'projects', label: '프로젝트' },
-  { id: 'status', label: '현황' }
+  { id: 'status', label: '현황' },
+  { id: 'settings', label: '설정·예산' }
 ]
 
 /** 앱 셸. 사이드 패널 탭: 직원 로그(실행 이벤트), 티켓 보드, 결재함. */
@@ -142,6 +144,8 @@ export function AppShell({
           >
             {hiring ? (
               <FirstHireScreen onClose={closeHiring} />
+            ) : view === 'settings' ? (
+              <SettingsView />
             ) : view === 'status' ? (
               <ProjectStatusView
                 view={statusView}
