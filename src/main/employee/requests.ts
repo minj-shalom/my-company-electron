@@ -15,7 +15,7 @@ import { findTemplate } from './templates'
 const MAX_ROLE = 300
 const MULTI = /[,;/、]/
 
-function plain(raw: unknown, allowed: readonly string[]): Record<string, unknown> | null {
+export function plain(raw: unknown, allowed: readonly string[]): Record<string, unknown> | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
   const proto = Object.getPrototypeOf(raw) as unknown
   if (proto !== Object.prototype && proto !== null) return null
@@ -25,7 +25,7 @@ function plain(raw: unknown, allowed: readonly string[]): Record<string, unknown
     : null
 }
 
-const BAD = { ok: false, message: '요청 형식이 올바르지 않습니다.' } as const
+export const BAD = { ok: false, message: '요청 형식이 올바르지 않습니다.' } as const
 
 const name = (v: unknown, what: string): Checked<string> =>
   typeof v === 'string' && isValidName(v) && !MULTI.test(v)
@@ -44,7 +44,7 @@ export function parseId(v: unknown): Checked<string> {
 }
 
 /** 승인 카드 번호. 형식만 본다. 카드가 실제로 승인(done)됐는지는 서비스가 확인한다. */
-function approval(v: unknown): Checked<string | undefined> {
+export function approval(v: unknown): Checked<string | undefined> {
   if (v === undefined) return { ok: true, value: undefined }
   return typeof v === 'string' && DECISION_ID.test(v)
     ? { ok: true, value: v }
