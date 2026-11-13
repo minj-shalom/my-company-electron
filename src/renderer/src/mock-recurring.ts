@@ -12,10 +12,25 @@ type Mock = Pick<
 
 const DAY_MS = 86_400_000
 
-const seed = (): RecurringDefinition[] => [
+/**
+ * 시나리오(`?mock-recurring=`): ok, empty, error, loading(영원히 대기), issues(읽지 못한 정의와 상한 초과 안내).
+ * 개발 서버에서만 쓰이는 mock이다.
+ */
+export type RecurringScenario = 'ok' | 'empty' | 'error' | 'loading' | 'issues'
+const SCENARIOS: readonly RecurringScenario[] = ['ok', 'empty', 'error', 'loading', 'issues']
+
+export function parseRecurringScenario(search: string): RecurringScenario {
+  const v = new URLSearchParams(search).get('mock-recurring')
+  return SCENARIOS.find((s) => s === v) ?? 'ok'
+}
+
+const seed = (scenario: RecurringScenario = 'ok'): RecurringDefinition[] =>
+  scenario === 'empty' ? [] : baseSeed()
+
+const baseSeed = (): RecurringDefinition[] => [
   {
     id: 'blog-daily',
-    projectId: 'my-company',
+    projectId: 'blog',
     titleTemplate: '블로그 글 {date}',
     goalTemplate: '오늘의 블로그 글 초안을 쓴다.',
     criteriaTemplates: ['초안 작성', '검수 요청'],
@@ -23,12 +38,47 @@ const seed = (): RecurringDefinition[] => [
     count: 1,
     assignee: null,
     status: 'active'
+  },
+  {
+    id: 'weekday-report',
+    projectId: 'my-company',
+    titleTemplate: '일일 점검 {date}',
+    goalTemplate: '어제 변경 사항을 점검한다.',
+    criteriaTemplates: ['점검 결과 정리'],
+    cadence: 'weekdays',
+    count: 1,
+    assignee: 'developer',
+    status: 'active'
+  },
+  {
+    id: 'weekly-review',
+    projectId: 'my-company',
+    titleTemplate: '주간 회고 {date}',
+    goalTemplate: '한 주를 돌아본다.',
+    criteriaTemplates: ['잘한 점', '개선할 점'],
+    cadence: 'weekly:금',
+    count: 1,
+    assignee: null,
+    status: 'paused'
+  },
+  {
+    id: 'landing-news',
+    projectId: 'landing',
+    titleTemplate: '소식 글 {date}',
+    goalTemplate: '랜딩 페이지 소식을 하나 쓴다.',
+    criteriaTemplates: ['초안 작성'],
+    cadence: 'daily',
+    count: 1,
+    assignee: null,
+    status: 'active'
   }
 ]
 
-/** 브라우저 개발 모드 전용 최소 mock. 화면 시나리오는 ui-dev 단계에서 확장한다. */
-export function createMockRecurringApi(): { api: Mock; reset: () => void } {
-  let defs = seed()
+export function createMockRecurringApi(scenario: RecurringScenario = 'ok'): {
+  api: Mock
+  reset: () => void
+} {
+  let defs = seed(scenario)
   const item = (d: RecurringDefinition): RecurringItem => ({
     ...structuredClone(d),
     createdToday: false,
@@ -42,13 +92,19 @@ export function createMockRecurringApi(): { api: Mock; reset: () => void } {
   } as const
   return {
     reset: () => {
-      defs = seed()
+      defs = seed(scenario)
     },
     api: {
-      listRecurring: async () => ({
-        ok: true,
-        value: { items: defs.map(item), unreadable: 0, overLimit: 0 }
-      }),
+      listRecurring: async () => {
+        if (scenario === 'loading') return new Promise(() => {})
+        if (scenario === 'error')
+          return { ok: false, code: 'internal', message: 'mock internal error' }
+        const issues = scenario === 'issues'
+        return {
+          ok: true,
+          value: { items: defs.map(item), unreadable: issues ? 2 : 0, overLimit: issues ? 3 : 0 }
+        }
+      },
       addRecurring: async (req) => {
         if (find(req.id) >= 0)
           return { ok: false, code: 'conflict', message: '같은 id의 반복 업무가 이미 있습니다.' }

@@ -317,3 +317,53 @@
 .staff-step .notice {
   margin-top: var(--space-3);
 }
+
+.recurring {
+  margin-top: var(--space-6);
+}
+.recurring h2:focus {
+  outline: none;
+}
+.recurring__group {
+  margin: var(--space-4) 0;
+}
+.recurring__project {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-3);
+}
+.recurring__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recurring__item {
+  padding: var(--space-3);
+  border: var(--bw) solid var(--border);
+  background: var(--bg-panel, transparent);
+}
+.recurring__item[data-status='paused'] {
+  opacity: 0.8;
+}
+.rform {
+  max-width: 100%;
+}
+.rform__wide {
+  width: 100%;
+  box-sizing: border-box;
+}
+.rform__area {
+  height: auto;
+  resize: vertical;
+  font: inherit;
+}
+.rform__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.rform__row label {
+  display: block;
+  margin-bottom: var(--space-1);
+}

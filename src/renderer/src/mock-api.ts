@@ -19,7 +19,7 @@ import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
-import { createMockRecurringApi } from './mock-recurring'
+import { createMockRecurringApi, parseRecurringScenario } from './mock-recurring'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
 import { mockProjectTemplateApi } from './mock-project-templates'
 import { createMockUsageApi, parseUsageScenario } from './mock-usage'
@@ -62,7 +62,9 @@ const mockPolicyApi = createMockPolicyApi(
   }
 )
 
-const mockRecurringApi = createMockRecurringApi()
+const mockRecurringApi = createMockRecurringApi(
+  parseRecurringScenario(typeof location === 'undefined' ? '' : location.search)
+)
 
 const mockEmployeeApi = createMockEmployeeApi(
   parseEmployeeScenario(typeof location === 'undefined' ? '' : location.search),
