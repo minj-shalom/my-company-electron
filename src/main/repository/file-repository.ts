@@ -77,6 +77,11 @@ export class FileCompanyRepository implements CompanyRepository {
     return run
   }
 
+  /** 직원 채용 같은 복합 쓰기도 결정 resolve, 티켓 이동과 같은 큐에 세운다. */
+  runExclusive<T>(task: () => Promise<T>): Promise<T> {
+    return this.serialize(task)
+  }
+
   async getCompany(): Promise<ApiResult<CompanyInfo>> {
     let mission = ''
     try {

@@ -1,4 +1,5 @@
 import type { WindowApi } from '../../shared/api'
+import type { ApiResult } from '../../shared/result'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
@@ -37,6 +38,12 @@ export function resetMockApi(): void {
   resetMockOnboarding()
 }
 
+const mockNotImplemented = async (): Promise<ApiResult<never>> => ({
+  ok: false,
+  code: 'not-implemented',
+  message: '아직 지원하지 않는 기능입니다.'
+})
+
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
   ...mockRunApi,
@@ -49,6 +56,26 @@ export const mockApi: WindowApi = {
     mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
   ...mockTicketApi.api,
   ...mockDecisionApi.api,
+  // 직원 변경 화면은 T-039. 그 전까지 mock은 템플릿 목록만 돌려주고 쓰기는 not-implemented다.
+  listEmployeeTemplates: async () => ({
+    ok: true,
+    value: [
+      {
+        id: 'developer',
+        title: '개발자',
+        department: '개발팀',
+        role: '범용 구현',
+        description: '범용 구현 담당 (mock).',
+        model: 'sonnet',
+        tools: ['Read', 'Grep', 'Glob'],
+        body: '# 개발자\n'
+      }
+    ]
+  }),
+  createEmployee: mockNotImplemented,
+  updateEmployee: mockNotImplemented,
+  moveEmployee: mockNotImplemented,
+  retireEmployee: mockNotImplemented,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,

@@ -9,6 +9,14 @@ import type {
   CompanyState
 } from './company'
 import type { Decision, DecisionList, DecisionResolveRequest } from './decision'
+import type {
+  EmployeeChangeResult,
+  EmployeeCreateRequest,
+  EmployeeMoveRequest,
+  EmployeeRetireRequest,
+  EmployeeTemplateInfo,
+  EmployeeUpdateRequest
+} from './employee-change'
 import type { OrgChart } from './employee'
 import type { OrgSnapshot } from './org'
 import type {
@@ -57,8 +65,24 @@ export interface WindowApi {
   moveTicket: (req: TicketMoveRequest) => Promise<ApiResult<Ticket>>
   /** 읽지 못한 카드(손상, 너무 큼, 중복 id)는 `unreadable`로 알린다. 같은 id가 pending과 done에 있으면 done만 `items`에 둔다. */
   listDecisions: (status?: Decision['status']) => Promise<ApiResult<DecisionList>>
-  /** 결정 카드를 승인/거절한다 (pending -> done). 도메인 쓰기는 이것과 `moveTicket`, 둘뿐이다. main 검증 규칙은 DecisionResolveRequest 주석 참고. */
+  /**
+   * 결정 카드를 승인/거절한다 (pending -> done). main 검증 규칙은 DecisionResolveRequest 주석 참고.
+   * 도메인 쓰기 채널은 `resolveDecision`, `moveTicket`과 직원 변경 4종(`createEmployee`, `updateEmployee`,
+   * `moveEmployee`, `retireEmployee`, T-035)이다. 모두 열린 회사 폴더 안에서만, 직렬화 큐로 쓴다.
+   */
   resolveDecision: (req: DecisionResolveRequest) => Promise<ApiResult<Decision>>
+  /**
+   * 직원 채용·수정·이동·퇴사 (T-035, 화면은 T-039). 호출자는 main이 항상 `ceo-ui`로 처리하고 요청에 `actor`는 없다 (알 수 없는 키는 거부).
+   * 민감 변경(COO·CTO·CFO·hr 변경, 직원 삭제, tools 확대)은 승인된(done) 결정 카드 번호 `approval`이 없으면 `approval-required`,
+   * 보호 직원(COO, CEO)은 `forbidden`, 이름 중복은 `conflict`. 오류 문구는 고정 문구이며 경로를 담지 않는다.
+   * 직원 템플릿은 앱 번들 상수다. 직원 파일은 회사 폴더 `.claude/agents/`에만 쓴다.
+   */
+  listEmployeeTemplates: () => Promise<ApiResult<EmployeeTemplateInfo[]>>
+  createEmployee: (req: EmployeeCreateRequest) => Promise<ApiResult<EmployeeChangeResult>>
+  updateEmployee: (req: EmployeeUpdateRequest) => Promise<ApiResult<EmployeeChangeResult>>
+  moveEmployee: (req: EmployeeMoveRequest) => Promise<ApiResult<EmployeeChangeResult>>
+  /** 직원 파일을 `company/archive/employees/`로 옮기고 표에서 행을 지운다 (삭제하지 않는다). */
+  retireEmployee: (req: EmployeeRetireRequest) => Promise<ApiResult<EmployeeChangeResult>>
   /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
@@ -94,6 +118,11 @@ export const IPC_CHANNELS = {
   ticketMove: 'ticket:move',
   decisionList: 'decision:list',
   decisionResolve: 'decision:resolve',
+  employeeListTemplates: 'employee:list-templates',
+  employeeCreate: 'employee:create',
+  employeeUpdate: 'employee:update',
+  employeeMove: 'employee:move',
+  employeeRetire: 'employee:retire',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
