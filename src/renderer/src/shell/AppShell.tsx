@@ -33,7 +33,7 @@ const SIDE_TABS: readonly TabItem[] = [
 
 const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'map', label: '사무실 맵' },
-  { id: 'org', label: '조직도' },
+  { id: 'org', label: '인사 관리' },
   { id: 'projects', label: '프로젝트' },
   { id: 'status', label: '현황' }
 ]

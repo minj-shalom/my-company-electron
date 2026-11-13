@@ -52,10 +52,7 @@ export function FirstHireBanner({ onFirstHire }: { onFirstHire: () => void }): R
     <aside className="hire-banner" aria-label="첫 채용 안내">
       <div>
         <p className="hire-banner__title">첫 채용을 시작해 보세요</p>
-        <p className="hint">
-          아직 PM이 없어요. 프로젝트를 열려면 PM이 필요해요. 필요한 직원은 인사팀에 요청하는 것이
-          기본이에요.
-        </p>
+        <p className="hint">아직 PM이 없어요. 프로젝트를 열려면 PM이 필요해요.</p>
       </div>
       <Button variant="primary" data-first-hire-cta onClick={onFirstHire}>
         첫 채용 시작
@@ -79,8 +76,8 @@ export function HrAddBanner({
       <div>
         <p className="hire-banner__title">인사팀이 없어요</p>
         <p className="hint">
-          이 회사에는 인사팀(hr)이 없어서 COO가 직원 채용을 맡길 곳이 없어요. 버튼을 누르면 인사팀을
-          추가해요. 누르기 전에는 아무것도 바뀌지 않아요. 인사팀은 CEO 승인이 필요할 수 있어요.
+          채용을 맡을 인사팀이 아직 없어요. 버튼을 누르면 인사팀을 추가해요. 누르기 전에는 아무것도
+          바뀌지 않아요. CEO 승인이 필요할 수 있어요.
         </p>
         {phase.kind === 'error' && (
           <p role="alert" className="error">

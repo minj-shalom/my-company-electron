@@ -103,21 +103,6 @@ export function defaultSelection(cards: readonly HireCard[]): Set<FirstHireRole>
   return new Set(cards.filter((c) => c.id === 'pm' && !c.exists).map((c) => c.id))
 }
 
-/** '인사팀에 요청'은 요청 파일(T-052)이 생기기 전까지 쓸 수 없다. 이유를 화면에 그대로 보여 준다. */
-export function requestAvailability(providerReady: boolean | null): {
-  enabled: boolean
-  reason: string
-} {
-  const base = '인사팀 요청 기능을 준비하고 있어요. 준비되면 여기서 바로 요청할 수 있어요.'
-  return {
-    enabled: false,
-    reason:
-      providerReady === false
-        ? `${base} AI 제공자도 아직 연결되지 않아서, 지금은 바로 채용으로 시작할 수 있어요.`
-        : base
-  }
-}
-
 const ERROR_TEXT: Partial<Record<DomainErrorCode, string>> = {
   conflict: '같은 직원이 이미 있어요. 조직도를 새로 불러와 확인해 주세요.',
   'approval-required': '이 변경은 앱에서 바로 할 수 없어요. COO에게 요청해 주세요.',

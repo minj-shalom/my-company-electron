@@ -38,13 +38,12 @@ const render = (p: Partial<FirstHireViewProps> = {}): string =>
   )
 
 describe('FirstHireView', () => {
-  it('leads with the hr request (disabled with a reason), pm first, direct hire secondary', () => {
+  it('has one hire button, pm first, no separate request path', () => {
     const html = render()
-    expect(html.indexOf('인사팀에 요청')).toBeLessThan(html.indexOf('바로 채용'))
+    expect(html).toMatch(/btn btn--primary"[^>]*>직원 채용/)
+    expect(html).not.toContain('인사팀에 요청')
+    expect(html).not.toContain('준비 중')
     expect(html.indexOf('PM 설명')).toBeLessThan(html.indexOf('개발 설명'))
-    expect(html).toMatch(/aria-disabled="true"[^>]*aria-describedby="([^"]+)"[^>]*>인사팀에 요청/)
-    expect(html).not.toMatch(/btn btn--primary"[^>]*>인사팀에 요청/)
-    expect(html).toContain('준비 중')
     expect(html).toContain('프로젝트를 열려면 PM이 필요해요')
     expect(html).toContain('필요 없을 수도 있어요')
     expect(html).toContain('나중에')
@@ -53,11 +52,6 @@ describe('FirstHireView', () => {
     const html = render()
     expect(html).toMatch(/<label[^>]*><input type="checkbox" checked=""/)
     expect(html.match(/checked=""/g)?.length).toBe(1)
-  })
-  it('makes direct hire the primary action when no provider is connected', () => {
-    const html = render({ load: ready({ providerReady: false }) })
-    expect(html).toContain('AI 제공자가 아직 연결되지 않았어요')
-    expect(html).toMatch(/btn btn--primary"[^>]*>바로 채용/)
   })
   it('blocks direct hire with nothing selected and while busy', () => {
     expect(render({ selected: new Set() })).toContain('하나 이상 골라')
@@ -72,7 +66,7 @@ describe('FirstHireView', () => {
     expect(html).toContain('이미 있어요')
     const all = render({ load: ready({ cards: cards([true, true]) }) })
     expect(all).toContain('이미 모두 있어요')
-    expect(all).not.toContain('바로 채용')
+    expect(all).not.toMatch(/btn btn--primary/)
   })
   it('renders loading, error, failure and done states', () => {
     expect(render({ load: { kind: 'loading' } })).toContain('role="status"')
@@ -85,7 +79,7 @@ describe('FirstHireView', () => {
     })
     expect(done).toContain('PM을(를) 채용했어요.')
     expect(done).toContain('프로젝트를 추가하고 담당 PM')
-    expect(done).not.toContain('바로 채용')
+    expect(done).not.toMatch(/>직원 채용</)
   })
   it('never uses raw html injection', () => {
     expect(render()).not.toContain('dangerouslySetInnerHTML')
@@ -126,6 +120,7 @@ describe('HireBanners', () => {
   it('shows the hr add notice only when hr is missing, and states nothing changes before the click', () => {
     const out = html(snap(['cto', 'pm'], ['hr']), noop)
     expect(out).toContain('인사팀이 없어요')
+    expect(out).not.toContain('COO')
     expect(out).toContain('누르기 전에는 아무것도 바뀌지 않아요')
     expect(out).not.toContain('첫 채용 시작')
   })

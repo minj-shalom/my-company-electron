@@ -11,7 +11,6 @@ import {
   loadFirstHire,
   needsFirstHire,
   needsHr,
-  requestAvailability,
   rolesToHire,
   runFirstHire,
   runHrAdd
@@ -120,11 +119,6 @@ describe('selection and availability', () => {
     expect([...defaultSelection(cards)]).toEqual(['pm'])
     expect(rolesToHire(cards, new Set(['developer', 'pm']))).toEqual(['pm', 'developer'])
     expect(rolesToHire([{ id: 'pm', exists: true }] as never[], new Set(['pm']))).toEqual([])
-  })
-  it('keeps the hr request disabled with a reason', () => {
-    expect(requestAvailability(true).enabled).toBe(false)
-    expect(requestAvailability(true).reason).toContain('준비')
-    expect(requestAvailability(false).reason).toContain('제공자')
   })
 })
 

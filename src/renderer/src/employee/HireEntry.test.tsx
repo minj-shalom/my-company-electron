@@ -13,21 +13,20 @@ const load = async (s: 'normal' | 'no-hr'): Promise<OrgSnapshot> => {
 }
 
 describe('HireEntry', () => {
-  it('without hr: direct hire is the main button', async () => {
-    const html = renderToStaticMarkup(
-      createElement(HireEntry, { snapshot: await load('no-hr'), onHired: () => undefined })
-    )
-    expect(html).toContain('직원 채용')
-    expect(html).not.toContain('인사팀에 채용 요청')
-  })
-  it('with hr: request is disabled and manual hire is folded', async () => {
-    const html = renderToStaticMarkup(
-      createElement(HireEntry, { snapshot: await load('normal'), onHired: () => undefined })
-    )
-    expect(html).toContain('인사팀에 채용 요청')
-    expect(html).toContain('aria-disabled="true"')
-    expect(html).toContain('<details')
-  })
+  it.each(['no-hr', 'normal'] as const)(
+    '%s: only one hire button, no request or manual menu',
+    async (k) => {
+      const html = renderToStaticMarkup(
+        createElement(HireEntry, { snapshot: await load(k), onHired: () => undefined })
+      )
+      expect(html.match(/직원 채용/g)).toHaveLength(1)
+      expect(html).not.toContain('인사팀에 채용 요청')
+      expect(html).not.toContain('직접 채용')
+      expect(html).not.toContain('COO 대화')
+      expect(html).not.toContain('<details')
+      expect(html).not.toContain('aria-disabled')
+    }
+  )
 })
 
 describe('MemberManager', () => {
