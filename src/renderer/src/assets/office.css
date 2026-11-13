@@ -37,6 +37,10 @@
   position: absolute;
   inset: 0;
 }
+.office-stage__host:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
 .office-stage__host canvas {
   display: block;
   cursor: grab;

@@ -3,6 +3,7 @@ import type { BadgeView } from '../assign/assign-model'
 import type { OfficeStatusMap } from '../../../shared/office'
 import { Button } from '../ui/Button'
 import type { OfficeLayout } from './layout'
+import { mapKeyAction } from './camera'
 import { readPalette, readPixelFontFamily } from './palette'
 import type { OfficeScene } from './scene'
 
@@ -115,13 +116,27 @@ export function OfficeCanvas({
     return () => query.removeEventListener('change', onChange)
   }, [scene])
 
+  // 지도 자체에 포커스가 있을 때만 처리한다 (안쪽 버튼의 Enter/Space 등은 건드리지 않는다).
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (!scene || e.target !== e.currentTarget) return
+    const action = mapKeyAction(e.key, { ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey })
+    if (!action) return
+    e.preventDefault()
+    if (action.kind === 'pan') scene.pan(action.dx, action.dy)
+    else if (action.kind === 'zoom') scene.zoomBy(action.direction)
+    else scene.fit()
+  }
+
   return (
     <div className="office-stage" data-state={state} data-backend={backend || undefined}>
       <div
         ref={hostRef}
         className="office-stage__host"
-        role="img"
-        aria-label="가상 사무실 지도. 같은 내용을 아래 직원 목록에서 키보드로 볼 수 있어요."
+        role="group"
+        tabIndex={state === 'ready' ? 0 : -1}
+        aria-roledescription="지도"
+        aria-label="가상 사무실 지도. 방향키로 이동, 더하기와 빼기로 확대와 축소, 0으로 전체 보기. 같은 내용을 아래 직원 목록에서도 볼 수 있어요."
+        onKeyDown={onKeyDown}
       />
       {state === 'starting' && (
         <p className="office-stage__note" role="status">
