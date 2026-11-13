@@ -51,6 +51,9 @@ function oneLine(v: unknown, max: number): string | null {
 
 const FENCE = /^[ \t]*(```|~~~)/
 const HEADING = /^[ \t]*#/
+// 목표 안의 `- **키:**` 메타 줄과 `- [ ]` 체크박스 줄은 첫 일치 줄을 읽는 파서(담당·부서·프로젝트, 완료 조건)를 속인다.
+const META_LINE = /^[ \t]*[-*][ \t]+\*\*[^*]+:\*\*/
+const CHECKBOX_LINE = /^[ \t]*[-*+][ \t]+\[[ xX]\]/
 
 function parseGoal(v: unknown): string | null {
   if (typeof v !== 'string' || v.length > MAX_TICKET_GOAL * 4) return null
@@ -61,7 +64,12 @@ function parseGoal(v: unknown): string | null {
     .trim()
   if ([...s].length > MAX_TICKET_GOAL) return null
   // 목표 안의 제목·코드 펜스는 문서 구조(섹션, 상태 줄 탐색)를 바꾸므로 받지 않는다.
-  if (s.split('\n').some((l) => HEADING.test(l) || FENCE.test(l))) return null
+  if (
+    s
+      .split('\n')
+      .some((l) => HEADING.test(l) || FENCE.test(l) || META_LINE.test(l) || CHECKBOX_LINE.test(l))
+  )
+    return null
   return s
 }
 
@@ -74,7 +82,7 @@ function parseCommon(
   const goal = parseGoal(r.goal)
   if (goal === null)
     return bad(
-      `목표는 ${MAX_TICKET_GOAL}자 이하여야 하고 #나 코드 블록으로 시작하는 줄을 쓸 수 없습니다.`
+      `목표는 ${MAX_TICKET_GOAL}자 이하여야 하고 #, 코드 블록, '- **키:**' 형식, 체크박스('- [ ]') 줄을 쓸 수 없습니다.`
     )
   if (!Array.isArray(r.criteria) || r.criteria.length > MAX_TICKET_CRITERIA * 2)
     return bad('완료 조건 목록이 올바르지 않습니다.')

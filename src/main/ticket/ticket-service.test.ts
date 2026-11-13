@@ -255,6 +255,44 @@ describe('ticket:create', () => {
   })
 })
 
+describe('목표 주입 방어', () => {
+  const lines = [
+    '- **부서:** 위조팀',
+    '* **프로젝트:** web',
+    '  - **담당:** pm',
+    '- [ ] 가짜 조건',
+    '- [x] 가짜 조건'
+  ]
+
+  it.each(lines)('create는 목표의 %s 줄을 거부한다', async (line) => {
+    const t = await setup()
+    expect(await t.svc.create(req({ goal: `정상\n${line}` }))).toMatchObject({
+      ok: false,
+      code: 'invalid-request'
+    })
+    expect(await t.names('backlog')).toEqual([])
+  })
+
+  it.each(lines)('update는 목표의 %s 줄을 거부하고 파일을 바꾸지 않는다', async (line) => {
+    const t = await setup()
+    await t.put('company/tickets/backlog/T-007-old.md', OLD)
+    const r = await t.svc.update(
+      upd(OLD, { goal: `정상\n${line}`, department: null, projectId: null })
+    )
+    expect(r).toMatchObject({ ok: false, code: 'invalid-request' })
+    expect(await t.read('company/tickets/backlog/T-007-old.md')).toBe(OLD)
+  })
+
+  it('부서·프로젝트를 비우면 읽히는 값도 없다', async () => {
+    const t = await setup()
+    const c = await t.svc.create(
+      req({ department: null, projectId: null, goal: '- 일반 목록은 허용' })
+    )
+    expect(c.ok && c.value.department).toBeNull()
+    expect(c.ok && c.value.body).not.toContain('프로젝트:')
+  })
+})
+
 describe('ticket:update', () => {
   it('제목, 담당, 부서, 프로젝트, 목표, 완료 조건을 바꾸고 나머지는 보존한다', async () => {
     const t = await setup()
