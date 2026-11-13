@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { ChatView } from '../chat/ChatView'
+import { useChat } from '../chat/use-chat'
 import { DecisionInbox } from '../decisions/DecisionInbox'
 import { pendingCount } from '../decisions/decision-view'
 import { useDecisions } from '../decisions/use-decisions'
@@ -34,6 +36,7 @@ const SIDE_TABS: readonly TabItem[] = [
 
 const MAIN_VIEWS: readonly TabItem[] = [
   { id: 'map', label: '사무실 맵' },
+  { id: 'chat', label: 'COO 대화' },
   { id: 'org', label: '인사 관리' },
   { id: 'projects', label: '프로젝트' },
   { id: 'status', label: '현황' },
@@ -82,6 +85,7 @@ export function AppShell({
   const decisions = useDecisions()
   const tickets = useTickets()
   const runLog = useRunLog()
+  const chat = useChat()
   const projects = useProjects()
   const ks = useKillSwitch()
   const audit = useAuditSummary()
@@ -159,6 +163,14 @@ export function AppShell({
           >
             {hiring ? (
               <FirstHireScreen onClose={closeHiring} />
+            ) : view === 'chat' ? (
+              <ChatView
+                {...chat}
+                onOpenDecision={() => {
+                  setTab('decisions')
+                  setPanelOpen(true)
+                }}
+              />
             ) : view === 'settings' ? (
               <SettingsView
                 onProfileDirtyChange={(d) => {
