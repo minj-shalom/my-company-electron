@@ -71,7 +71,7 @@ export interface TickDeps {
    */
   resolveProjectDir: (projectId: string) => Promise<string | null>
   /** cwd마다 어댑터를 만든다 (어댑터의 cwd는 생성 시 고정). 실행은 spawn + 인자 배열이다. */
-  createAdapter: (cwd: string) => ProviderAdapter
+  createAdapter: (cwd: string, employeeId?: string) => ProviderAdapter
   /** `company/reports/<id>.md`에 쓴다 (SafeFs, 덮어쓰기 없음). 같은 id가 있으면 false. */
   writeReport: (id: string, markdown: string) => Promise<'written' | 'exists'>
   createCard: (input: DecisionCardInput) => Promise<string>

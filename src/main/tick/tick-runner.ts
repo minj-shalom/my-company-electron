@@ -154,7 +154,7 @@ export function createTickRunner(
     let launch: Awaited<ReturnType<NonNullable<TickDeps['prepareToolRun']>>> | null = null
     try {
       if (project !== null && deps.prepareToolRun) {
-        const adapter = deps.createAdapter(cwd)
+        const adapter = deps.createAdapter(cwd, sel.assignee)
         launch = await deps.prepareToolRun(
           { projectId: project.id, employeeId: sel.assignee, ticketId: sel.ticket.id },
           adapter.capabilities
@@ -183,7 +183,7 @@ export function createTickRunner(
         return
       }
       const res: ExecResult = await execOnce(
-        deps.createAdapter(cwd),
+        deps.createAdapter(cwd, sel.assignee),
         prompt,
         deps.timeoutMs ?? DEFAULT_TICK_TIMEOUT_MS,
         launch?.launch ?? {},
