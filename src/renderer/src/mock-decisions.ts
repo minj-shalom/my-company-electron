@@ -1,9 +1,18 @@
 import type { WindowApi } from '../../shared/api'
 import type { Decision, DecisionKind, UnreadableDecision } from '../../shared/decision'
 
-/** 브라우저 개발 모드 전용. `?mock-decisions=empty|many|error|conflict`로 상태를 고른다 (없으면 샘플 7종). */
-export type DecisionScenario = 'samples' | 'empty' | 'many' | 'error' | 'conflict'
-const SCENARIOS: readonly DecisionScenario[] = ['samples', 'empty', 'many', 'error', 'conflict']
+/** 브라우저 개발 모드 전용. `?mock-decisions=empty|many|error|conflict|stale|rollback`로 상태를 고른다 (없으면 샘플 7종). */
+export type DecisionScenario =
+  'samples' | 'empty' | 'many' | 'error' | 'conflict' | 'stale' | 'rollback'
+const SCENARIOS: readonly DecisionScenario[] = [
+  'samples',
+  'empty',
+  'many',
+  'error',
+  'conflict',
+  'stale',
+  'rollback'
+]
 
 export function parseDecisionScenario(search: string): DecisionScenario {
   const v = new URLSearchParams(search).get('mock-decisions')
@@ -61,6 +70,56 @@ const SAMPLES: Decision[] = [
     { proposedBy: 'hr', ticketId: 'T-046' }
   ),
   card(
+    10,
+    'proposal',
+    'developer 도구에 Bash 추가 요청',
+    [
+      'developer의 도구와 모델을 바꾸는 변경안입니다.',
+      '근거: 빌드 스크립트를 직접 실행해야 합니다.',
+      '```proposal',
+      '- action: update',
+      '- id: developer',
+      '- model: opus',
+      '- tools: Read, Edit, Write, Bash',
+      '- base: 3f2a9c4e51d7b08a6c1e94f20b7d3a58e6c9f1024a7b5d8e3c0f6a19b2d4e7c8',
+      '```',
+      '',
+      '```proposal',
+      '- action: retire',
+      '- id: web-frontend-dev',
+      '```'
+    ].join('\n'),
+    { proposedBy: 'hr', ticketId: 'T-046' }
+  ),
+  card(
+    11,
+    'proposal',
+    '랜딩 프로젝트 정책 변경',
+    [
+      '랜딩 프로젝트의 실행 정책을 자동 모드로 바꿉니다.',
+      '```proposal',
+      '- action: policy-change',
+      '- project: my-company-landing',
+      '- revision: 7',
+      '- values: {"mode":"auto","dailyLimit":20,"allowPublish":false}',
+      '```'
+    ].join('\n'),
+    { proposedBy: 'coo', ticketId: 'T-047' }
+  ),
+  card(
+    12,
+    'proposal',
+    '알 수 없는 액션이 든 제안',
+    [
+      '형식을 알 수 없는 변경안입니다.',
+      '```proposal',
+      '- action: delete-everything',
+      '- id: x',
+      '```'
+    ].join('\n'),
+    { proposedBy: 'hr' }
+  ),
+  card(
     4,
     'content-approval',
     '블로그 초안 발행 승인',
@@ -84,8 +143,8 @@ const SAMPLES: Decision[] = [
   card(
     6,
     'revert-suggestion',
-    '미승인 정책 변경 감지',
-    '승인 없이 수정된 company/policy.md가 있습니다. 되돌리거나 사후 승인할 수 있습니다.',
+    '미승인 직원 파일 변경 감지',
+    '승인 없이 developer.md의 도구에 Bash가 추가됐습니다. 되돌리거나 사후 승인할 수 있습니다.\n격리된 직원(developer)은 해제될 때까지 실행되지 않습니다.\n상태 해시: 9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a',
     {
       options: [
         { key: 'A', label: '되돌리기', description: '변경을 취소합니다.' },
@@ -152,7 +211,7 @@ function seed(scenario: DecisionScenario): { items: Decision[]; unreadable: Unre
   return { items, unreadable: structuredClone(UNREADABLE) }
 }
 
-type DecisionApi = Pick<WindowApi, 'listDecisions' | 'resolveDecision'>
+type DecisionApi = Pick<WindowApi, 'listDecisions' | 'resolveDecision' | 'applyProposal'>
 
 export function createMockDecisionApi(
   scenario: DecisionScenario,
@@ -171,6 +230,31 @@ export function createMockDecisionApi(
           unreadable: structuredClone(state.unreadable)
         }
       }
+    },
+    applyProposal: async (req) => {
+      await wait()
+      const d = state.items.find((x) => x.id === req.id)
+      if (!d) return { ok: false, code: 'not-found', message: 'mock' }
+      if (d.status === 'done') return { ok: true, value: { ok: false, code: 'not-actionable' } }
+      const o = d.options.find((x) => x.key === req.choice)
+      if (!o) return { ok: false, code: 'invalid-request', message: 'mock' }
+      if (o.label !== '거절' && scenario === 'stale')
+        return { ok: true, value: { ok: false, code: 'stale' } }
+      if (o.label !== '거절' && scenario === 'rollback')
+        return { ok: true, value: { ok: false, code: 'rollback-failed' } }
+      d.status = 'done'
+      d.chosen = req.choice
+      const status =
+        o.label === '거절'
+          ? 'rejected'
+          : d.kind === 'proposal'
+            ? 'applied'
+            : o.label === '사후 승인'
+              ? 'accepted'
+              : o.label === '유지'
+                ? 'dismissed'
+                : 'restored'
+      return { ok: true, value: { ok: true, status, applied: 1 } }
     },
     resolveDecision: async (req) => {
       await wait()

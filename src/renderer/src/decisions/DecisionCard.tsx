@@ -4,6 +4,8 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { KindBadge } from './KindBadge'
+import { QuarantineList, QuestionBody } from './ProposalPanel'
+import { isApprovable, splitQuestion, usesApplyApi } from './proposal-view'
 import {
   focusAfterTransition,
   KIND_META,
@@ -63,7 +65,8 @@ export function DecisionCard({
                 제안자: <strong>{proposer}</strong>
               </p>
             )}
-            <p className="dcard__text">{d.question}</p>
+            <CardText decision={d} />
+            <QuarantineList decision={d} />
             {d.status === 'pending' ? (
               <ResolveForm decision={d} onResolve={onResolve} />
             ) : (
@@ -74,6 +77,12 @@ export function DecisionCard({
       </div>
     </li>
   )
+}
+
+/** 제안 카드는 `proposal` 블록을 변경 목록으로 풀어 보여 주고, 나머지는 텍스트 그대로. */
+function CardText({ decision: d }: { decision: Decision }): React.JSX.Element {
+  if (kindOf(d) !== 'proposal') return <p className="dcard__text">{d.question}</p>
+  return <QuestionBody segments={splitQuestion(d.question)} />
 }
 
 function OptionText({
@@ -128,6 +137,10 @@ function ResolveForm({
   const groupId = useId()
   const memoId = useId()
   const picked = d.options.find((o) => o.key === choice)
+  const apply = usesApplyApi(kindOf(d))
+  // 승인 선택지는 파싱된 변경이 있을 때만 열린다 (알 수 없는 액션이 든 카드는 거절만 가능).
+  const approvable = kindOf(d) !== 'proposal' || isApprovable(splitQuestion(d.question))
+  const locked = (o: Decision['options'][number]): boolean => !approvable && o.label === '승인'
 
   const mounted = useRef(true)
   const confirmRef = useRef<HTMLButtonElement>(null)
@@ -194,6 +207,7 @@ function ResolveForm({
               type="radio"
               name={`${d.id}-choice`}
               value={o.key}
+              disabled={locked(o)}
               checked={choice === o.key}
               onChange={() => {
                 if (busy) return
@@ -205,21 +219,23 @@ function ResolveForm({
           </label>
         ))}
       </fieldset>
-      <div className="field">
-        <label htmlFor={memoId}>메모 (선택, {MEMO_MAX}자 이하)</label>
-        <Input
-          id={memoId}
-          extraClass="dform__memo"
-          value={memo}
-          maxLength={MEMO_MAX}
-          readOnly={busy}
-          autoComplete="off"
-          onChange={(e) => {
-            setMemo(sanitizeMemo(e.target.value))
-            setStep(false, 'edit')
-          }}
-        />
-      </div>
+      {apply ? null : (
+        <div className="field">
+          <label htmlFor={memoId}>메모 (선택, {MEMO_MAX}자 이하)</label>
+          <Input
+            id={memoId}
+            extraClass="dform__memo"
+            value={memo}
+            maxLength={MEMO_MAX}
+            readOnly={busy}
+            autoComplete="off"
+            onChange={(e) => {
+              setMemo(sanitizeMemo(e.target.value))
+              setStep(false, 'edit')
+            }}
+          />
+        </div>
+      )}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -231,7 +247,10 @@ function ResolveForm({
             <strong>
               {picked.key}. {picked.label}
             </strong>
-            (으)로 확정할까요? 확정하면 처리됨으로 옮겨지고 되돌릴 수 없어요.
+            (으)로 확정할까요?{' '}
+            {apply
+              ? '앱이 바로 처리하고 카드를 처리됨으로 옮겨요. 승인하면 직원 파일·조직도가 바뀔 수 있어요.'
+              : '확정하면 처리됨으로 옮겨지고 되돌릴 수 없어요.'}
           </p>
           <div className="dform__actions">
             <Button ref={confirmRef} variant="primary" type="submit" aria-disabled={busy}>
