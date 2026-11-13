@@ -25,7 +25,8 @@ describe('main.css', () => {
     'office',
     'decisions',
     'tickets',
-    'runs'
+    'runs',
+    'hire'
   ])('imports %s.css', (name) => {
     expect(stripped).toContain(`@import './${name}.css'`)
   })

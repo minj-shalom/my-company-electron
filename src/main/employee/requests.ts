@@ -6,6 +6,7 @@ import {
   type EmployeeRetireRequest,
   type EmployeeUpdateRequest
 } from '../../shared/employee-change'
+import { FIRST_HIRE_ROLES, type FirstHireRole } from '../../shared/company-hire'
 import { DECISION_ID, EMPLOYEE_ID } from '../repository/ids'
 import { CONTROL_CHARS, isValidName } from '../org/parse-org-doc'
 import { checkBody, checkDescription, checkModel, checkTools, type Checked } from './agent-file'
@@ -163,4 +164,22 @@ export function parseRetire(raw: unknown): Checked<EmployeeRetireRequest> {
   const a = approval(o.approval)
   if (!a.ok) return a
   return { ok: true, value: { id: id.value, approval: a.value } }
+}
+
+/** 첫 채용 요청. 생략하면 전원. 허용 목록 밖, 중복, 알 수 없는 키는 거부하고 결과는 고정 채용 순서로 돌려준다. */
+export function parseFirstHire(raw: unknown): Checked<FirstHireRole[]> {
+  if (raw === undefined) return { ok: true, value: [...FIRST_HIRE_ROLES] }
+  const o = plain(raw, ['roles'])
+  if (!o) return BAD
+  if (o.roles === undefined) return { ok: true, value: [...FIRST_HIRE_ROLES] }
+  const roles = o.roles
+  if (!Array.isArray(roles) || roles.length === 0 || roles.length > FIRST_HIRE_ROLES.length)
+    return { ok: false, message: '채용할 직원 목록이 올바르지 않습니다.' }
+  const set = new Set<unknown>(roles)
+  if (
+    set.size !== roles.length ||
+    !roles.every((x) => (FIRST_HIRE_ROLES as readonly unknown[]).includes(x))
+  )
+    return { ok: false, message: '채용할 직원 목록이 올바르지 않습니다.' }
+  return { ok: true, value: FIRST_HIRE_ROLES.filter((x) => set.has(x)) }
 }

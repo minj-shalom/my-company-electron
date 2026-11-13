@@ -18,6 +18,7 @@ import type {
   EmployeeUpdateRequest
 } from './employee-change'
 import type { OrgChart } from './employee'
+import type { FirstHireRequest, FirstHireResult, HirePmResult } from './company-hire'
 import type { OrgSnapshot } from './org'
 import type {
   ConnectionTestResult,
@@ -84,6 +85,15 @@ export interface WindowApi {
   /** 직원 파일을 `company/archive/employees/`로 옮기고 표에서 행을 지운다 (삭제하지 않는다). */
   retireEmployee: (req: EmployeeRetireRequest) => Promise<ApiResult<EmployeeChangeResult>>
   /**
+   * PM 한 명을 바로 채용한다 (T-051). 입력 없음. 이미 PM 직급 직원이 있으면 `conflict`로 거부하니 기존 PM을 선택하게 안내한다.
+   * 프로젝트의 `PM:` 줄은 이 호출이 건드리지 않는다. 반환된 `employeeId`로 호출 쪽이 `project:set-pm`(T-037)을 부른다.
+   */
+  hirePm: () => Promise<ApiResult<HirePmResult>>
+  /**
+   * 첫 채용 (T-051). pm, developer를 순서대로 채용한다. 이미 있으면 건너뛰고(`skipped`), 중간에 실패하면 이번 호출에서 채용한 직원을 모두 되돌린다.
+   */
+  firstHire: (req?: FirstHireRequest) => Promise<ApiResult<FirstHireResult>>
+  /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
@@ -123,6 +133,8 @@ export const IPC_CHANNELS = {
   employeeUpdate: 'employee:update',
   employeeMove: 'employee:move',
   employeeRetire: 'employee:retire',
+  companyHirePm: 'company:hire-pm',
+  companyFirstHire: 'company:first-hire',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

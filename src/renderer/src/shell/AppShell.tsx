@@ -1,7 +1,8 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { DecisionInbox } from '../decisions/DecisionInbox'
 import { pendingCount } from '../decisions/decision-view'
 import { useDecisions } from '../decisions/use-decisions'
+import { FirstHireScreen } from '../hire/FirstHireScreen'
 import { OfficeView } from '../office/OfficeView'
 import { OrgView } from '../org/OrgView'
 import { RunLogView } from '../runs/RunLogView'
@@ -26,7 +27,30 @@ const MAIN_VIEWS: readonly TabItem[] = [
 ]
 
 /** 앱 셸. 사이드 패널 탭: 직원 로그(실행 이벤트), 티켓 보드, 결재함. */
-export function AppShell({ companyName }: { companyName: string }): React.JSX.Element {
+export function AppShell({
+  companyName,
+  initialFirstHire = false
+}: {
+  companyName: string
+  /** 온보딩 직후처럼 첫 채용 화면을 먼저 보여 줄지. */
+  initialFirstHire?: boolean
+}): React.JSX.Element {
+  const [hiring, setHiring] = useState(initialFirstHire)
+  const returnFocus = useRef(false)
+  const closeHiring = (): void => {
+    setHiring(false)
+    returnFocus.current = true
+  }
+  // 채용 화면을 닫으면 열었던 CTA(없으면 화면 제목)로 포커스를 돌려 키보드 위치를 잃지 않게 한다.
+  useEffect(() => {
+    if (!hiring && returnFocus.current) {
+      returnFocus.current = false
+      document
+        .querySelector<HTMLElement>('[data-first-hire-cta], #office-heading, #org-heading')
+        ?.focus()
+    }
+  }, [hiring])
+  // 채용 화면을 닫으면 사무실·조직도가 다시 마운트되어 새 조직을 읽는다.
   const [panelOpen, setPanelOpen] = useState(() =>
     initialPanelOpen(window.matchMedia?.('(max-width: 899px)').matches ?? false)
   )
@@ -74,10 +98,17 @@ export function AppShell({ companyName }: { companyName: string }): React.JSX.El
               const narrow = window.matchMedia?.('(max-width: 899px)').matches ?? false
               // 좁은 화면에서는 하단 시트가 조직도를 가리므로 접는다 (버튼으로 다시 열 수 있다).
               if (shouldCollapsePanel(view, id, narrow)) setPanelOpen(false)
+              setHiring(false)
               setView(id)
             }}
           >
-            {view === 'org' ? <OrgView /> : <OfficeView />}
+            {hiring ? (
+              <FirstHireScreen onClose={closeHiring} />
+            ) : view === 'org' ? (
+              <OrgView onFirstHire={() => setHiring(true)} />
+            ) : (
+              <OfficeView onFirstHire={() => setHiring(true)} />
+            )}
           </Tabs>
         </main>
         <aside className="side-panel" id={panelId} hidden={!panelOpen} aria-label="업무 패널">

@@ -227,6 +227,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.employeeUpdate, h.updateEmployee)
   handle(IPC_CHANNELS.employeeMove, h.moveEmployee)
   handle(IPC_CHANNELS.employeeRetire, h.retireEmployee)
+  handle(IPC_CHANNELS.companyHirePm, () => h.hirePm())
+  handle(IPC_CHANNELS.companyFirstHire, h.firstHire)
   handle(IPC_CHANNELS.settingsWeeklyLimitsGet, () => h.getWeeklyLimits())
   handle(IPC_CHANNELS.settingsWeeklyLimitsSave, h.saveWeeklyLimits)
 }

@@ -99,8 +99,21 @@ export interface OrgAgentDetail {
   tools: string[]
 }
 
+/** 새 회사의 기본 직원(T-051). 직원 템플릿 id와 org.md 직급이다. */
+export const BASE_ROLES = [
+  { id: 'cto', title: 'CTO' },
+  { id: 'cfo', title: 'CFO' },
+  { id: 'hr', title: '인사' }
+] as const
+export type BaseRoleId = (typeof BASE_ROLES)[number]['id']
+
 /** `org:get` 응답. 조직 모델과, 직원 파일이 있는 에이전트의 상세. */
 export interface OrgSnapshot {
   org: OrgModel
   agents: OrgAgentDetail[]
+  /**
+   * 조직표에 없는 기본 직원(cto, cfo, hr). 기존 회사는 자동으로 바뀌지 않으므로 알리기만 한다.
+   * 조직표를 읽지 못한 경우(직원 0명)는 판단할 수 없어 빈 배열이다.
+   */
+  missingBaseRoles: BaseRoleId[]
 }

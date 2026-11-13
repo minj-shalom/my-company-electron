@@ -80,7 +80,7 @@ export function CompanyGate(): React.JSX.Element {
     return screen === 'onboarding' ? (
       <OnboardingWizard onFinish={() => setOnboarded(true)} />
     ) : (
-      <AppShell companyName={gate.company.name} />
+      <AppShell companyName={gate.company.name} initialFirstHire={gate.fresh} />
     )
   }
   const notice = gate.kind === 'notice' ? { reason: gate.reason, name: gate.name } : undefined

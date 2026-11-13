@@ -1,6 +1,7 @@
 import { memo, useContext, useId, useMemo, useState } from 'react'
 import type { AvatarStatus, OfficeStatusMap } from '../../../shared/office'
 import type { OrgMember, OrgSnapshot } from '../../../shared/org'
+import { HireBanners } from '../hire/HireBanners'
 import { IssueList } from '../org/IssueList'
 import { MemberDetail } from '../org/MemberDetail'
 import { RovingList } from '../org/RovingList'
@@ -28,13 +29,15 @@ const STATUS_TONE: Record<AvatarStatus, BadgeTone> = {
 }
 
 /** 사무실 맵 화면. 조직 데이터 상태(로딩/오류/빈/정상)를 나누고 정상일 때만 맵과 목록을 그린다. */
-export function OfficeView(): React.JSX.Element {
+export function OfficeView({ onFirstHire }: { onFirstHire?: () => void }): React.JSX.Element {
   const { status, refreshing, refresh } = useOrg()
   const loading = status.kind === 'loading' || refreshing
   return (
     <section className="office" aria-labelledby="office-heading">
       <div className="office__head">
-        <h2 id="office-heading">사무실 맵</h2>
+        <h2 id="office-heading" tabIndex={-1}>
+          사무실 맵
+        </h2>
         <Button size="small" aria-disabled={loading} onClick={() => !loading && refresh()}>
           다시 불러오기
         </Button>
@@ -60,17 +63,28 @@ export function OfficeView(): React.JSX.Element {
           <IssueList issues={status.issues} />
         </Panel>
       )}
-      {status.kind === 'ready' && <OfficeReady snapshot={status.snapshot} issues={status.issues} />}
+      {status.kind === 'ready' && (
+        <OfficeReady
+          snapshot={status.snapshot}
+          issues={status.issues}
+          onFirstHire={onFirstHire}
+          onChanged={refresh}
+        />
+      )}
     </section>
   )
 }
 
 function OfficeReady({
   snapshot,
-  issues
+  issues,
+  onFirstHire,
+  onChanged
 }: {
   snapshot: OrgSnapshot
   issues: OrgIssueView[]
+  onFirstHire?: () => void
+  onChanged: () => void
 }): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null)
   const groups = useMemo(() => groupByDepartment(snapshot), [snapshot])
@@ -84,6 +98,7 @@ function OfficeReady({
 
   return (
     <>
+      <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
       {!hasLiveStatusSource() && (
         <p className="office__notice hint">상태 연동 전이라 모두 대기로 보여요.</p>

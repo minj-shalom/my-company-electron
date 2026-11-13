@@ -7,7 +7,8 @@ import type {
   EmployeeWarning,
   SensitiveReason
 } from '../../shared/employee-change'
-import type { OrgMember, OrgModel } from '../../shared/org'
+import type { FirstHireRole, FirstHireResult, HirePmResult } from '../../shared/company-hire'
+import { BASE_ROLES, type OrgMember, type OrgModel } from '../../shared/org'
 import type { ApiResult, DomainErrorCode } from '../../shared/result'
 import {
   addMember,
@@ -21,7 +22,14 @@ import { AGENTS_DIR, ORG_FILE } from '../repository/parse-org'
 import { MAX_FILE_BYTES, FsGuardError, type SafeFs } from '../repository/safe-fs'
 import type { OrgMemberInput } from '../../shared/org'
 import { buildAgentFile, isToolsExpansion, readTools, verifyAgentFile } from './agent-file'
-import { parseActor, parseCreate, parseMove, parseRetire, parseUpdate } from './requests'
+import {
+  parseActor,
+  parseCreate,
+  parseFirstHire,
+  parseMove,
+  parseRetire,
+  parseUpdate
+} from './requests'
 import { EMPLOYEE_TEMPLATES } from './templates'
 
 export const ARCHIVE_DIR = 'company/archive/employees'
@@ -32,6 +40,10 @@ const PROTECTED_TITLES: ReadonlySet<string> = new Set(['COO', 'CEO'])
 const SENSITIVE_IDS: ReadonlySet<string> = new Set(['cto', 'cfo', 'hr'])
 const SENSITIVE_TITLES: ReadonlySet<string> = new Set(['CTO', 'CFO', '인사'])
 const PM_TITLE = 'PM'
+/** 직급 비교용 정규화. 표기 변형(`Pm`, ` PM `)으로 중복 채용을 피하지 못하게 한다. */
+export const normalizeTitle = (t: string): string => t.trim().toLowerCase()
+const PM_ID = 'pm'
+const PM_DEPARTMENT = '기획팀'
 
 /** 프로젝트 배정 조회. T-045가 실제 구현으로 교체하며, 그 전에는 항상 빈 목록이다. */
 export interface AssignmentSource {
@@ -85,98 +97,203 @@ export class EmployeeService {
 
   // 모든 입력(raw)은 신뢰하지 않고 여기서 다시 검증한다. IPC가 아니라 main 코드가 직접 불러도 같다.
   create(raw: unknown, actor: EmployeeActor): Promise<ApiResult<EmployeeChangeResult>> {
-    return this.run(actor, async () => {
-      const req = parseCreate(raw)
-      if (!req.ok) return fail('invalid-request', req.message)
-      const r = req.value
-      const template = EMPLOYEE_TEMPLATES.find((t) => t.id === r.templateId)
-      if (!template) return fail('invalid-request', '알 수 없는 템플릿입니다.')
-      const title = r.title ?? template.title
-      const role = r.role ?? template.role
+    return this.run(actor, () => this.createLocked(raw, actor))
+  }
 
+  /** 직렬화 큐 안에서만 부른다 (`create`, `firstHire`, `hirePm`). */
+  private async createLocked(
+    raw: unknown,
+    actor: EmployeeActor
+  ): Promise<ApiResult<EmployeeChangeResult>> {
+    const req = parseCreate(raw)
+    if (!req.ok) return fail('invalid-request', req.message)
+    const r = req.value
+    const template = EMPLOYEE_TEMPLATES.find((t) => t.id === r.templateId)
+    if (!template) return fail('invalid-request', '알 수 없는 템플릿입니다.')
+    const title = r.title ?? template.title
+    const role = r.role ?? template.role
+
+    const org = await this.loadOrgModel()
+    if (!org.ok) return org
+    const members = org.value.members
+    if (members.some((m) => m.agentId === r.id || m.title === title))
+      return fail('conflict', '이미 있는 직급 또는 직원입니다.')
+    if (!members.some((m) => m.title === r.reportsTo))
+      return fail('invalid-request', '보고 대상이 표에 없습니다.')
+    if (await this.deps.fs.exists(agentPath(r.id)))
+      return fail('conflict', '이미 있는 직급 또는 직원입니다.')
+
+    const reasons: SensitiveReason[] = []
+    if (
+      SENSITIVE_IDS.has(r.id) ||
+      SENSITIVE_IDS.has(template.id) ||
+      SENSITIVE_TITLES.has(title) ||
+      PROTECTED_TITLES.has(title)
+    )
+      reasons.push('protected-role')
+    // 빠진 기본 직원(cto, cfo, hr)을 템플릿 그대로 복구하는 채용은 CEO 클릭(`ceo-ui`) 자체가 승인이다. 다른 호출자는 카드가 필요하다.
+    // 이미 있는 보호 파일을 바꾸는 것이 아니고(위에서 중복은 거부) 내용이 고정 템플릿이라 카드를 요구하지 않는다.
+    const isBaseRestore =
+      actor === 'ceo-ui' &&
+      r.id === template.id &&
+      r.title === undefined &&
+      r.role === undefined &&
+      BASE_ROLES.some((b) => b.id === template.id && b.title === template.title)
+    const gate =
+      isBaseRestore && r.approval === undefined
+        ? ({ ok: true, value: null } as const)
+        : await this.gate(reasons, r.approval)
+    if (!gate.ok) return gate
+
+    const body = `${template.body.trim()}\n`
+    const text = buildAgentFile(
+      {
+        name: r.id,
+        description: template.description,
+        tools: template.tools.join(', '),
+        model: template.model
+      },
+      body
+    )
+    const expected = {
+      name: r.id,
+      description: template.description,
+      model: template.model,
+      tools: template.tools,
+      body
+    }
+    if (Buffer.byteLength(text, 'utf8') > MAX_FILE_BYTES || !verifyAgentFile(text, expected))
+      return fail('invalid-request', '직원 파일을 올바르게 만들 수 없어 취소했습니다.')
+
+    // 파일을 먼저 만들고(no-clobber) 표에 행을 추가한다. 행 추가가 실패하면 만든 파일을 되돌린다.
+    try {
+      await this.deps.fs.writeText(agentPath(r.id), text, false)
+    } catch (e) {
+      if (e instanceof FsGuardError && e.kind === 'exists')
+        return fail('conflict', '이미 있는 직급 또는 직원입니다.')
+      return fail('internal', '직원 파일을 쓰지 못했습니다.')
+    }
+    const rollback = async (): Promise<void> => {
+      await this.removeIfUnchanged(agentPath(r.id), text)
+    }
+    try {
+      const written = await this.deps.fs.readText(agentPath(r.id))
+      if (written !== text || !verifyAgentFile(written, expected)) {
+        await rollback()
+        return fail('internal', '쓴 직원 파일을 확인하지 못해 되돌렸습니다.')
+      }
+      const input: OrgMemberInput = {
+        title,
+        agentId: r.id,
+        department: r.department,
+        reportsTo: r.reportsTo,
+        role
+      }
+      const added = await this.ops.addMember(this.deps.fs, input)
+      if (!added.ok) {
+        await rollback()
+        return mapOrgFailure(added)
+      }
+    } catch {
+      await rollback()
+      return fail('internal', '직원을 추가하지 못해 되돌렸습니다.')
+    }
+    return this.done(
+      'create',
+      r.id,
+      actor,
+      r.approval,
+      reasons,
+      ['file', 'row'],
+      [agentPath(r.id), ORG_FILE]
+    )
+  }
+
+  /**
+   * PM 한 명을 바로 채용한다. PM 직급 직원이 이미 있으면 거부한다 (중복 채용 방지).
+   * 프로젝트의 `PM:` 줄은 건드리지 않는다.
+   */
+  hirePm(actor: EmployeeActor): Promise<ApiResult<HirePmResult>> {
+    return this.run(actor, async () => {
       const org = await this.loadOrgModel()
       if (!org.ok) return org
       const members = org.value.members
-      if (members.some((m) => m.agentId === r.id || m.title === title))
-        return fail('conflict', '이미 있는 직급 또는 직원입니다.')
-      if (!members.some((m) => m.title === r.reportsTo))
-        return fail('invalid-request', '보고 대상이 표에 없습니다.')
-      if (await this.deps.fs.exists(agentPath(r.id)))
-        return fail('conflict', '이미 있는 직급 또는 직원입니다.')
-
-      const reasons: SensitiveReason[] = []
-      if (
-        SENSITIVE_IDS.has(r.id) ||
-        SENSITIVE_IDS.has(template.id) ||
-        SENSITIVE_TITLES.has(title) ||
-        PROTECTED_TITLES.has(title)
+      if (members.some((m) => normalizeTitle(m.title) === normalizeTitle(PM_TITLE)))
+        return fail('conflict', '이미 PM이 있습니다. 기존 PM을 선택하세요.')
+      if (members.some((m) => m.agentId === PM_ID))
+        return fail(
+          'conflict',
+          '`pm` 직원 id를 다른 직급의 직원이 쓰고 있습니다. 조직도를 확인하세요.'
+        )
+      const hired = await this.createLocked(
+        { templateId: PM_ID, id: PM_ID, department: PM_DEPARTMENT, reportsTo: 'COO' },
+        actor
       )
-        reasons.push('protected-role')
-      const gate = await this.gate(reasons, r.approval)
-      if (!gate.ok) return gate
+      return hired.ok
+        ? { ok: true, value: { employeeId: PM_ID, record: hired.value.record } }
+        : hired
+    })
+  }
 
-      const body = `${template.body.trim()}\n`
-      const text = buildAgentFile(
-        {
-          name: r.id,
-          description: template.description,
-          tools: template.tools.join(', '),
-          model: template.model
-        },
-        body
-      )
-      const expected = {
-        name: r.id,
-        description: template.description,
-        model: template.model,
-        tools: template.tools,
-        body
-      }
-      if (Buffer.byteLength(text, 'utf8') > MAX_FILE_BYTES || !verifyAgentFile(text, expected))
-        return fail('invalid-request', '직원 파일을 올바르게 만들 수 없어 취소했습니다.')
-
-      // 파일을 먼저 만들고(no-clobber) 표에 행을 추가한다. 행 추가가 실패하면 만든 파일을 되돌린다.
-      try {
-        await this.deps.fs.writeText(agentPath(r.id), text, false)
-      } catch (e) {
-        if (e instanceof FsGuardError && e.kind === 'exists')
-          return fail('conflict', '이미 있는 직급 또는 직원입니다.')
-        return fail('internal', '직원 파일을 쓰지 못했습니다.')
-      }
-      const rollback = async (): Promise<void> => {
-        await this.removeIfUnchanged(agentPath(r.id), text)
-      }
-      try {
-        const written = await this.deps.fs.readText(agentPath(r.id))
-        if (written !== text || !verifyAgentFile(written, expected)) {
-          await rollback()
-          return fail('internal', '쓴 직원 파일을 확인하지 못해 되돌렸습니다.')
+  /**
+   * 첫 채용: pm, developer를 순서대로 채용한다. 이미 있으면(직급 또는 파일 id) 건너뛴다.
+   * 하나라도 실패하면 이번 호출에서 채용한 직원(파일과 표 행)을 모두 되돌리고 그 실패를 돌려준다.
+   */
+  firstHire(raw: unknown, actor: EmployeeActor): Promise<ApiResult<FirstHireResult>> {
+    return this.run(actor, async () => {
+      const req = parseFirstHire(raw)
+      if (!req.ok) return fail('invalid-request', req.message)
+      const records: ChangeRecord[] = []
+      const skipped: FirstHireRole[] = []
+      // records에는 이번 호출이 방금 만든 직원만 들어 있다. 건너뛴 기존 직원이나 충돌한 기존 파일은 지우지 않는다.
+      const undo = async (): Promise<boolean> => {
+        let clean = true
+        for (const rec of [...records].reverse()) {
+          try {
+            const removed = await this.ops.removeMember(this.deps.fs, rec.employeeId)
+            if (!removed.ok) clean = false
+            await this.deps.fs.remove(agentPath(rec.employeeId))
+          } catch {
+            clean = false
+          }
         }
-        const input: OrgMemberInput = {
-          title,
-          agentId: r.id,
-          department: r.department,
-          reportsTo: r.reportsTo,
-          role
-        }
-        const added = await this.ops.addMember(this.deps.fs, input)
-        if (!added.ok) {
-          await rollback()
-          return mapOrgFailure(added)
-        }
-      } catch {
-        await rollback()
-        return fail('internal', '직원을 추가하지 못해 되돌렸습니다.')
+        return clean
       }
-      return this.done(
-        'create',
-        r.id,
-        actor,
-        r.approval,
-        reasons,
-        ['file', 'row'],
-        [agentPath(r.id), ORG_FILE]
-      )
+      for (const role of req.value) {
+        const template = EMPLOYEE_TEMPLATES.find((t) => t.id === role)
+        const org = await this.loadOrgModel()
+        if (!template || !org.ok) {
+          await undo()
+          return org.ok ? fail('internal', '템플릿을 찾을 수 없습니다.') : org
+        }
+        const members = org.value.members
+        if (
+          members.some(
+            (m) => m.agentId === role || normalizeTitle(m.title) === normalizeTitle(template.title)
+          )
+        ) {
+          skipped.push(role)
+          continue
+        }
+        // 개발자는 CTO 아래에 둔다. CTO가 없는 회사(복구 전)에서는 COO가 보고 대상이다.
+        const reportsTo =
+          role === 'developer' && members.some((m) => m.title === 'CTO') ? 'CTO' : 'COO'
+        const hired = await this.createLocked(
+          { templateId: role, id: role, department: template.department, reportsTo },
+          actor
+        )
+        if (!hired.ok) {
+          const clean = await undo()
+          return clean
+            ? hired
+            : fail(
+                'internal',
+                '채용 중 실패했고 일부 직원을 되돌리지 못했습니다. 조직도를 확인하세요.'
+              )
+        }
+        records.push(hired.value.record)
+      }
+      return { ok: true, value: { records, skipped } }
     })
   }
 
@@ -427,13 +544,13 @@ export class EmployeeService {
   // ---- 내부 ----
 
   /** 호출자 검증, 직렬화 큐, 호출 컨텍스트(T-052)를 한 곳에서 처리한다. 예외는 고정 문구로 바꾼다. */
-  private run(
+  private run<T>(
     actorRaw: EmployeeActor,
-    task: () => Promise<ApiResult<EmployeeChangeResult>>
-  ): Promise<ApiResult<EmployeeChangeResult>> {
+    task: () => Promise<ApiResult<T>>
+  ): Promise<ApiResult<T>> {
     const actor = parseActor(actorRaw)
     if (!actor) return Promise.resolve(fail('invalid-request', '호출자가 올바르지 않습니다.'))
-    const scoped = (): Promise<ApiResult<EmployeeChangeResult>> =>
+    const scoped = (): Promise<ApiResult<T>> =>
       this.deps.runAs ? this.deps.runAs(actor, task) : task()
     return this.deps.exclusive(async () => {
       try {

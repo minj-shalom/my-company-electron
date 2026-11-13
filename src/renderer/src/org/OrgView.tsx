@@ -1,6 +1,7 @@
 import { useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
 import { Badge } from '../ui/Badge'
+import { HireBanners } from '../hire/HireBanners'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import {
@@ -18,13 +19,15 @@ import { TabbableContext } from './tabbable-context'
 import { useOrg } from './use-org'
 
 /** 조직도 화면. 상태(로딩/오류/빈/정상)를 나누고 정상일 때만 본문을 그린다. 직원 텍스트는 모두 React 텍스트로 렌더링한다. */
-export function OrgView(): React.JSX.Element {
+export function OrgView({ onFirstHire }: { onFirstHire?: () => void }): React.JSX.Element {
   const { status, refreshing, refresh } = useOrg()
   const loading = status.kind === 'loading' || refreshing
   return (
     <section className="org" aria-labelledby="org-heading">
       <div className="org__head">
-        <h2 id="org-heading">조직도</h2>
+        <h2 id="org-heading" tabIndex={-1}>
+          조직도
+        </h2>
         <Button size="small" aria-disabled={loading} onClick={() => !loading && refresh()}>
           다시 불러오기
         </Button>
@@ -32,17 +35,19 @@ export function OrgView(): React.JSX.Element {
       <div role="status" aria-live="polite" className={loading ? 'hint' : 'visually-hidden'}>
         {loading && '조직도를 불러오고 있어요…'}
       </div>
-      <OrgBody status={status} onRetry={refresh} />
+      <OrgBody status={status} onRetry={refresh} onFirstHire={onFirstHire} />
     </section>
   )
 }
 
 function OrgBody({
   status,
-  onRetry
+  onRetry,
+  onFirstHire
 }: {
   status: OrgStatus
   onRetry: () => void
+  onFirstHire?: () => void
 }): React.JSX.Element | null {
   switch (status.kind) {
     case 'loading':
@@ -68,16 +73,27 @@ function OrgBody({
         </Panel>
       )
     case 'ready':
-      return <OrgReady snapshot={status.snapshot} issues={status.issues} />
+      return (
+        <OrgReady
+          snapshot={status.snapshot}
+          issues={status.issues}
+          onFirstHire={onFirstHire}
+          onChanged={onRetry}
+        />
+      )
   }
 }
 
 function OrgReady({
   snapshot,
-  issues
+  issues,
+  onFirstHire,
+  onChanged
 }: {
   snapshot: OrgSnapshot
   issues: OrgIssueView[]
+  onFirstHire?: () => void
+  onChanged: () => void
 }): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null)
   const groups = groupByDepartment(snapshot)
@@ -94,6 +110,7 @@ function OrgReady({
 
   return (
     <>
+      <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
       <div className="org__layout" data-selected={member ? 'true' : 'false'}>
         <div

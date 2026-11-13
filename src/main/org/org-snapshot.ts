@@ -1,4 +1,4 @@
-import type { OrgAgentDetail, OrgSnapshot } from '../../shared/org'
+import { BASE_ROLES, type OrgAgentDetail, type OrgModel, type OrgSnapshot } from '../../shared/org'
 import { splitFrontmatter, asString } from '../repository/markdown'
 import { AGENTS_DIR } from '../repository/parse-org'
 import type { SafeFs } from '../repository/safe-fs'
@@ -48,6 +48,14 @@ async function mapLimited<T, R>(
   return out
 }
 
+/** 직급이나 직원 파일 id 어느 쪽으로든 이미 있으면 빠진 것이 아니다. */
+export function findMissingBaseRoles(org: OrgModel): OrgSnapshot['missingBaseRoles'] {
+  if (org.members.length === 0) return []
+  return BASE_ROLES.filter(
+    (r) => !org.members.some((m) => m.title === r.title || m.agentId === r.id)
+  ).map((r) => r.id)
+}
+
 /** `org:get` 본문. 조직 모델과, 직원 파일이 있는 에이전트의 frontmatter 상세를 합친다. */
 export async function buildOrgSnapshot(fs: SafeFs): Promise<OrgSnapshot> {
   const org = await loadOrg(fs)
@@ -55,5 +63,5 @@ export async function buildOrgSnapshot(fs: SafeFs): Promise<OrgSnapshot> {
     .filter((m) => m.kind === 'agent' && m.fileExists && m.agentId !== null)
     .map((m) => m.agentId as string)
   const agents = await mapLimited([...new Set(ids)], READ_CONCURRENCY, (id) => readAgent(fs, id))
-  return { org, agents }
+  return { org, agents, missingBaseRoles: findMissingBaseRoles(org) }
 }
