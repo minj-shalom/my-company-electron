@@ -64,6 +64,7 @@ import type {
   TicketUpdateRequest
 } from './ticket'
 import type { RunEvent, RunStartRequest, RunStartResult } from './run'
+import type { SchedulerRunNowResult, SchedulerStatus } from './scheduler'
 
 /** main/preload/renderer 공용 `window.api` 계약. 채널을 추가하면 여기와 preload를 함께 갱신한다. */
 export interface WindowApi {
@@ -205,6 +206,12 @@ export interface WindowApi {
   getWeeklyLimits: () => Promise<ApiResult<WeeklyLimit[]>>
   /** 주간 한도 전체를 교체 저장한다. 목록에 없는 제공자는 한도 없음. 토큰/인증 정보는 이 계약에 없다. */
   saveWeeklyLimits: (req: WeeklyLimitsSaveRequest) => Promise<ApiResult<WeeklyLimit[]>>
+  /**
+   * 오토파일럿 스케줄러(T-015). 설정(간격·활동 시간·켜기/끄기)은 `company/schedule.md`가 원본이고 이 API로는 쓰지 않는다.
+   * `runSchedulerNow`는 설정과 무관하게 한 번 실행을 시작한다(틱 완료를 기다리지 않음). 이미 실행 중이면 `{ started: false, reason: 'busy' }`.
+   */
+  getSchedulerStatus: () => Promise<ApiResult<SchedulerStatus>>
+  runSchedulerNow: () => Promise<ApiResult<SchedulerRunNowResult>>
   /** run 이벤트 구독. 반환된 함수로 해제한다. */
   onRunEvent: (listener: (event: RunEvent) => void) => () => void
 }
@@ -252,6 +259,8 @@ export const IPC_CHANNELS = {
   policyGet: 'policy:get',
   policySave: 'policy:save',
   policyListSummaries: 'policy:list-summaries',
+  schedulerStatus: 'scheduler:status',
+  schedulerRunNow: 'scheduler:run-now',
   gateKillSwitchGet: 'gate:kill-switch-get',
   gateKillSwitchSet: 'gate:kill-switch-set',
   auditSummary: 'audit:summary',
