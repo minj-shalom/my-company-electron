@@ -28,6 +28,17 @@ export interface GateServiceDeps {
   now?: () => Date
 }
 
+/** 키를 정렬해 직렬화한다 (같은 입력이면 키 순서와 무관하게 같은 문자열). */
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`
+  if (typeof v === 'object' && v !== null)
+    return `{${Object.keys(v)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson((v as Record<string, unknown>)[k])}`)
+      .join(',')}}`
+  return JSON.stringify(v) ?? 'null'
+}
+
 const CARD_KIND: Record<LimitedAction, 'git-confirm' | 'content-approval'> = {
   push: 'git-confirm',
   merge: 'git-confirm',
@@ -117,7 +128,7 @@ export class GateService {
     why: string
   ): Promise<GateResult> {
     const key = `policy|${createHash('sha256')
-      .update(`${ctx.projectId}|${action}|${JSON.stringify(raw) ?? ''}`)
+      .update(`${ctx.projectId}|${action}|${stableJson(raw)}`)
       .digest('hex')}`
     const existing = await this.deps.ledger.cardFor(key)
     if (existing !== null)

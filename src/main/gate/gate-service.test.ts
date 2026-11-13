@@ -375,4 +375,12 @@ describe('audit and tool inputs', () => {
     expect(a.cardId).toBe(b.cardId)
     expect(c.cardId).not.toBe(a.cardId)
   })
+
+  it('unreadable-policy card key ignores input key order', async () => {
+    const k = await kit()
+    k.policy.value = null
+    const a = await k.svc.call(k.ctx, 'gate_push', { branch: 'feature/x', extra: 1 })
+    const b = await k.svc.call(k.ctx, 'gate_push', { extra: 1, branch: 'feature/x' })
+    expect(a.cardId).toBe(b.cardId)
+  })
 })

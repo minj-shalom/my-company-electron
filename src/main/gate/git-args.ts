@@ -29,14 +29,16 @@ export function checkBranchName(name: string): string {
 }
 
 /** 전역 `-c`는 훅과 외부 프로토콜을 끄는 고정 값만 쓴다 (에이전트가 쓸 수 있는 저장소 설정으로 실행을 가로채지 못하게). */
-const GLOBAL_CONFIG = [
+export const GLOBAL_CONFIG = [
   '-c',
   `core.hooksPath=${devNull}`,
   '-c',
   'protocol.ext.allow=never',
   '-c',
   'core.fsmonitor=false',
+  '-c',
   'core.sshCommand=ssh',
+  '-c',
   'push.default=nothing'
 ]
 // 한계: credential.helper는 비우지 않는다 (https 푸시가 사용자의 자격 증명 도우미에 의존한다).
@@ -108,7 +110,7 @@ const FORBIDDEN_SUBCOMMANDS = new Set([
 const GIT_READ = new Set(['symbolic-ref', 'rev-parse'])
 
 /**
- * 실행 직전 최종 확인. 허용되는 것은 (1) 고정 `-c` 3쌍 + 읽기 명령, (2) 고정 `-c` 3쌍 + `push origin refs/heads/X:refs/heads/X`,
+ * 실행 직전 최종 확인. 허용되는 것은 (1) 고정 `-c` 5쌍 + 읽기 명령, (2) 고정 `-c` 5쌍 + `push origin refs/heads/X:refs/heads/X`,
  * (3) `gh pr view|merge`뿐이다. 강제·삭제·재작성 계열 인자와 `+`/`:` 로 시작하는 refspec은 예외로 거부한다.
  */
 export function assertSafeArgs(command: 'git' | 'gh', args: readonly string[]): void {

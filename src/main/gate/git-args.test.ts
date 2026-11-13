@@ -1,6 +1,10 @@
-import { devNull } from 'node:os'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { devNull, tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  GLOBAL_CONFIG,
   gitPushUrlConfig,
   GitArgError,
   assertSafeArgs,
@@ -21,6 +25,30 @@ const G0 = [
   'core.fsmonitor=false'
 ]
 const G = [...G0, '-c', 'core.sshCommand=ssh', '-c', 'push.default=nothing']
+
+describe('real git accepts the fixed config prefix', () => {
+  it('runs read-only commands in a temp repo (no push)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mc-git-args-'))
+    try {
+      const run = (args: string[]): ReturnType<typeof spawnSync> =>
+        spawnSync('git', args, { cwd: dir, encoding: 'utf8' })
+      expect(run(['init', '-q', '-b', 'feature/x']).status).toBe(0)
+      run(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'i'])
+      expect(GLOBAL_CONFIG.filter((a) => a === '-c')).toHaveLength(5)
+      const head = run(gitSymbolicHead())
+      expect(head.status).toBe(0)
+      expect(String(head.stdout).trim()).toBe('refs/heads/feature/x')
+      const rev = run(gitResolveBranch('feature/x'))
+      expect(rev.status).toBe(0)
+      expect(String(rev.stdout).trim()).toMatch(/^[0-9a-f]{40}$/)
+      // pushurl가 없으면 종료 코드 1과 빈 출력이다 (오류가 아니라 "없음").
+      expect(String(run(gitPushUrlConfig()).stdout).trim()).toBe('')
+      expect(run([...GLOBAL_CONFIG, 'rev-parse', 'HEAD']).status).toBe(0)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('git config hardening', () => {
   it('pins ssh command and allows only the read-only pushurl lookup', () => {
