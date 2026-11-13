@@ -29,6 +29,11 @@ import { integrityFor } from './integrity/integrity-runtime'
 import { createProposalHandlers, type ProposalHandlers } from './proposal/proposal-ipc'
 import { createProfileHandlers, type ProfileHandlers } from './company/profile-ipc'
 import { createRecurringHandlers, type RecurringHandlers } from './recurring/recurring-ipc'
+import {
+  createPublicationHandlers,
+  publicationServiceFor,
+  type PublicationHandlers
+} from './publication/publication-ipc'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import {
   createProviderSelectionHandlers,
@@ -120,6 +125,7 @@ export function createDomainHandlers(deps: DomainDeps): {
   ProjectHandlers &
   PolicyHandlers &
   RecurringHandlers &
+  PublicationHandlers &
   ProfileHandlers &
   ProviderSelectionHandlers &
   GateHandlers &
@@ -131,6 +137,7 @@ export function createDomainHandlers(deps: DomainDeps): {
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createPolicyHandlers({ context: deps.context }),
     ...createRecurringHandlers({ context: deps.context, homeDir: deps.homeDir }),
+    ...createPublicationHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProfileHandlers({ context: deps.context }),
     ...createProviderSelectionHandlers({ context: deps.context, providers: deps.providers }),
     ...createGateHandlers({
@@ -222,6 +229,15 @@ export function createDomainHandlers(deps: DomainDeps): {
       // 필요한 필드만 복사해 넘긴다 (추가 필드 전달 차단).
       const r = await guarded(() => repositoryFor(deps).resolveDecision({ id, choice, memo }))
       if (!r.ok) return r
+      // 초안 승인 카드(T-050)의 승인(A)·거절(B)을 발행 기록에 반영한다. 반영하지 못해도 카드 결정은 유효하고 항목은 draft로 남는다.
+      if (r.value.ok && card.ok && card.value.ok && card.value.value.kind === 'content-approval')
+        await appWrite(deps, async () => {
+          await publicationServiceFor({
+            context: deps.context,
+            homeDir: deps.homeDir
+          }).onCardResolved(id, choice, typeof memo === 'string' ? memo : null)
+          return { ok: true, value: null }
+        })(undefined).catch(() => undefined)
       // 저장소의 실패 사유는 고정 문구로 바꿔 돌려준다 (파일명/경로 노출 방지).
       return r.value.ok ? r.value : fail(...(RESOLVE_FAILURES[r.value.code] ?? RESOLVE_INTERNAL))
     },
@@ -331,6 +347,15 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.recurringUpdate, write(h.updateRecurring))
   handle(IPC_CHANNELS.recurringSetStatus, write(h.setRecurringStatus))
   handle(IPC_CHANNELS.recurringRemove, write(h.removeRecurring))
+  // 발행 기록(`company/publishing/**`)은 보호 대상이라 쓰는 호출은 앱 쓰기로 감싼다. 목록·본문 열람·진행 집계는 읽기 전용이다.
+  handle(IPC_CHANNELS.publicationList, h.listPublications)
+  handle(IPC_CHANNELS.publicationScan, write(h.scanPublications))
+  handle(IPC_CHANNELS.publicationReadDraft, h.readPublicationDraft)
+  handle(IPC_CHANNELS.publicationRequestApproval, write(h.requestPublicationApproval))
+  handle(IPC_CHANNELS.publicationRequestPublish, write(h.requestPublish))
+  handle(IPC_CHANNELS.publicationPublish, write(h.publishPublication))
+  handle(IPC_CHANNELS.publicationMarkPublished, write(h.markPublished))
+  handle(IPC_CHANNELS.publicationProgress, h.getPublicationProgress)
   handle(IPC_CHANNELS.projectListTemplates, () => h.listProjectTemplates())
   // 정책 파일(`company/policies/**`)을 만들므로 앱 쓰기로 감싼다.
   handle(IPC_CHANNELS.projectApplyTemplate, write(h.applyProjectTemplate))

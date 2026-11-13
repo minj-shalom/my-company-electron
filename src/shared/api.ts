@@ -39,6 +39,19 @@ import type {
   RecurringList,
   RecurringSetStatusRequest
 } from './recurring'
+import type {
+  PublicationDraftContent,
+  PublicationEntry,
+  PublicationItemRequest,
+  PublicationList,
+  PublicationMarkPublishedRequest,
+  PublicationProgress,
+  PublicationProjectRequest,
+  PublicationPublishResult,
+  PublicationReadRequest,
+  PublicationRequestApprovalRequest,
+  PublicationRequestApprovalResult
+} from './publication'
 import type { ProposalApplyRequest, ProposalApplyResult } from './proposal'
 import type { IntegrityActionRequest, IntegrityActionResult } from './integrity'
 import type {
@@ -222,6 +235,29 @@ export interface WindowApi {
   setRecurringStatus: (req: RecurringSetStatusRequest) => Promise<ApiResult<RecurringDefinition>>
   removeRecurring: (req: RecurringIdRequest) => Promise<ApiResult<{ id: string }>>
   /**
+   * 산출물·발행 기록(T-050). 원본은 `company/publishing/<프로젝트 id>.md`(앱만 쓴다)이고 산출물 폴더는 읽기 전용으로만 연다.
+   * `listPublications`: 기록 목록(읽기 전용). `scanPublications`: 산출물 폴더를 훑어 새 초안을 `draft`로 기록하고, 승인 뒤 바뀐 초안은 `draft`로 되돌린 뒤 목록을 돌려준다.
+   * `readPublicationDraft`: 초안 본문(1MB 상한, 신뢰할 수 없는 텍스트이므로 평문 또는 sanitize 후 표시). 경로는 산출물 폴더 기준 상대 경로, 링크·`..`·절대 경로는 `invalid-request`.
+   * `requestPublicationApproval`: 승인 모드에 따라 `content-approval` 카드를 만든다 (매번: 초안마다, 묶음: 한 장, 자동: 카드 없음). 카드의 승인(A)/거절(B)은 `resolveDecision`이 처리하면 항목이 approved/rejected(사유=메모)가 된다.
+   * `requestPublish`: approved 항목을 publish-requested로 고정한다. `publishPublication`: 어댑터가 연결돼 있으면 발행하고, 아니면 `manual-required`. 승인 뒤 내용이 바뀌었으면 `reapproval-required`(항목은 draft로 복귀).
+   * `markPublished`: CEO가 직접 게시한 뒤 호출한다. `link`는 선택이고 `https://`만 허용하며 텍스트로만 저장·표시한다 (앱은 열지 않는다). 승인 없이는 `conflict`.
+   * `getPublicationProgress`: 오늘 승인·발행 건수와 정책의 일일 산출 목표.
+   */
+  listPublications: (req: PublicationProjectRequest) => Promise<ApiResult<PublicationList>>
+  scanPublications: (req: PublicationProjectRequest) => Promise<ApiResult<PublicationList>>
+  readPublicationDraft: (req: PublicationReadRequest) => Promise<ApiResult<PublicationDraftContent>>
+  requestPublicationApproval: (
+    req: PublicationRequestApprovalRequest
+  ) => Promise<ApiResult<PublicationRequestApprovalResult>>
+  requestPublish: (req: PublicationItemRequest) => Promise<ApiResult<PublicationEntry>>
+  publishPublication: (req: PublicationItemRequest) => Promise<ApiResult<PublicationPublishResult>>
+  markPublished: (
+    req: PublicationMarkPublishedRequest
+  ) => Promise<ApiResult<PublicationPublishResult>>
+  getPublicationProgress: (
+    req: PublicationProjectRequest
+  ) => Promise<ApiResult<PublicationProgress>>
+  /**
    * 프로젝트 유형 템플릿 (T-048). `listProjectTemplates`: 내장 템플릿 3종(설명, 기본 정책 요약, 추천 직원). 회사가 없어도 동작한다.
    * `applyProjectTemplate`: 정책 파일 기본값만 만든다 (모든 동작 매번 컨펌). 정책 파일이 이미 있으면 `conflict`, 알 수 없는 템플릿·유형 불일치는 `invalid-request`.
    * 직원 채용·배정은 하지 않는다. `recommendedStaff`(PM이 첫 항목)는 제안 목록이며 UI 확인이나 인사팀 요청으로 처리한다.
@@ -345,6 +381,14 @@ export const IPC_CHANNELS = {
   recurringUpdate: 'recurring:update',
   recurringSetStatus: 'recurring:set-status',
   recurringRemove: 'recurring:remove',
+  publicationList: 'publication:list',
+  publicationScan: 'publication:scan',
+  publicationReadDraft: 'publication:read-draft',
+  publicationRequestApproval: 'publication:request-approval',
+  publicationRequestPublish: 'publication:request-publish',
+  publicationPublish: 'publication:publish',
+  publicationMarkPublished: 'publication:mark-published',
+  publicationProgress: 'publication:progress',
   projectListTemplates: 'project:list-templates',
   projectApplyTemplate: 'project:apply-template',
   schedulerStatus: 'scheduler:status',

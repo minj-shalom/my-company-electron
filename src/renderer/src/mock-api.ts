@@ -20,6 +20,7 @@ import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
 import { createMockRecurringApi, parseRecurringScenario } from './mock-recurring'
+import { createMockPublicationApi } from './mock-publication'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
 import { mockProjectTemplateApi } from './mock-project-templates'
 import { createMockUsageApi, parseUsageScenario } from './mock-usage'
@@ -66,6 +67,8 @@ const mockRecurringApi = createMockRecurringApi(
   parseRecurringScenario(typeof location === 'undefined' ? '' : location.search)
 )
 
+const mockPublicationApi = createMockPublicationApi()
+
 const mockEmployeeApi = createMockEmployeeApi(
   parseEmployeeScenario(typeof location === 'undefined' ? '' : location.search),
   typeof location === 'undefined' ? 0 : 400,
@@ -104,6 +107,7 @@ export function resetMockApi(): void {
   mockProjectApi.reset()
   mockPolicyApi.reset()
   mockRecurringApi.reset()
+  mockPublicationApi.reset()
   mockGateApi.reset()
   resetMockOnboarding()
   mockUsageApi.reset()
@@ -174,6 +178,7 @@ export const mockApi: WindowApi = {
   ...mockProjectApi.api,
   ...mockPolicyApi.api,
   ...mockRecurringApi.api,
+  ...mockPublicationApi.api,
   ...mockProjectTemplateApi,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
