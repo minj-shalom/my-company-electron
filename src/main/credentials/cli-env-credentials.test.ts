@@ -22,6 +22,11 @@ describe('cli env and credentials', () => {
     expect(env).toEqual({ PATH: '/usr/bin' })
   })
 
+  it('ignores empty extra prefixes instead of passing every variable', () => {
+    const env = buildCliEnv({ PATH: '/usr/bin', MYCO_PUBLISH_TOKEN: DUMMY_TOKEN }, [''])
+    expect(env).toEqual({ PATH: '/usr/bin' })
+  })
+
   it('keeps vault values out of process.env and the CLI env', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'mc-env-'))
     const fake = createFakeAdapter()

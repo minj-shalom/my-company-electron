@@ -51,11 +51,39 @@ describe('oauth loopback', () => {
     expect(r1.codeVerifier).not.toBe(r2.codeVerifier)
   })
 
-  it('rejects a mismatched state', async () => {
-    const b = browser((_a, redirect) => redirect.searchParams.set('state', 'forged'))
+  it('ignores a mismatched state with 400 and waits until timeout', async () => {
+    let status = 0
     await expect(
-      runLoopbackAuth({ buildAuthUrl: build, openExternal: b.openExternal })
-    ).rejects.toMatchObject({ code: 'state-mismatch' })
+      runLoopbackAuth({
+        buildAuthUrl: build,
+        timeoutMs: 300,
+        openExternal: async (raw) => {
+          const redirect = new URL(new URL(raw).searchParams.get('redirect_uri') ?? '')
+          redirect.searchParams.set('state', 'forged')
+          redirect.searchParams.set('code', 'auth-code-123456')
+          status = (await fetch(redirect)).status
+        }
+      })
+    ).rejects.toMatchObject({ code: 'timeout' })
+    expect(status).toBe(400)
+  })
+
+  it('still completes after a forged request when the real redirect arrives', async () => {
+    const r = await runLoopbackAuth({
+      buildAuthUrl: build,
+      openExternal: async (raw) => {
+        const auth = new URL(raw)
+        const redirect = new URL(auth.searchParams.get('redirect_uri') ?? '')
+        const forged = new URL(redirect)
+        forged.searchParams.set('state', 'forged')
+        forged.searchParams.set('code', 'evil')
+        redirect.searchParams.set('state', auth.searchParams.get('state') ?? '')
+        redirect.searchParams.set('code', 'auth-code-123456')
+        await fetch(forged)
+        setTimeout(() => void fetch(redirect).catch(() => undefined), 5)
+      }
+    })
+    expect(r.code).toBe('auth-code-123456')
   })
 
   it('rejects a provider error response', async () => {
@@ -74,7 +102,7 @@ describe('oauth loopback', () => {
     ).rejects.toMatchObject({ code: 'timeout' })
   })
 
-  it('aborts on signal and when opening the browser fails', async () => {
+  it('aborts on signal and reports open-blocked when opening the browser fails', async () => {
     const ctl = new AbortController()
     const p = runLoopbackAuth({
       buildAuthUrl: build,
@@ -90,6 +118,6 @@ describe('oauth loopback', () => {
           throw new Error('blocked')
         }
       })
-    ).rejects.toMatchObject({ code: 'aborted' })
+    ).rejects.toMatchObject({ code: 'open-blocked' })
   })
 })

@@ -9,7 +9,7 @@ import { secrets } from './redact'
  * 의존성(브라우저 열기, 시간, 난수)은 주입 가능해 실제 외부 네트워크 없이 테스트한다.
  */
 
-export type OAuthErrorCode = 'timeout' | 'state-mismatch' | 'denied' | 'aborted' | 'listen-failed'
+export type OAuthErrorCode = 'timeout' | 'denied' | 'aborted' | 'open-blocked' | 'listen-failed'
 
 export class OAuthError extends Error {
   constructor(readonly code: OAuthErrorCode) {
@@ -88,14 +88,18 @@ export async function runLoopbackAuth(p: LoopbackParams): Promise<LoopbackResult
         res.writeHead(404).end()
         return
       }
+      // state가 다른 요청은 위조·간섭일 수 있어 인증을 실패시키지 않고 400으로 무시한다(타임아웃까지 대기).
+      const got = url.searchParams.get('state') ?? ''
+      if (!sameString(got, state)) {
+        res.writeHead(400, { 'cache-control': 'no-store' }).end()
+        return
+      }
       res.writeHead(200, {
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
         'referrer-policy': 'no-referrer'
       })
       res.end(PAGE)
-      const got = url.searchParams.get('state') ?? ''
-      if (!sameString(got, state)) return fail('state-mismatch')
       const code = url.searchParams.get('code')
       if (url.searchParams.has('error') || code === null || code === '') return fail('denied')
       secrets.register(code)
@@ -116,7 +120,7 @@ export async function runLoopbackAuth(p: LoopbackParams): Promise<LoopbackResult
       } catch {
         return fail('listen-failed')
       }
-      p.openExternal(authUrl).catch(() => fail('aborted'))
+      p.openExternal(authUrl).catch(() => fail('open-blocked'))
     })
   })
 }
