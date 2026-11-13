@@ -1,7 +1,7 @@
 import type { GateToolName } from '../../shared/gate'
 import type { RunErrorCode, RunEvent } from '../../shared/run'
 
-export type ProviderId = 'claude'
+export type ProviderId = 'claude' | 'codex'
 
 export type StartResult =
   { ok: true; runId: string } | { ok: false; code: RunErrorCode; message: string }
