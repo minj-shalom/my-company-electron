@@ -1,4 +1,4 @@
-interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'className'> {
+interface Props extends Omit<React.ComponentPropsWithRef<'input'>, 'className'> {
   /** 폭 조절용 추가 클래스 (색/테두리는 .input이 정한다). */
   extraClass?: string
 }

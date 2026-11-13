@@ -4,21 +4,48 @@ import type { Ticket, TicketStatus, UnreadableTicket } from '../../shared/ticket
 /**
  * 브라우저 개발 모드 전용. `?mock-tickets=empty|many|error|conflict|noassignee`로 상태를 고른다 (없으면 기본 샘플).
  * - noassignee: 담당 없음, 조직에 없는 직원(mock 조직에 없는 id), unreadable 샘플
- * - conflict: 이동하면 conflict를 돌려준다
+ * - conflict: 이동과 편집 저장이 conflict를 돌려준다
+ * - saveerror: 새 티켓/편집 저장이 internal 오류를 돌려준다
  */
-export type TicketScenario = 'samples' | 'empty' | 'many' | 'error' | 'conflict' | 'noassignee'
+export type TicketScenario =
+  'samples' | 'empty' | 'many' | 'error' | 'conflict' | 'noassignee' | 'saveerror'
 const SCENARIOS: readonly TicketScenario[] = [
   'samples',
   'empty',
   'many',
   'error',
   'conflict',
-  'noassignee'
+  'noassignee',
+  'saveerror'
 ]
 
 export function parseTicketScenario(search: string): TicketScenario {
   const v = new URLSearchParams(search).get('mock-tickets')
   return SCENARIOS.find((s) => s === v) ?? 'samples'
+}
+
+function renderBody(
+  n: number,
+  title: string,
+  goal: string,
+  criteria: string[],
+  projectId: string | null
+): string {
+  return [
+    `# T-${String(n).padStart(3, '0')}: ${title}`,
+    '',
+    '- **상태:** backlog',
+    ...(projectId ? [`- **프로젝트:** ${projectId}`] : []),
+    '',
+    '## 목표',
+    goal,
+    '',
+    '## 완료 조건',
+    ...criteria.map((c) => `- [ ] ${c}`),
+    '',
+    '## 메모',
+    ''
+  ].join('\n')
 }
 
 const ticket = (
@@ -40,8 +67,34 @@ const ticket = (
 const SAMPLES: Ticket[] = [
   ticket(1, 'done', '로그인 화면', 'developer', '개발팀'),
   ticket(2, 'in-progress', '티켓 보드', 'ui-dev', '개발팀'),
-  ticket(3, 'backlog', '사용량 표시', null, '재무'),
-  ticket(4, 'backlog', '랜딩 페이지 초안', 'web-frontend-dev', '개발팀')
+  ticket(
+    3,
+    'backlog',
+    '사용량 표시',
+    null,
+    '재무',
+    renderBody(
+      3,
+      '사용량 표시',
+      '상태 바에 이번 주 사용량을 보여 준다.',
+      ['한도 대비 비율이 보인다'],
+      null
+    )
+  ),
+  ticket(
+    4,
+    'backlog',
+    '랜딩 페이지 초안',
+    'web-frontend-dev',
+    '개발팀',
+    renderBody(
+      4,
+      '랜딩 페이지 초안',
+      '첫 화면 문구와 레이아웃 초안을 만든다.',
+      ['히어로 영역이 있다', '모바일에서 깨지지 않는다'],
+      'landing'
+    )
+  )
 ]
 
 const MANY: Ticket[] = (() => {
@@ -86,7 +139,7 @@ function seed(s: TicketScenario): { items: Ticket[]; unreadable: UnreadableTicke
 }
 
 export interface MockTicketApi {
-  api: Pick<WindowApi, 'listTickets' | 'getTicket' | 'moveTicket'>
+  api: Pick<WindowApi, 'listTickets' | 'getTicket' | 'moveTicket' | 'createTicket' | 'updateTicket'>
   reset: () => void
 }
 
@@ -124,6 +177,40 @@ export function createMockTicketApi(scenario: TicketScenario, delayMs = 0): Mock
         const t = state.items.find((x) => x.id === id)
         if (!t) return { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
         t.status = to
+        return { ok: true, value: structuredClone(t) }
+      },
+      createTicket: async (req) => {
+        await wait()
+        if (scenario === 'saveerror')
+          return { ok: false, code: 'internal', message: '티켓을 저장하지 못했습니다.' }
+        if (req.title.trim() === '' || req.criteria.length === 0)
+          return { ok: false, code: 'invalid-request', message: '입력이 올바르지 않습니다.' }
+        const n = Math.max(0, ...state.items.map((t) => Number(t.id.slice(2)))) + 1
+        const created: Ticket = {
+          id: `T-${String(n).padStart(3, '0')}`,
+          title: req.title,
+          status: 'backlog',
+          assignee: req.assignee ?? null,
+          department: req.department ?? null,
+          body: renderBody(n, req.title, req.goal, req.criteria, req.projectId ?? null)
+        }
+        state.items.push(created)
+        return { ok: true, value: structuredClone(created) }
+      },
+      updateTicket: async (req) => {
+        await wait()
+        if (scenario === 'saveerror')
+          return { ok: false, code: 'internal', message: '티켓을 저장하지 못했습니다.' }
+        const t = state.items.find((x) => x.id === req.id)
+        if (!t) return { ok: false, code: 'not-found', message: '티켓을 찾을 수 없습니다.' }
+        if (t.status !== 'backlog')
+          return { ok: false, code: 'forbidden', message: '대기 중인 티켓만 고칠 수 있습니다.' }
+        if (scenario === 'conflict' || t.body !== req.expectedBody)
+          return { ok: false, code: 'conflict', message: '티켓이 다른 곳에서 바뀌었습니다.' }
+        t.title = req.title
+        t.assignee = req.assignee
+        t.department = req.department
+        t.body = renderBody(Number(t.id.slice(2)), req.title, req.goal, req.criteria, req.projectId)
         return { ok: true, value: structuredClone(t) }
       }
     }

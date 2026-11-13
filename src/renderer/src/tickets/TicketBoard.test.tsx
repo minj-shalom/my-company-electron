@@ -98,3 +98,19 @@ describe('mock tickets', () => {
     expect(await m.moveTicket({ id: 'T-001', to: 'done' })).toMatchObject({ ok: true })
   })
 })
+
+describe('TicketBoard create/edit entry', () => {
+  it('shows 새 티켓 even when empty, and 편집 only on backlog cards', () => {
+    expect(board(ready([]))).toContain('새 티켓')
+    const html = board(
+      ready([
+        t('T-001'),
+        t('T-002', { status: 'in-progress' }),
+        t('T-003', { bodyTruncated: true })
+      ])
+    )
+    expect(html).toContain('aria-label="T-001 편집"')
+    expect(html).not.toContain('aria-label="T-002 편집"')
+    expect(html).not.toContain('aria-label="T-003 편집"')
+  })
+})

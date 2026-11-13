@@ -28,6 +28,8 @@ interface Props {
   locked: boolean
   /** 실패하면 사용자용 문구를 돌려준다. 성공하면 null. */
   onMove: (ticket: Ticket, to: TicketStatus) => Promise<string | null>
+  /** 주어지면 backlog 카드에 편집 버튼을 보인다 (잘린 본문은 편집할 수 없다). */
+  onEdit?: (ticket: Ticket) => void
 }
 
 /** 티켓 카드. 제목, 담당, 본문은 모두 React 텍스트 노드로만 그린다 (HTML·마크다운 렌더 없음). */
@@ -40,7 +42,8 @@ export function TicketCard({
   onMenuChange,
   busy,
   locked,
-  onMove
+  onMove,
+  onEdit
 }: Props): React.JSX.Element {
   const bodyId = useId()
   const menuId = useId()
@@ -116,6 +119,16 @@ export function TicketCard({
         >
           이동
         </Button>
+        {onEdit && t.status === 'backlog' && t.bodyTruncated !== true && (
+          <Button
+            size="small"
+            aria-label={`${t.id} 편집`}
+            disabled={locked}
+            onClick={() => onEdit(t)}
+          >
+            편집
+          </Button>
+        )}
       </div>
       <div id={menuId} className="tcard__menu" hidden={!menuOpen}>
         {menuOpen && (
