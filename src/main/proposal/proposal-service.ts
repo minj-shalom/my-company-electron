@@ -7,7 +7,9 @@ import type {
 import type { Decision } from '../../shared/decision'
 import type { ApiResult } from '../../shared/result'
 import type { EmployeeService } from '../employee/employee-service'
+import { OUT_OF_SCOPE_RESTORE } from '../hr/hr-violation'
 import type { IntegrityService } from '../integrity/integrity-service'
+import type { IntegrityActionResult } from '../../shared/integrity'
 import {
   DELETED_HASH,
   isProtectedPath,
@@ -35,6 +37,8 @@ export interface ProposalDeps {
   project: ProjectService
   policy: PolicyService
   integrity: IntegrityService
+  /** hr 실행이 허용 목록 밖에서 바꾼 파일의 복원 (T-059). 카드에 실린 해시와 현재 상태가 같을 때만 복원한다. */
+  hrScope?: { restore: (stateHash: string) => Promise<IntegrityActionResult> }
 }
 
 const agentPath = (id: string): string => `.claude/agents/${id}.md`
@@ -374,7 +378,11 @@ export class ProposalService {
     if (card.status === 'done') return failed('not-actionable')
     const label = card.options.find((o) => o.key === req.choice)?.label ?? ''
     const svc = this.deps.integrity
-    const needsHash = label === '되돌리기' || label === '복원' || label === '사후 승인'
+    const needsHash =
+      label === '되돌리기' ||
+      label === '복원' ||
+      label === '사후 승인' ||
+      label === OUT_OF_SCOPE_RESTORE
     let stateHash = req.stateHash
     if (needsHash) {
       // 상태 해시는 카드 본문(앱이 쓴 영향 줄)에서 직접 읽는다. 누락되면 거부하고 요청 값이 다르면 stale이다.
@@ -382,6 +390,15 @@ export class ProposalService {
       if (fromCard === null) return failed('not-actionable')
       if (stateHash !== undefined && stateHash !== fromCard) return this.stop(card.id, 'stale')
       stateHash = fromCard
+    }
+    if (label === OUT_OF_SCOPE_RESTORE && card.kind === 'revert-suggestion') {
+      if (this.deps.hrScope === undefined || stateHash === undefined)
+        return failed('not-actionable')
+      const r = await this.deps.hrScope.restore(stateHash)
+      if (!r.ok) return this.stop(card.id, r.code === 'stale' ? 'stale' : 'failed')
+      return (await this.resolve(card.id, req.choice, '앱이 허용 범위 밖 변경을 복원했습니다.'))
+        ? done('restored')
+        : this.stop(card.id, 'failed')
     }
     if (label === '되돌리기' || label === '복원') {
       const r = await svc.restore(stateHash)

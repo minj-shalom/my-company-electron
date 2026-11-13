@@ -23,7 +23,7 @@ function fakeAdapter(
 ): ProviderAdapter {
   return {
     id: 'claude',
-    capabilities: { toolBridge: true },
+    capabilities: { toolBridge: true, pathScopedWrites: true },
     agentTranslator: { translate: () => [] },
     checkInstall: async () => ({ installed: true, version: null }),
     extractUsage: () => null,

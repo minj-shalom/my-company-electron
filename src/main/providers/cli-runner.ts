@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { RunErrorCode, RunEvent, RunEventBody, RunStartRequest } from '../../shared/run'
 import { buildCliEnv } from './cli-env'
 import { LineBuffer } from './line-buffer'
-import type { RunLaunchOptions, RunToolOptions, StartResult } from './types'
+import type { RunHrOptions, RunLaunchOptions, RunToolOptions, StartResult } from './types'
 
 export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 export const MAX_TIMEOUT_MS = 60 * 60 * 1000
@@ -20,7 +20,7 @@ export interface CliRunnerOptions {
   displayName: string
   spawnFn?: SpawnFn
   /** 프롬프트를 CLI 인자 배열로 만든다. 프롬프트가 옵션으로 해석되지 않게 하는 책임은 어댑터에 있다. */
-  buildArgs: (prompt: string, tools?: RunToolOptions) => string[]
+  buildArgs: (prompt: string, tools?: RunToolOptions, hr?: RunHrOptions) => string[]
   /** stdout 한 줄을 공통 이벤트로 변환한다. */
   parseLine: (line: string) => RunEventBody[]
   /** parseLine과 별개로 원문 stdout 줄을 관찰한다 (사용량 추출용). */
@@ -86,7 +86,7 @@ export class CliRunner {
     let args: string[]
     let child: ChildProcess
     try {
-      args = this.options.buildArgs(prompt, launch?.tools)
+      args = this.options.buildArgs(prompt, launch?.tools, launch?.hr)
       child = this.spawnFn(this.options.command, args, {
         cwd: this.options.cwd,
         shell: false,
