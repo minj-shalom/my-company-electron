@@ -35,12 +35,24 @@ const GLOBAL_CONFIG = [
   '-c',
   'protocol.ext.allow=never',
   '-c',
-  'core.fsmonitor=false'
+  'core.fsmonitor=false',
+  'core.sshCommand=ssh',
+  'push.default=nothing'
 ]
+// 한계: credential.helper는 비우지 않는다 (https 푸시가 사용자의 자격 증명 도우미에 의존한다).
+// 저장소 `.git/config`의 `remote.origin.url`/`insteadOf`는 에이전트가 바꿀 수 있어 완전히 막지 못한다.
+// `pushurl`은 아래 `gitPushUrlConfig`로 확인해 있으면 자동 푸시를 하지 않는다. 시스템 설정은 실행기가 GIT_CONFIG_NOSYSTEM=1로 끈다.
 
 const refspecOf = (b: string): string => `refs/heads/${b}:refs/heads/${b}`
 
 export const gitSymbolicHead = (): string[] => [...GLOBAL_CONFIG, 'symbolic-ref', '-q', 'HEAD']
+export const gitPushUrlConfig = (): string[] => [
+  ...GLOBAL_CONFIG,
+  'config',
+  '--local',
+  '--get-all',
+  `remote.${REMOTE}.pushurl`
+]
 export const gitResolveBranch = (b: string): string[] => [
   ...GLOBAL_CONFIG,
   'rev-parse',
@@ -113,6 +125,12 @@ export function assertSafeArgs(command: 'git' | 'gh', args: readonly string[]): 
   if (!prefix.every((v, i) => args[i] === v)) throw new GitArgError('허용되지 않는 git 설정입니다.')
   const rest = args.slice(prefix.length)
   const sub = rest[0]
+  if (sub === 'config') {
+    const want = gitPushUrlConfig().slice(prefix.length)
+    if (rest.length !== want.length || !want.every((v, i) => rest[i] === v))
+      throw new GitArgError('허용되지 않는 git 명령입니다.')
+    return
+  }
   if (sub === undefined || FORBIDDEN_SUBCOMMANDS.has(sub))
     throw new GitArgError('허용되지 않는 git 명령입니다.')
   if (sub === 'push') {

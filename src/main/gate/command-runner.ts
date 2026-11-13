@@ -41,6 +41,7 @@ export function createCommandRunner(): CommandRunner {
         const env = buildCliEnv()
         for (const k of PASS_THROUGH) if (process.env[k] !== undefined) env[k] = process.env[k]
         env.GIT_TERMINAL_PROMPT = '0'
+        env.GIT_CONFIG_NOSYSTEM = '1'
         const child = spawn(command, [...args], {
           cwd: opts.cwd,
           shell: false,

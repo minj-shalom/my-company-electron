@@ -345,4 +345,34 @@ describe('audit and tool inputs', () => {
       'blocked'
     )
   })
+
+  it('falls back to a card when the audit file cannot be written, before any push', async () => {
+    const k = await kit()
+    k.audit.canWrite = async () => false
+    const r = await push(k, 'feature/x')
+    expect(r.status).toBe('card')
+    expect(k.calls.some(isPush)).toBe(false)
+  })
+
+  it('a pushurl setting disables auto push', async () => {
+    const k = await kit({
+      responder: okResponder((_c, args) =>
+        args.includes('--get-all')
+          ? { code: 0, stdout: 'ssh://elsewhere/x\n' }
+          : { code: -1, stdout: '' }
+      )
+    })
+    expect((await push(k, 'feature/x')).status).toBe('card')
+    expect(k.calls.some(isPush)).toBe(false)
+  })
+
+  it('does not create duplicate cards when the policy is unreadable', async () => {
+    const k = await kit()
+    k.policy.value = null
+    const a = await push(k, 'feature/x')
+    const b = await push(k, 'feature/x')
+    const c = await push(k, 'feature/y')
+    expect(a.cardId).toBe(b.cardId)
+    expect(c.cardId).not.toBe(a.cardId)
+  })
 })

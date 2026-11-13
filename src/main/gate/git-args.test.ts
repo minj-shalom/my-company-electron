@@ -1,6 +1,7 @@
 import { devNull } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import {
+  gitPushUrlConfig,
   GitArgError,
   assertSafeArgs,
   checkBranchName,
@@ -11,7 +12,7 @@ import {
   gitSymbolicHead
 } from './git-args'
 
-const G = [
+const G0 = [
   '-c',
   `core.hooksPath=${devNull}`,
   '-c',
@@ -19,6 +20,18 @@ const G = [
   '-c',
   'core.fsmonitor=false'
 ]
+const G = [...G0, '-c', 'core.sshCommand=ssh', '-c', 'push.default=nothing']
+
+describe('git config hardening', () => {
+  it('pins ssh command and allows only the read-only pushurl lookup', () => {
+    expect(gitPush('feature/x').join(' ')).toContain('core.sshCommand=ssh')
+    assertSafeArgs('git', gitPushUrlConfig())
+    expect(() => assertSafeArgs('git', [...G, 'config', 'remote.origin.pushurl', 'evil'])).toThrow()
+    expect(() =>
+      assertSafeArgs('git', [...G, 'config', '--local', '--get-all', 'core.sshCommand'])
+    ).toThrow()
+  })
+})
 
 describe('git args', () => {
   it('builds only the safe forms and they pass the final assertion', () => {

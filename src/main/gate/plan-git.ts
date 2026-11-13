@@ -11,6 +11,7 @@ import {
   ghPrMerge,
   ghPrView,
   gitPush,
+  gitPushUrlConfig,
   gitResolveBranch,
   gitSymbolicHead
 } from './git-args'
@@ -47,8 +48,12 @@ export const planPush: Planner = async (input, raw) => {
     if (rev.code !== 0 || !SHA_RE.test(sha)) return reject('브랜치를 찾을 수 없습니다.')
     const { autoPushPrefixes } = input.policy.effective
     // 보호 판정은 ref 접두어를 벗긴 소문자 이름으로, 허용 접두어는 실제 이름에 그대로 맞춘다.
+    // 별도 pushurl이 설정돼 있으면 푸시가 다른 곳으로 갈 수 있어 자동 푸시를 하지 않는다.
+    const pushUrl = await input.runner.run('git', gitPushUrlConfig(), opts)
     const allowed =
-      !isProtectedBranch(name) && autoPushPrefixes.some((p) => p !== '' && name.startsWith(p))
+      pushUrl.stdout.trim() === '' &&
+      !isProtectedBranch(name) &&
+      autoPushPrefixes.some((p) => p !== '' && name.startsWith(p))
     return {
       kind: 'plan',
       plan: {

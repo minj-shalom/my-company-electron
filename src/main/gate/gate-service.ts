@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { EMPLOYEE_ID, TICKET_ID } from '../repository/ids'
 import {
   GATE_ACTION_OF_TOOL,
@@ -112,9 +113,19 @@ export class GateService {
   private async confirmOnly(
     ctx: GateContext,
     action: LimitedAction,
-    _raw: unknown,
+    raw: unknown,
     why: string
   ): Promise<GateResult> {
+    const key = `policy|${createHash('sha256')
+      .update(`${ctx.projectId}|${action}|${JSON.stringify(raw) ?? ''}`)
+      .digest('hex')}`
+    const existing = await this.deps.ledger.cardFor(key)
+    if (existing !== null)
+      return {
+        status: 'card',
+        cardId: existing,
+        message: `컨펌 카드 ${existing}가 이미 있습니다. 실행하지 않았습니다.`
+      }
     const id = await this.deps.cards.create({
       kind: CARD_KIND[action],
       title: `${ACTION_LABEL[action]} 컨펌 요청 (${ctx.projectId})`,
@@ -126,6 +137,7 @@ export class GateService {
       ],
       impact: `${ACTION_LABEL[action]}은 컨펌 전까지 실행되지 않습니다.`
     })
+    await this.deps.ledger.setCard(key, id)
     return {
       status: 'card',
       cardId: id,
@@ -218,6 +230,8 @@ export class GateService {
     else if (policy.activation === null || policyLimit === undefined)
       fallback = { result: 'fallback-card', reason: '자동 모드 설정이 유효하지 않습니다.' }
     else if (plan.fallback !== null) fallback = plan.fallback
+    else if (!(await deps.audit.canWrite(ctx.projectId)))
+      fallback = { result: 'fallback-card', reason: '감사 기록을 쓸 수 없습니다.' }
 
     if (mode !== 'auto' || fallback !== null) {
       const id = await this.card(

@@ -60,6 +60,9 @@ export function formatAuditLine(e: AuditEntry): string {
   return `| ${cells.join(' | ')} |`
 }
 
+const HEAD = (projectId: string): string =>
+  `# 자동 실행 감사 기록: ${projectId}\n\n> 앱이 자동 모드 실행마다 한 줄 추가합니다. 직접 수정하지 마세요.\n\n${HEADER_ROW}\n|---|---|---|---|---|---|---|---|\n`
+
 export interface AuditLogDeps {
   fs: SafeFs
   exclusive: <T>(task: () => Promise<T>) => Promise<T>
@@ -68,6 +71,27 @@ export interface AuditLogDeps {
 /** 감사 기록은 앱만 추가한다 (에이전트는 `company/audit/**` 쓰기 deny, 변경은 T-052가 감지). 읽기 전용 목록과 요약은 같은 모듈이 만든다. */
 export class AuditLog {
   constructor(private readonly deps: AuditLogDeps) {}
+
+  /** 자동 실행 전에 감사 파일을 쓸 수 있는지 확인한다 (기존 내용을 그대로 다시 쓰거나 머리글만 만든다). */
+  async canWrite(projectId: string): Promise<boolean> {
+    if (!PROJECT_ID.test(projectId)) return false
+    const rel = auditPath(projectId)
+    try {
+      await this.deps.exclusive(async () => {
+        let text: string
+        try {
+          text = await this.deps.fs.readText(rel)
+        } catch (e) {
+          if (!(e instanceof FsGuardError && e.kind === 'missing')) throw e
+          text = HEAD(projectId)
+        }
+        await this.deps.fs.writeText(rel, text)
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
 
   async append(projectId: string, entry: AuditEntry): Promise<void> {
     if (!PROJECT_ID.test(projectId)) throw new Error('invalid-project')
@@ -95,7 +119,7 @@ export class AuditLog {
         }
         text = null
       }
-      const head = `# 자동 실행 감사 기록: ${projectId}\n\n> 앱이 자동 모드 실행마다 한 줄 추가합니다. 직접 수정하지 마세요.\n\n${HEADER_ROW}\n|---|---|---|---|---|---|---|---|\n`
+      const head = HEAD(projectId)
       const base = text !== null && text.trim() !== '' ? text.replace(/\n*$/, '\n') : head
       await this.deps.fs.writeText(rel, `${base}${line}\n`)
     })
