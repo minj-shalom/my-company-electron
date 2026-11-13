@@ -30,7 +30,7 @@ import {
   parseRetire,
   parseUpdate
 } from './requests'
-import { EMPLOYEE_TEMPLATES } from './templates'
+import { REQUIRED_STAFF_IDS, findTemplate } from './templates'
 
 export const ARCHIVE_DIR = 'company/archive/employees'
 const MAX_ARCHIVE_SUFFIX = 99
@@ -39,9 +39,22 @@ const MAX_ARCHIVE_SUFFIX = 99
 const PROTECTED_TITLES: ReadonlySet<string> = new Set(['COO', 'CEO'])
 const SENSITIVE_IDS: ReadonlySet<string> = new Set(['cto', 'cfo', 'hr'])
 const SENSITIVE_TITLES: ReadonlySet<string> = new Set(['CTO', 'CFO', '인사'])
+/** 채용 대상이 아닌 id와 직급(정규화 후 비교). 필수 인원과 COO, CEO. */
+const NON_HIRABLE_IDS: ReadonlySet<string> = new Set([...REQUIRED_STAFF_IDS, 'coo', 'ceo'])
+const NON_HIRABLE_TITLES: ReadonlySet<string> = new Set(['cto', 'cfo', 'hr', '인사', 'coo', 'ceo'])
 const PM_TITLE = 'PM'
 /** 직급 비교용 정규화. 표기 변형(`Pm`, ` PM `)으로 중복 채용을 피하지 못하게 한다. */
 export const normalizeTitle = (t: string): string => t.trim().toLowerCase()
+/** id·직급 우회 방지용 강한 정규화: 전각/호환 문자, 공백, 대소문자, 경로와 `.md` 확장자를 걷어낸다. */
+const hireKey = (v: unknown): string =>
+  typeof v === 'string'
+    ? v
+        .normalize('NFKC')
+        .replace(/\s+/g, '')
+        .toLowerCase()
+        .replace(/^.*[\\/]/, '')
+        .replace(/\.md$/, '')
+    : ''
 const PM_ID = 'pm'
 const PM_DEPARTMENT = '기획팀'
 
@@ -86,6 +99,31 @@ function mapOrgFailure(r: Extract<ApiResult<OrgModel>, { ok: false }>): ApiResul
   return fail(r.code, r.message)
 }
 
+const REQUIRED_STAFF_MESSAGE =
+  'CTO, CFO, 인사는 회사를 만들 때 함께 생기는 필수 인원이라 채용할 수 없습니다.'
+
+/**
+ * 필수 인원(cto, cfo, hr)과 COO, CEO의 id·직급·템플릿으로 하는 채용을 막는다. renderer 제한과 별개로 main이 판단한다.
+ * 예외 하나: 조직표에서 빠진 기본 직원을 기본값 그대로 복구하는 요청(templateId와 id가 같은 필수 인원, 직급·역할 변경 없음).
+ * 이미 있으면 뒤의 중복 검사가 거부한다.
+ */
+function requiredStaffViolation(raw: unknown): boolean {
+  if (typeof raw !== 'object' || raw === null) return false
+  const o = raw as Record<string, unknown>
+  const hit =
+    NON_HIRABLE_IDS.has(hireKey(o.templateId)) ||
+    NON_HIRABLE_IDS.has(hireKey(o.id)) ||
+    NON_HIRABLE_TITLES.has(hireKey(o.title))
+  if (!hit) return false
+  const isRestore =
+    typeof o.templateId === 'string' &&
+    o.templateId === o.id &&
+    REQUIRED_STAFF_IDS.includes(o.templateId) &&
+    o.title === undefined &&
+    o.role === undefined
+  return !isRestore
+}
+
 export class EmployeeService {
   private readonly ops: OrgOps
   private readonly assignments: AssignmentSource
@@ -105,10 +143,12 @@ export class EmployeeService {
     raw: unknown,
     actor: EmployeeActor
   ): Promise<ApiResult<EmployeeChangeResult>> {
+    const blocked = requiredStaffViolation(raw)
+    if (blocked) return fail('invalid-request', REQUIRED_STAFF_MESSAGE)
     const req = parseCreate(raw)
     if (!req.ok) return fail('invalid-request', req.message)
     const r = req.value
-    const template = EMPLOYEE_TEMPLATES.find((t) => t.id === r.templateId)
+    const template = findTemplate(r.templateId)
     if (!template) return fail('invalid-request', '알 수 없는 템플릿입니다.')
     const title = r.title ?? template.title
     const role = r.role ?? template.role
@@ -260,7 +300,7 @@ export class EmployeeService {
         return clean
       }
       for (const role of req.value) {
-        const template = EMPLOYEE_TEMPLATES.find((t) => t.id === role)
+        const template = findTemplate(role)
         const org = await this.loadOrgModel()
         if (!template || !org.ok) {
           await undo()

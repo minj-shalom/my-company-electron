@@ -10,7 +10,7 @@ import { FIRST_HIRE_ROLES, type FirstHireRole } from '../../shared/company-hire'
 import { DECISION_ID, EMPLOYEE_ID } from '../repository/ids'
 import { CONTROL_CHARS, isValidName } from '../org/parse-org-doc'
 import { checkBody, checkDescription, checkModel, checkTools, type Checked } from './agent-file'
-import { EMPLOYEE_TEMPLATES } from './templates'
+import { findTemplate } from './templates'
 
 const MAX_ROLE = 300
 const MULTI = /[,;/、]/
@@ -58,8 +58,7 @@ export function parseActor(v: unknown): EmployeeActor | null {
 export function parseCreate(raw: unknown): Checked<EmployeeCreateRequest> {
   const o = plain(raw, ['templateId', 'id', 'department', 'reportsTo', 'title', 'role', 'approval'])
   if (!o) return BAD
-  const template =
-    typeof o.templateId === 'string' ? EMPLOYEE_TEMPLATES.find((t) => t.id === o.templateId) : null
+  const template = typeof o.templateId === 'string' ? findTemplate(o.templateId) : null
   if (!template) return { ok: false, message: '알 수 없는 템플릿입니다.' }
   const id = parseId(o.id)
   const department = name(o.department, '부서 이름')

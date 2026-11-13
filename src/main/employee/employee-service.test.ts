@@ -39,9 +39,9 @@ async function titles(c: TestCompany): Promise<string[]> {
 describe('template library', () => {
   it('has the required templates and valid, unique entries', () => {
     const ids = EMPLOYEE_TEMPLATES.map((t) => t.id)
-    for (const id of ['cto', 'cfo', 'hr', 'pm', 'developer', 'reviewer-qa'])
-      expect(ids).toContain(id)
-    expect(EMPLOYEE_TEMPLATES.length).toBeGreaterThanOrEqual(8)
+    for (const id of ['pm', 'developer', 'reviewer-qa']) expect(ids).toContain(id)
+    for (const id of ['cto', 'cfo', 'hr']) expect(ids).not.toContain(id)
+    expect(EMPLOYEE_TEMPLATES.length).toBeGreaterThanOrEqual(10)
     expect(new Set(ids).size).toBe(ids.length)
     expect(new Set(EMPLOYEE_TEMPLATES.map((t) => t.title)).size).toBe(ids.length)
   })
@@ -60,7 +60,6 @@ describe('template library', () => {
           title: `신규 ${t.title}`,
           department: t.department,
           reportsTo: 'COO',
-          // cto/cfo/hr 템플릿은 민감하므로 승인 카드가 필요하다.
           approval: 'D-012'
         },
         'ceo-ui'
@@ -253,26 +252,16 @@ describe('approval gate', () => {
     reportsTo: 'COO'
   }
 
-  it('requires an approval card for sensitive hires and writes nothing without it', async () => {
+  it('rejects required-staff hires even with an approved card, and writes nothing', async () => {
     const c = await company()
     const before = await snapshotAgents(c)
     const orgBefore = await orgText(c)
-    expect(code(await c.service.create(cto2, 'ceo-ui'))).toBe('approval-required')
-    expect(code(await c.service.create({ ...cto2, approval: 'D-016' }, 'ceo-ui'))).toBe(
-      'approval-required'
-    ) // pending 카드
-    expect(code(await c.service.create({ ...cto2, approval: 'D-999' }, 'ceo-ui'))).toBe(
-      'approval-required'
-    ) // 없는 카드
+    for (const actor of ['ceo-ui', 'approved-proposal'] as const)
+      expect(code(await c.service.create({ ...cto2, approval: 'D-012' }, actor))).toBe(
+        'invalid-request'
+      )
     expect(await snapshotAgents(c)).toEqual(before)
     expect(await orgText(c)).toBe(orgBefore)
-    const r = okValue(await c.service.create({ ...cto2, approval: 'D-012' }, 'approved-proposal'))
-    expect(r.record).toMatchObject({
-      sensitive: true,
-      sensitiveReasons: ['protected-role'],
-      approval: 'D-012',
-      actor: 'approved-proposal'
-    })
   })
 
   it.each(['cto', 'cfo', 'hr'])('update of %s needs approval', async (id) => {

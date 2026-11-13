@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createCompanyFolder, validateCompanyName } from './scaffold'
-import { EMPLOYEE_TEMPLATES } from '../employee/templates'
+import { findTemplate } from '../employee/templates'
 import { loadOrg } from '../org/org-store'
 import { SafeFs } from '../repository/safe-fs'
 import { COMPANY_DIRS, COMPANY_MARKER_FILES } from './templates'
@@ -63,7 +63,7 @@ describe('createCompanyFolder', () => {
     if (!r.ok) throw new Error('create failed')
     for (const id of ['cto', 'cfo', 'hr']) {
       const text = await readFile(join(r.companyDir, '.claude', 'agents', `${id}.md`), 'utf8')
-      const t = EMPLOYEE_TEMPLATES.find((e) => e.id === id)
+      const t = findTemplate(id)
       expect(text.endsWith(`\n${t?.body.trim()}\n`), id).toBe(true)
       expect(text).toContain(`\ntools: ${t?.tools.join(', ')}\n`)
       expect(text).toContain(`\nmodel: ${t?.model}\n`)

@@ -1,5 +1,5 @@
 import { buildAgentFile } from '../employee/agent-file'
-import { EMPLOYEE_TEMPLATES } from '../employee/templates'
+import { findTemplate } from '../employee/templates'
 
 /** 새 회사 폴더에 쓰는 기본 마크다운. 폴더 구조는 docs/architecture.md의 "회사 폴더 구조"와 같다. */
 
@@ -32,7 +32,7 @@ const BASE_AGENT_IDS = ['cto', 'cfo', 'hr'] as const
  * model은 라이브러리 값(sonnet)을 따른다.
  */
 function agentMarkdown(id: string): string {
-  const t = EMPLOYEE_TEMPLATES.find((e) => e.id === id)
+  const t = findTemplate(id)
   if (!t) throw new Error(`template missing: ${id}`)
   return buildAgentFile(
     { name: t.id, description: t.description, tools: t.tools.join(', '), model: t.model },
