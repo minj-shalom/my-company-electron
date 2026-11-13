@@ -265,11 +265,15 @@ export function validateMove(
   values: MoveValues
 ): string | null {
   if (!departmentNames(snapshot).includes(values.department)) return '기존 부서 중에서 골라 주세요.'
-  if (values.reportsTo === member.title) return '자기 자신에게 보고할 수 없어요.'
-  if (descendants(snapshot, member.title).has(values.reportsTo))
-    return '보고 라인이 순환해요. 이 직원 아래에 있는 직원에게는 보고할 수 없어요.'
-  if (!snapshot.org.members.some((m) => m.title === values.reportsTo))
-    return '보고 대상을 골라 주세요.'
+  // 최상위 직원(보고 대상 없음)은 보고 대상을 비워 둔 채 부서만 옮길 수 있다.
+  const keepTop = values.reportsTo === '' && member.reportsTo === null
+  if (!keepTop) {
+    if (values.reportsTo === member.title) return '자기 자신에게 보고할 수 없어요.'
+    if (descendants(snapshot, member.title).has(values.reportsTo))
+      return '보고 라인이 순환해요. 이 직원 아래에 있는 직원에게는 보고할 수 없어요.'
+    if (!snapshot.org.members.some((m) => m.title === values.reportsTo))
+      return '보고 대상을 골라 주세요.'
+  }
   if (values.department !== member.department && isDepartmentLead(snapshot, member))
     return '부서장은 다른 부서로 옮길 수 없어요. 먼저 부서장을 바꿔 주세요.'
   return null
@@ -282,7 +286,7 @@ export function buildMoveRequest(
 ): EmployeeMoveRequest | null {
   const req: EmployeeMoveRequest = { id }
   if (values.department !== member.department) req.department = values.department
-  if (values.reportsTo !== member.reportsTo) req.reportsTo = values.reportsTo
+  if (values.reportsTo !== (member.reportsTo ?? '')) req.reportsTo = values.reportsTo
   return req.department === undefined && req.reportsTo === undefined ? null : req
 }
 
@@ -307,4 +311,13 @@ export function protectedNote(member: OrgMember): string | null {
   if (member.agentId === 'hr' || member.title === '인사') return '인사팀 변경은 승인이 필요해요.'
   if (['cto', 'cfo'].includes(member.agentId ?? '')) return '이 직원의 변경은 승인이 필요해요.'
   return null
+}
+
+/** 편집 중 변경이 있을 때 선택 변경(직원 선택, 채용)을 막고 이탈 확인을 띄울지. 같은 직원을 다시 고르는 것은 이탈이 아니다. */
+export function needsLeaveConfirm(
+  dirty: boolean,
+  current: string | null,
+  next: string | null
+): boolean {
+  return dirty && next !== current
 }

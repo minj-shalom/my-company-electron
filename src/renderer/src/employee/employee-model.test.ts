@@ -10,6 +10,7 @@ import {
   initialEdit,
   isEditDirty,
   mayNeedApproval,
+  needsLeaveConfirm,
   orderTemplates,
   parseToolInput,
   retireBlockReason,
@@ -112,5 +113,29 @@ describe('move and retire', () => {
   it('never echoes main messages', () => {
     expect(errorText('conflict', 'move')).not.toMatch(/mock/)
     expect(errorText('approval-required', 'retire')).toMatch(/승인/)
+  })
+})
+
+describe('leave confirmation', () => {
+  it('asks only when dirty and the selection would change (select or hire)', () => {
+    expect(needsLeaveConfirm(true, 'QA', 'PM')).toBe(true)
+    expect(needsLeaveConfirm(true, 'QA', 'QA')).toBe(false)
+    expect(needsLeaveConfirm(false, 'QA', 'PM')).toBe(false)
+    expect(needsLeaveConfirm(true, null, 'new-hire')).toBe(true)
+  })
+})
+
+describe('top-level member move', () => {
+  it('allows moving only the department when reportsTo is empty and originally null', async () => {
+    const s = await snap()
+    const ceo = s.org.members.find((m) => m.title === 'CEO')!
+    expect(validateMove(s, ceo, { department: '경영', reportsTo: '' })).toBeNull()
+    expect(buildMoveRequest('ceo', ceo, { department: '경영', reportsTo: '' })).toBeNull()
+    expect(buildMoveRequest('ceo', ceo, { department: 'R&D', reportsTo: '' })).toEqual({
+      id: 'ceo',
+      department: 'R&D'
+    })
+    const dev = s.org.members.find((m) => m.title === '개발자')!
+    expect(validateMove(s, dev, { department: '개발팀', reportsTo: '' })).toMatch(/보고 대상/)
   })
 })

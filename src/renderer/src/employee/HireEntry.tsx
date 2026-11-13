@@ -3,6 +3,8 @@ import type { OrgSnapshot } from '../../../shared/org'
 import { needsHr } from '../hire/hire-model'
 import { Button } from '../ui/Button'
 import { HireDialog } from './HireDialog'
+import { needsLeaveConfirm } from './employee-model'
+import { LeaveDialog } from './MemberManager'
 
 /**
  * 채용 진입. 인사팀이 있으면 기본은 "인사팀에 채용 요청"(COO 대화 연결 전이라 비활성)이고 수동 채용은 접힌 메뉴에 둔다.
@@ -10,32 +12,52 @@ import { HireDialog } from './HireDialog'
  */
 export function HireEntry({
   snapshot,
-  onHired
+  onHired,
+  isDirty
 }: {
   snapshot: OrgSnapshot
   onHired: (employeeId: string) => void
+  /** 편집 중인 변경이 있으면 true. 채용하면 선택이 바뀌어 편집이 사라지므로 먼저 확인한다. */
+  isDirty?: () => boolean
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const start = (): void =>
+    needsLeaveConfirm(isDirty?.() ?? false, null, 'new-hire') ? setConfirming(true) : setOpen(true)
   const hintId = useId()
   const openerRef = useRef<HTMLButtonElement>(null)
   const hasHr = !needsHr(snapshot)
-  const dialog = open && (
-    <HireDialog
-      snapshot={snapshot}
-      onClose={() => {
-        setOpen(false)
-        openerRef.current?.focus()
-      }}
-      onHired={(id) => {
-        setOpen(false)
-        onHired(id)
+  const leave = confirming && (
+    <LeaveDialog
+      onStay={() => setConfirming(false)}
+      onLeave={() => {
+        setConfirming(false)
+        setOpen(true)
       }}
     />
+  )
+  const dialog = (
+    <>
+      {leave}
+      {open && (
+        <HireDialog
+          snapshot={snapshot}
+          onClose={() => {
+            setOpen(false)
+            openerRef.current?.focus()
+          }}
+          onHired={(id) => {
+            setOpen(false)
+            onHired(id)
+          }}
+        />
+      )}
+    </>
   )
   if (!hasHr)
     return (
       <div className="hire-entry">
-        <Button variant="primary" ref={openerRef} onClick={() => setOpen(true)}>
+        <Button variant="primary" ref={openerRef} onClick={start}>
           직원 채용
         </Button>
         {dialog}
@@ -51,7 +73,7 @@ export function HireEntry({
       </p>
       <details className="hire-entry__manual">
         <summary>직접 채용(수동)</summary>
-        <Button size="small" ref={openerRef} onClick={() => setOpen(true)}>
+        <Button size="small" ref={openerRef} onClick={start}>
           직원 채용
         </Button>
       </details>

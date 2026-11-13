@@ -68,6 +68,15 @@ export function MemberManager({
   useEffect(() => {
     if (mode !== 'edit') onDirtyChange(false)
   }, [mode, onDirtyChange])
+  // 직원이 바뀌어 언마운트될 때 낡은 dirty 표시가 남지 않게 한다.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
+  // 충돌 뒤 "다시 불러오기"를 누르면 이후 도착하는 최신 직원 값으로 폼을 새로 시작한다.
+  const [reloaded, setReloaded] = useState(false)
+  const reload = (): void => {
+    setReloaded(true)
+    setPhase({ kind: 'idle' })
+    onChanged()
+  }
 
   return (
     <div className="member-manager">
@@ -121,6 +130,7 @@ export function MemberManager({
       )}
       {mode === 'edit' && agent !== undefined && member.agentId && (
         <EditForm
+          key={reloaded ? JSON.stringify(agent) : 'initial'}
           id={member.agentId}
           agent={agent}
           phase={phase}
@@ -129,7 +139,7 @@ export function MemberManager({
           onCancel={() => setMode('view')}
           onSaved={() => finish('저장했어요.')}
           onFail={(c) => fail(c, 'update')}
-          onReload={onChanged}
+          onReload={reload}
         />
       )}
       {mode === 'edit' && agent === undefined && (

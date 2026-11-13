@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
 import { Badge } from '../ui/Badge'
+import { needsLeaveConfirm } from '../employee/employee-model'
 import { HireEntry } from '../employee/HireEntry'
 import { LeaveDialog, MemberManager } from '../employee/MemberManager'
 import { useNewHire } from '../employee/use-new-hire'
@@ -106,7 +107,7 @@ function OrgReady({
     dirtyRef.current = d
   }, [])
   const requestSelect = (title: string): void => {
-    if (dirtyRef.current && title !== selected) setPendingSelect(title)
+    if (needsLeaveConfirm(dirtyRef.current, selected, title)) setPendingSelect(title)
     else setSelected(title)
   }
   const listsRef = useRef<HTMLDivElement>(null)
@@ -127,7 +128,7 @@ function OrgReady({
     <>
       <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
-      <HireEntry snapshot={snapshot} onHired={onHired} />
+      <HireEntry snapshot={snapshot} onHired={onHired} isDirty={() => dirtyRef.current} />
       <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
         {notice}
       </div>
