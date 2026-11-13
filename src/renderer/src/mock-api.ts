@@ -91,6 +91,14 @@ export const mockApi: WindowApi = {
   ...mockHireApi.api,
   ...mockEmployeeApi.api,
   ...mockProjectApi.api,
+  // 작업 흐름 편집 화면은 T-047 2단계(ui-dev)에서 시나리오 mock으로 바꾼다.
+  getPolicy: async () => ({ ok: false, code: 'not-implemented', message: '아직 지원하지 않아요.' }),
+  savePolicy: async () => ({
+    ok: false,
+    code: 'not-implemented',
+    message: '아직 지원하지 않아요.'
+  }),
+  listPolicySummaries: async () => ({ ok: true, value: [] }),
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,

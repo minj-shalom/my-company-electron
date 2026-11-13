@@ -46,6 +46,9 @@ const api: WindowApi = {
   assignProjectEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.projectAssignEmployee, req),
   unassignProjectEmployee: (req) => ipcRenderer.invoke(IPC_CHANNELS.projectUnassignEmployee, req),
   listEmployeeProjects: (req) => ipcRenderer.invoke(IPC_CHANNELS.employeeProjects, req),
+  getPolicy: (req) => ipcRenderer.invoke(IPC_CHANNELS.policyGet, req),
+  savePolicy: (req) => ipcRenderer.invoke(IPC_CHANNELS.policySave, req),
+  listPolicySummaries: () => ipcRenderer.invoke(IPC_CHANNELS.policyListSummaries),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),

@@ -22,6 +22,7 @@ import { createEmployeeHandlers, type EmployeeHandlers } from './employee/employ
 import type { AssignmentSource } from './employee/employee-service'
 import { createTicketWriteHandlers, type TicketWriteHandlers } from './ticket/ticket-ipc'
 import { createProjectHandlers, type ProjectHandlers } from './project/project-ipc'
+import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
 
@@ -103,10 +104,12 @@ export function createDomainHandlers(deps: DomainDeps): {
   resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
 } & EmployeeHandlers &
   ProjectHandlers &
+  PolicyHandlers &
   TicketWriteHandlers {
   return {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
+    ...createPolicyHandlers({ context: deps.context }),
     ...createEmployeeHandlers({
       context: deps.context,
       repository: () => repositoryFor(deps),
@@ -242,6 +245,9 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.projectAssignEmployee, h.assignEmployee)
   handle(IPC_CHANNELS.projectUnassignEmployee, h.unassignEmployee)
   handle(IPC_CHANNELS.employeeProjects, h.employeeProjects)
+  handle(IPC_CHANNELS.policyGet, h.getPolicy)
+  handle(IPC_CHANNELS.policySave, h.savePolicy)
+  handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())
   // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).
   ipcMain.handle(IPC_CHANNELS.projectSelectFolder, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted sender')

@@ -21,6 +21,13 @@ import type { OrgChart } from './employee'
 import type { FirstHireRequest, FirstHireResult, HirePmResult } from './company-hire'
 import type { OrgSnapshot } from './org'
 import type {
+  PolicyGetRequest,
+  PolicySaveRequest,
+  PolicySaveResult,
+  PolicyState,
+  PolicySummary
+} from './policy'
+import type {
   EmployeeProjectsRequest,
   EmployeeProjectsResult,
   ProjectAddRequest,
@@ -155,6 +162,16 @@ export interface WindowApi {
   ) => Promise<ApiResult<ProjectChangeResult>>
   listEmployeeProjects: (req: EmployeeProjectsRequest) => Promise<ApiResult<EmployeeProjectsResult>>
   /**
+   * 프로젝트 작업 흐름 정책 (T-047). 원본은 `company/policies/<프로젝트 id>.md`이고 id는 등록된 프로젝트만 허용한다 (아니면 `not-found`).
+   * `getPolicy`: 정책이 없으면 `exists: false`와 보수적 기본값(모든 동작 `every`)을 돌려준다. `values`는 편집용, `effective`는 실제 적용값(유효하지 않은 `auto`는 `every`로 대체), `warnings`는 직접 편집된 이상한 값, `history`는 변경 이력(최신이 마지막)이다.
+   * `savePolicy`: `getPolicy`가 준 `revision`과 편집한 `values` 전체를 보낸다. 규칙 위반은 오류가 아니라 `{ saved: false, violations: [{ code, field?, message }] }`로 돌려주고 파일은 바뀌지 않는다. 다른 곳에서 바뀌었으면 `conflict`, 형식 오류는 `invalid-request`.
+   * 자동(`auto`) 모드는 일일 상한과 허용 대상이 있어야 하고, 켜거나 바꿀 때는 경고 대화 확인 뒤 `confirmAuto: true`를 보내야 한다 (없으면 `auto-needs-confirm`). 보호 브랜치(master, main 등) 자동 머지는 상한 1~2, `confirmInput`이 프로젝트 이름과 같아야 한다.
+   * `listPolicySummaries`: 프로젝트별 자동 모드 동작 목록 (배지, 방문 요약). 자동 모드의 실행 시 강제는 이 API가 아니라 T-053 게이트가 한다.
+   */
+  getPolicy: (req: PolicyGetRequest) => Promise<ApiResult<PolicyState>>
+  savePolicy: (req: PolicySaveRequest) => Promise<ApiResult<PolicySaveResult>>
+  listPolicySummaries: () => Promise<ApiResult<PolicySummary[]>>
+  /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
@@ -210,6 +227,9 @@ export const IPC_CHANNELS = {
   projectAssignEmployee: 'project:assign-employee',
   projectUnassignEmployee: 'project:unassign-employee',
   employeeProjects: 'employee:projects',
+  policyGet: 'policy:get',
+  policySave: 'policy:save',
+  policyListSummaries: 'policy:list-summaries',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
