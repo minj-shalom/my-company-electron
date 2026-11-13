@@ -34,6 +34,7 @@ import {
   publicationServiceFor,
   type PublicationHandlers
 } from './publication/publication-ipc'
+import { permissionServiceFor } from './permission/permission-runtime'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import {
   createProviderSelectionHandlers,
@@ -52,6 +53,8 @@ export interface DomainDeps {
   homeDir?: string
   /** 앱 userData. 게이트 상태(킬 스위치, 일일 카운트) 저장 위치. */
   userDataDir?: string
+  /** 결정 카드가 완료된 뒤 부른다 (다음 틱 예약, T-017). 실패해도 결정은 유효하다. */
+  onDecisionResolved?: () => void
 }
 
 const fail = (
@@ -75,6 +78,42 @@ async function guarded<T>(task: () => Promise<T>): Promise<ApiResult<T>> {
 
 function repositoryFor(deps: DomainDeps): FileCompanyRepository {
   return sharedRepository(deps.context.requireOpenCompany().fs)
+}
+
+async function onPermissionResolved(
+  deps: DomainDeps,
+  id: string,
+  choice: string,
+  ticketId: string | null
+): Promise<void> {
+  if (deps.userDataDir === undefined) return
+  try {
+    await permissionServiceFor({
+      context: deps.context,
+      userDataDir: deps.userDataDir
+    }).onResolved(id, choice, ticketId)
+  } catch {
+    // 규칙을 쓰지 못한 것이므로 아무 것도 허용되지 않는다 (fail-closed). 카드 결정 자체는 유효하다.
+  }
+}
+
+function notifyResolved(deps: DomainDeps): void {
+  try {
+    deps.onDecisionResolved?.()
+  } catch {
+    // 틱 예약 실패가 결정 응답을 막지 않는다.
+  }
+}
+
+/** 승인 카드(`proposal` 등)가 처리돼 카드가 닫혔으면 다음 틱을 예약한다. 실패한 적용은 카드가 pending이므로 예약하지 않는다. */
+function withResumeOnApply(h: ProposalHandlers, deps: DomainDeps): ProposalHandlers {
+  return {
+    applyProposal: async (req) => {
+      const r = await h.applyProposal(req)
+      if (r.ok && r.value.ok) notifyResolved(deps)
+      return r
+    }
+  }
 }
 
 const DECISION_STATUS_VALUES: readonly unknown[] = ['pending', 'done']
@@ -146,11 +185,14 @@ export function createDomainHandlers(deps: DomainDeps): {
       homeDir: deps.homeDir
     }),
     ...createIntegrityHandlers({ context: deps.context, userDataDir: deps.userDataDir }),
-    ...createProposalHandlers({
-      context: deps.context,
-      userDataDir: deps.userDataDir,
-      homeDir: deps.homeDir
-    }),
+    ...withResumeOnApply(
+      createProposalHandlers({
+        context: deps.context,
+        userDataDir: deps.userDataDir,
+        homeDir: deps.homeDir
+      }),
+      deps
+    ),
     ...createEmployeeHandlers({
       context: deps.context,
       repository: () => repositoryFor(deps),
@@ -238,6 +280,12 @@ export function createDomainHandlers(deps: DomainDeps): {
           }).onCardResolved(id, choice, typeof memo === 'string' ? memo : null)
           return { ok: true, value: null }
         })(undefined).catch(() => undefined)
+      if (r.value.ok) {
+        // 승인 선택이 기록된 뒤에만 허용 규칙을 쓴다 (T-017). 요청 기록이 없는 카드는 아무것도 하지 않는다.
+        if (card.ok && card.value.ok && card.value.value.kind === 'permission')
+          await onPermissionResolved(deps, id, choice, card.value.value.ticketId)
+        notifyResolved(deps)
+      }
       // 저장소의 실패 사유는 고정 문구로 바꿔 돌려준다 (파일명/경로 노출 방지).
       return r.value.ok ? r.value : fail(...(RESOLVE_FAILURES[r.value.code] ?? RESOLVE_INTERNAL))
     },

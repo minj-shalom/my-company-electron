@@ -1,4 +1,4 @@
-import type { RunErrorCode, RunEvent } from '../../shared/run'
+import type { PermissionDenial, RunErrorCode, RunEvent } from '../../shared/run'
 import type { RunLaunchOptions, ProviderAdapter } from '../providers/types'
 
 export interface ExecResult {
@@ -7,6 +7,8 @@ export interface ExecResult {
   /** `result` 이벤트가 성공이 아니라고 했는지. */
   resultFailed: boolean
   text: string | null
+  /** 비대화형 실행에서 거부된 동작. 제공자가 알려주지 않으면 빈 배열. */
+  denials: PermissionDenial[]
 }
 
 /**
@@ -21,7 +23,7 @@ export function execOnce(
   signal: AbortSignal
 ): Promise<ExecResult> {
   return new Promise<ExecResult>((resolve) => {
-    const res: ExecResult = { error: null, resultFailed: false, text: null }
+    const res: ExecResult = { error: null, resultFailed: false, text: null, denials: [] }
     let runId: string | null = null
     let settled = false
     const onAbort = (): void => {
@@ -37,6 +39,7 @@ export function execOnce(
       if (ev.type === 'result') {
         res.text = ev.text
         res.resultFailed = !ev.success
+        res.denials = ev.denials ?? []
       } else if (ev.type === 'error') res.error ??= ev.code
       else if (ev.type === 'exit') settle()
     }

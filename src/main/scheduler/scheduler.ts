@@ -31,7 +31,7 @@ export interface PolicyHoursEntry {
 }
 
 export interface TickContext {
-  trigger: 'timer' | 'startup-catchup' | 'run-now'
+  trigger: 'timer' | 'startup-catchup' | 'run-now' | 'decision'
   /**
    * 이번 틱에서 다룰 수 있는 프로젝트 id. 정책 활동 시간 밖인 프로젝트는 빠진다.
    * 프로젝트 정보를 얻지 못하면 null(제한 없음).
@@ -82,6 +82,7 @@ export class Scheduler {
   private cancelTimer: (() => void) | null = null
   private started = false
   private preTick: PreTickHook | null = null
+  private resumePending = false
 
   constructor(private readonly deps: SchedulerDeps) {
     this.clock = deps.clock ?? systemClock
@@ -147,6 +148,26 @@ export class Scheduler {
     return { started: true }
   }
 
+  /**
+   * 결정이 완료됐을 때 부른다(T-017). 자동 실행이 켜져 있으면 간격을 기다리지 않고 다음 틱을 돌린다.
+   * 진행 중인 틱은 끊지 않고, 끝난 직후 한 번만 이어서 실행한다 (여러 결정이 몰려도 한 번).
+   * 자동 실행 끔, 활동 시간 밖, 킬 스위치, 회사 없음은 평소 틱과 같게 지킨다.
+   */
+  async resumeAfterDecision(): Promise<void> {
+    if (!this.started) return
+    if (this.running) {
+      this.resumePending = true
+      return
+    }
+    try {
+      const skipped = await this.evaluate('decision')
+      // 평가 중에 다른 틱이 시작됐다면 그 틱이 끝난 뒤로 미룬다.
+      if (skipped === 'not-due' && this.running) this.resumePending = true
+    } catch {
+      // 다음 주기 점검이 어차피 다시 판단한다.
+    }
+  }
+
   private async halted(): Promise<boolean> {
     try {
       return (await this.deps.isHalted?.()) === true
@@ -174,7 +195,7 @@ export class Scheduler {
 
   /** 지금 틱을 시작해야 하는지 판단하고 시작한다. 시작하지 않은 이유를 돌려준다. */
   private async evaluate(
-    trigger: 'timer' | 'startup-catchup'
+    trigger: 'timer' | 'startup-catchup' | 'decision'
   ): Promise<SchedulerSkipReason | null> {
     const key = this.deps.companyKey()
     if (key === null) {
@@ -198,7 +219,12 @@ export class Scheduler {
     const { config } = this.schedule
     if (!config.enabled) return 'disabled'
     const now = this.clock.now()
-    if (this.lastRunAt !== null && now - this.lastRunAt < config.intervalMinutes * 60_000)
+    // 결정 후 재개는 사람이 막 응답한 직후라 간격을 기다리지 않는다.
+    if (
+      trigger !== 'decision' &&
+      this.lastRunAt !== null &&
+      now - this.lastRunAt < config.intervalMinutes * 60_000
+    )
       return 'not-due'
     if (this.running) return 'not-due'
     if (!isWithinCompanyHours(new Date(now), config.activeHours)) return 'outside-hours'
@@ -282,6 +308,10 @@ export class Scheduler {
         this.running = null
         this.abort = null
         this.deps.onChange?.()
+        if (this.resumePending) {
+          this.resumePending = false
+          queueMicrotask(() => void this.resumeAfterDecision())
+        }
       }
     })()
     this.running = run

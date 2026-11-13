@@ -1,4 +1,4 @@
-import type { RunEventBody } from '../../../shared/run'
+import type { PermissionDenial, RunEventBody } from '../../../shared/run'
 
 type Json = Record<string, unknown>
 
@@ -17,6 +17,28 @@ function contentToText(content: unknown): string {
       .join('\n')
   }
   return ''
+}
+
+const MAX_DENIALS = 20
+const MAX_DENIAL_FIELD = 500
+
+const clip = (v: unknown): string | null =>
+  typeof v === 'string' && v.length > 0 ? v.slice(0, MAX_DENIAL_FIELD) : null
+
+/** result 줄의 `permission_denials`에서 도구 이름과 명령/경로만 뽑는다 (나머지 입력 필드는 버린다). */
+function parseDenials(v: unknown): PermissionDenial[] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: PermissionDenial[] = []
+  for (const d of v.slice(0, MAX_DENIALS)) {
+    if (!isObject(d) || typeof d['tool_name'] !== 'string') continue
+    const input = isObject(d['tool_input']) ? d['tool_input'] : {}
+    out.push({
+      tool: d['tool_name'].slice(0, 80),
+      command: clip(input['command']),
+      path: clip(input['file_path'] ?? input['notebook_path'])
+    })
+  }
+  return out
 }
 
 function parseMessage(role: 'assistant' | 'user', msg: unknown): RunEventBody[] {
@@ -72,7 +94,8 @@ export function parseLine(line: string): RunEventBody[] {
       return parseMessage('assistant', data['message'])
     case 'user':
       return parseMessage('user', data['message'])
-    case 'result':
+    case 'result': {
+      const denials = parseDenials(data['permission_denials'])
       return [
         {
           type: 'result',
@@ -81,9 +104,11 @@ export function parseLine(line: string): RunEventBody[] {
           text: str(data['result']) ?? '',
           costUsd: num(data['total_cost_usd']),
           durationMs: num(data['duration_ms']),
-          numTurns: num(data['num_turns'])
+          numTurns: num(data['num_turns']),
+          ...(denials === undefined ? {} : { denials })
         }
       ]
+    }
     default:
       // 버전에 따라 늘어나는 타입은 무시하지 않고 원문을 log로 남긴다.
       return data['type'] === 'rate_limit_event' ? [] : [{ type: 'log', source: 'stdout', line }]
