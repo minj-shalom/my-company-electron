@@ -25,6 +25,7 @@ import { createProjectHandlers, type ProjectHandlers } from './project/project-i
 import { createGateHandlers, type GateHandlers } from './gate/gate-ipc'
 import { createIntegrityHandlers, type IntegrityHandlers } from './integrity/integrity-ipc'
 import { integrityFor } from './integrity/integrity-runtime'
+import { createProposalHandlers, type ProposalHandlers } from './proposal/proposal-ipc'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
@@ -112,6 +113,7 @@ export function createDomainHandlers(deps: DomainDeps): {
   PolicyHandlers &
   GateHandlers &
   IntegrityHandlers &
+  ProposalHandlers &
   TicketWriteHandlers {
   return {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
@@ -123,6 +125,11 @@ export function createDomainHandlers(deps: DomainDeps): {
       homeDir: deps.homeDir
     }),
     ...createIntegrityHandlers({ context: deps.context, userDataDir: deps.userDataDir }),
+    ...createProposalHandlers({
+      context: deps.context,
+      userDataDir: deps.userDataDir,
+      homeDir: deps.homeDir
+    }),
     ...createEmployeeHandlers({
       context: deps.context,
       repository: () => repositoryFor(deps),
@@ -193,6 +200,10 @@ export function createDomainHandlers(deps: DomainDeps): {
         (typeof memo !== 'string' || memo.length > MAX_MEMO_LENGTH || normalizeMemo(memo) === null)
       )
         return fail('invalid-request', '메모가 올바르지 않습니다.')
+      // 승인 카드(`proposal`)의 승인은 적용과 함께만 처리한다 (`proposal:apply`). 이 경로로 승인만 기록하면 적용 없이 done이 된다.
+      const card = await guarded(() => repositoryFor(deps).getDecision(id))
+      if (card.ok && card.value.ok && card.value.value.kind === 'proposal' && choice === 'A')
+        return fail('invalid-request', '승인 카드는 적용 경로로만 승인할 수 있습니다.')
       // 필요한 필드만 복사해 넘긴다 (추가 필드 전달 차단).
       const r = await guarded(() => repositoryFor(deps).resolveDecision({ id, choice, memo }))
       if (!r.ok) return r
@@ -297,6 +308,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.gateKillSwitchSet, write(h.setKillSwitch))
   handle(IPC_CHANNELS.auditSummary, h.getAuditSummary)
   handle(IPC_CHANNELS.employeeQuarantined, () => h.getQuarantined())
+  // 적용은 services가 직접 앱 쓰기 창(`approved-proposal`)을 열기 때문에 `write`로 한 번 더 감싸지 않는다.
+  handle(IPC_CHANNELS.proposalApply, h.applyProposal)
   handle(IPC_CHANNELS.integrityRestore, h.restoreIntegrity)
   handle(IPC_CHANNELS.integrityAccept, h.acceptIntegrity)
   // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).

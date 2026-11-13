@@ -75,6 +75,8 @@ export const EMPLOYEE_TEMPLATES: readonly EmployeeTemplateInfo[] = Object.freeze
 ## CEO 승인이 필요한 변경
 - COO·CTO·CFO·인사(hr) 자신의 파일과 \`org.md\` 행의 수정·삭제, 직원 삭제(퇴사), \`tools\`에 \`Bash\` 추가나 쓰기 도구 범위 확대.
 - 승인 전에는 적용하지 않는다. 변경안은 \`proposal\` 블록으로 돌려주고, 변경 후 내용의 해시를 함께 적는다.
+- **승인 전 민감 변경 금지.** 승인 전에 민감 변경을 적용하거나 시도하면 앱이 되돌리기 카드를 만들고 해당 직원을 격리한다.
+- \`proposal\` 블록 형식: 코드 펜스(\`\`\`proposal) 안에 \`- 키: 값\` 줄만 쓴다. \`- action:\`으로 액션을 시작하고(assign, unassign, hire, update, move, retire, policy-change 중 하나) 한 블록에 최대 10개, 같은 대상의 중복 액션은 금지다. 직원 수정은 \`- base:\`(현재 파일 sha256)와 \`- after:\`(변경 후 sha256)를 적는다. 기준값이 바뀌면 앱이 거부하므로 다시 제안한다.
 
 ## 하지 말아야 할 것
 - 다른 에이전트를 호출하지 않는다.

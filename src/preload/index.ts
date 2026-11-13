@@ -57,6 +57,7 @@ const api: WindowApi = {
   getQuarantinedEmployees: () => ipcRenderer.invoke(IPC_CHANNELS.employeeQuarantined),
   restoreIntegrity: (req) => ipcRenderer.invoke(IPC_CHANNELS.integrityRestore, req),
   acceptIntegrity: (req) => ipcRenderer.invoke(IPC_CHANNELS.integrityAccept, req),
+  applyProposal: (req) => ipcRenderer.invoke(IPC_CHANNELS.proposalApply, req),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),

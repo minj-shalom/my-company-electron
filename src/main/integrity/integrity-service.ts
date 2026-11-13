@@ -42,6 +42,8 @@ interface ReconcileOpts {
   appWrites?: ReadonlyMap<string, string>
   /** CEO가 사후 승인을 누른 판정: 정책 변경을 위반으로 세지 않는다. */
   accepting?: boolean
+  /** 승인된 제안 카드 번호(T-046). 앱이 적용한 정상 변경의 감사 줄에 연결한다. */
+  card?: string
 }
 
 interface Plan {
@@ -135,7 +137,11 @@ export class IntegrityService {
    * 시작 전 정리가 실패하면 앱 쓰기를 거부한다 (fail-closed). 종료 정리가 실패하면 기준선을 올리지 않으므로
    * 그 변경은 다음 감지 때 외부 변경으로 보고된다.
    */
-  async withAppWrite<T>(actor: 'ceo-ui' | 'approved-proposal', fn: () => Promise<T>): Promise<T> {
+  async withAppWrite<T>(
+    actor: 'ceo-ui' | 'approved-proposal',
+    fn: () => Promise<T>,
+    card?: string
+  ): Promise<T> {
     await this.reconcile()
     this.appDepth++
     try {
@@ -145,7 +151,7 @@ export class IntegrityService {
       if (this.appDepth === 0) {
         const appWrites = new Map(this.appWrites)
         this.appWrites.clear()
-        await this.reconcile({ actor, appWrites }).catch(() => undefined)
+        await this.reconcile({ actor, appWrites, card }).catch(() => undefined)
       }
     }
   }
@@ -283,7 +289,9 @@ export class IntegrityService {
         )
       const pmSeen = Object.hasOwn(st.reported, PM_MARK)
       if (!pmSeen) await this.freshInfoCard(infos, plan, cardIds)
-      await this.deps.audit.append(this.auditEntries(plan, base, cur, cardIds, violations, fresh))
+      await this.deps.audit.append(
+        this.auditEntries(plan, base, cur, cardIds, violations, fresh, opts.card)
+      )
       await this.deps.state.update((d) => {
         d.reported = Object.fromEntries(plan.changed.map((f) => [f, hashOf(f)]))
         if (infos.length > 0) d.reported[PM_MARK] = '1'
@@ -293,7 +301,7 @@ export class IntegrityService {
 
     await this.freshInfoCard(infos, plan, cardIds)
     await this.deps.audit.append(
-      this.auditEntries(plan, base, cur, cardIds, violations, plan.changed)
+      this.auditEntries(plan, base, cur, cardIds, violations, plan.changed, opts.card)
     )
     await this.deps.snapshots.save(cur, 'baseline')
     await this.deps.state.update((d) => {
@@ -403,7 +411,8 @@ export class IntegrityService {
     cur: FileMap,
     cardIds: string[],
     violations: IntegrityIssue[],
-    files: string[]
+    files: string[],
+    approvedCard?: string
   ): HrAuditEntry[] {
     const sensitiveFiles = new Set(plan.sensitive.map((s) => s.file))
     return files.map((f) => {
@@ -420,7 +429,12 @@ export class IntegrityService {
         summary: summarizeDiff(base.get(f)?.text ?? null, cur.get(f)?.text ?? null),
         actor: plan.actors.get(f) ?? 'unknown',
         result,
-        card: result === 'ok' ? null : (cardIds[0] ?? null),
+        card:
+          result === 'ok'
+            ? plan.actors.get(f) === 'approved-proposal' && /^D-\d+$/.test(approvedCard ?? '')
+              ? (approvedCard ?? null)
+              : null
+            : (cardIds[0] ?? null),
         beforeHash: base.get(f)?.hash ?? DELETED_HASH,
         afterHash: cur.get(f)?.hash ?? DELETED_HASH
       }

@@ -98,6 +98,7 @@ export const mockApi: WindowApi = {
   getQuarantinedEmployees: async () => ({ ok: true, value: [] }),
   restoreIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
   acceptIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
+  applyProposal: async () => ({ ok: true, value: { ok: true, status: 'applied', applied: 0 } }),
   ...mockRunApi,
   ...createMockCompanyApi(
     parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)

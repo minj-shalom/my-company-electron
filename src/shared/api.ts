@@ -26,6 +26,7 @@ import type {
   KillSwitchSetRequest,
   KillSwitchState
 } from './gate'
+import type { ProposalApplyRequest, ProposalApplyResult } from './proposal'
 import type { IntegrityActionRequest, IntegrityActionResult } from './integrity'
 import type {
   PolicyGetRequest,
@@ -194,6 +195,8 @@ export interface WindowApi {
   getQuarantinedEmployees: () => Promise<ApiResult<string[]>>
   restoreIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
   acceptIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
+  /** 결재함 승인 카드(T-046) 처리. 승인/거절 클릭 이벤트에서만 호출한다. 적용 대상은 카드 본문이 정하며 renderer가 경로나 값을 넘기지 않는다. */
+  applyProposal: (req: ProposalApplyRequest) => Promise<ApiResult<ProposalApplyResult>>
   /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
@@ -267,6 +270,7 @@ export const IPC_CHANNELS = {
   employeeQuarantined: 'employee:quarantined',
   integrityRestore: 'integrity:restore',
   integrityAccept: 'integrity:accept',
+  proposalApply: 'proposal:apply',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

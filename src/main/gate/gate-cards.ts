@@ -6,7 +6,12 @@ import { FsGuardError, type SafeFs } from '../repository/safe-fs'
 export interface GateCardRequest {
   kind: Extract<
     DecisionKind,
-    'git-confirm' | 'content-approval' | 'decision' | 'integrity-warning' | 'revert-suggestion'
+    | 'git-confirm'
+    | 'content-approval'
+    | 'decision'
+    | 'integrity-warning'
+    | 'revert-suggestion'
+    | 'proposal'
   >
   title: string
   ticketId: string | null
@@ -16,6 +21,9 @@ export interface GateCardRequest {
   impact: string
   /** 추천 이유 문장. 없으면 자동 모드 게이트의 기본 문장을 쓴다. */
   reason?: string
+  /** `proposal` 카드(T-046): 제안자와 본문 `proposal` 블록(앱이 파서로 검증한 텍스트). */
+  proposedBy?: 'hr' | 'coo'
+  block?: string
 }
 
 export interface GateCards {
@@ -40,10 +48,10 @@ export function renderCard(id: string, date: string, r: GateCardRequest): string
 - **관련 티켓:** ${r.ticketId ?? '없음'}
 - **작성일:** ${date}
 - **상태:** pending
-- **유형:** ${r.kind}
+- **유형:** ${r.kind}${r.proposedBy ? `\n- **제안자:** ${r.proposedBy}` : ''}
 
 ## 질문
-${oneLine(r.question, 500)}
+${oneLine(r.question, 500)}${r.block !== undefined ? `\n\n\`\`\`proposal\n${r.block}\n\`\`\`` : ''}
 
 ## 선택지
 ${options}
