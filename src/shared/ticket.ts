@@ -22,6 +22,12 @@ export interface Ticket {
   assignee: string | null
   /** 부서 이름(`- **부서:** 값`). 줄이 없으면 null. 이전 main/mock 호환을 위해 optional이며 없으면 null로 취급한다. */
   department?: string | null
+  /**
+   * 소속 프로젝트 id (`- **프로젝트:** id`). 줄이 없거나 id 형식이 아니면 null = "회사 공통".
+   * 등록되지 않았거나 보관된 프로젝트일 수 있으며 오류가 아니다 (`summarizeProjects`가 "미확인"으로 분류).
+   * 이전 main/mock 호환을 위해 optional이며 없으면 null로 취급한다.
+   */
+  projectId?: string | null
   /** 마크다운 본문. renderer는 sanitize 후 렌더링한다. 너무 길면 잘린다 (`bodyTruncated`). */
   body: string
   /** 본문을 `MAX_TICKET_BODY_CHARS`에서 잘랐으면 true. 없으면 false로 취급한다. */

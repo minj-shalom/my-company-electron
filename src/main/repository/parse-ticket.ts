@@ -1,5 +1,6 @@
 import type { Ticket, TicketStatus } from '../../shared/ticket'
 import { FORGED_LINE_BREAK, asString, firstHeading, metaValue, splitFrontmatter } from './markdown'
+import { PROJECT_ID } from '../../shared/project'
 import { EMPLOYEE_ID, TICKET_ID, leadingId } from './ids'
 
 /** 티켓 상태 폴더. 폴더가 상태의 원본이다 (본문의 상태 줄이 달라도 폴더를 따른다). */
@@ -19,7 +20,8 @@ export function parseTicket(fileName: string, text: string, status: TicketStatus
   if (!title) throw new Error('제목(# T-번호: 제목)을 찾을 수 없습니다.')
   const rawAssignee = asString(data.assignee) ?? metaValue(body, '담당')
   const department = pickDepartment(asString(data.department) ?? metaValue(body, '부서'))
-  return { id, title, status, assignee: pickEmployeeId(rawAssignee), department, body }
+  const projectId = pickProjectId(metaValue(body, '프로젝트'))
+  return { id, title, status, assignee: pickEmployeeId(rawAssignee), department, projectId, body }
 }
 
 const MAX_DEPARTMENT_LENGTH = 50
@@ -28,6 +30,15 @@ const MAX_DEPARTMENT_LENGTH = 50
 function pickDepartment(raw: string | null): string | null {
   const v = raw?.trim().slice(0, MAX_DEPARTMENT_LENGTH).trim()
   return v ? v : null
+}
+
+/**
+ * 프로젝트 소속 읽기. D-008이 frontmatter로 정해지면 이 함수만 바꾼다.
+ * 백틱을 허용하고 PROJECT_ID 형식이 아니면 "회사 공통"(null)으로 본다.
+ */
+function pickProjectId(raw: string | null): string | null {
+  const v = raw?.trim().replace(/^`([^`]*)`$/, '$1') ?? ''
+  return PROJECT_ID.test(v) ? v : null
 }
 
 function pickEmployeeId(raw: string | null): string | null {

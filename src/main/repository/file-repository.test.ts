@@ -160,6 +160,26 @@ describe('tickets', () => {
     expect(await repo.getTicket('T-9')).toMatchObject({ ok: false, code: 'not-found' })
   })
 
+  it('parses the project line and preserves it across moves', async () => {
+    await put(
+      'company/tickets/in-progress/T-006-proj.md',
+      '# T-006: P\n\n- **상태:** in-progress\n- **프로젝트:** `my-app`\n\n## 목표\nx\n'
+    )
+    await put('company/tickets/backlog/T-007-bad.md', '# T-007: B\n\n- **프로젝트:** Bad Name!\n')
+    await put('company/tickets/backlog/T-008-none.md', '# T-008: N\n\n- **상태:** backlog\n')
+    const repo = await FileCompanyRepository.open(dir)
+    const list = await repo.listTickets()
+    const by = (id: string): unknown => list.items.find((x) => x.id === id)?.projectId
+    expect(by('T-006')).toBe('my-app')
+    expect(by('T-007')).toBeNull()
+    expect(by('T-008')).toBeNull()
+    const r = await repo.moveTicket('T-006', 'done')
+    expect(r).toMatchObject({ ok: true, value: { status: 'done', projectId: 'my-app' } })
+    expect(await readFile(join(dir, 'company/tickets/done/T-006-proj.md'), 'utf8')).toContain(
+      '- **프로젝트:** `my-app`'
+    )
+  })
+
   it('moves a ticket: writes new markdown first, updates status line, removes old', async () => {
     await put('company/tickets/in-progress/T-005-loader.md', TICKET)
     const repo = await FileCompanyRepository.open(dir)
