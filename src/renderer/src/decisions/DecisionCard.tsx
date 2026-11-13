@@ -3,6 +3,8 @@ import type { Decision, DecisionResolveRequest } from '../../../shared/decision'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import { DraftPreview } from '../publication/DraftPreview'
+import { parseApprovalCard } from '../publication/publication-model'
 import { KindBadge } from './KindBadge'
 import { QuarantineList, QuestionBody } from './ProposalPanel'
 import { isApprovable, splitQuestion, usesApplyApi } from './proposal-view'
@@ -66,6 +68,7 @@ export function DecisionCard({
               </p>
             )}
             <CardText decision={d} />
+            <ApprovalDrafts decision={d} />
             <QuarantineList decision={d} />
             {d.status === 'pending' ? (
               <ResolveForm decision={d} onResolve={onResolve} />
@@ -83,6 +86,20 @@ export function DecisionCard({
 function CardText({ decision: d }: { decision: Decision }): React.JSX.Element {
   if (kindOf(d) !== 'proposal') return <p className="dcard__text">{d.question}</p>
   return <QuestionBody segments={splitQuestion(d.question)} />
+}
+
+/** 콘텐츠 승인 카드에서 초안 본문을 평문으로 미리 본다. 카드 본문 형식이 다르면 아무것도 보이지 않는다. */
+function ApprovalDrafts({ decision: d }: { decision: Decision }): React.JSX.Element | null {
+  if (kindOf(d) !== 'content-approval') return null
+  const parsed = parseApprovalCard(d.question)
+  if (!parsed) return null
+  return (
+    <div className="dcard__drafts">
+      {parsed.paths.map((path) => (
+        <DraftPreview key={path} projectId={parsed.projectId} path={path} />
+      ))}
+    </div>
+  )
 }
 
 function OptionText({
@@ -140,6 +157,9 @@ function ResolveForm({
   const apply = usesApplyApi(kindOf(d))
   // 승인 선택지는 파싱된 변경이 있을 때만 열린다 (알 수 없는 액션이 든 카드는 거절만 가능).
   const approvable = kindOf(d) !== 'proposal' || isApprovable(splitQuestion(d.question))
+  // 콘텐츠 승인을 거절하면 직원이 고칠 수 있게 사유를 꼭 적게 한다.
+  const rejecting = kindOf(d) === 'content-approval' && picked?.label === '거절'
+  const needsReason = rejecting && memo.trim() === ''
   const locked = (o: Decision['options'][number]): boolean => !approvable && o.label === '승인'
 
   const mounted = useRef(true)
@@ -196,7 +216,7 @@ function ResolveForm({
         e.preventDefault()
         if (confirming) {
           if (!busy) void confirm()
-        } else if (picked) setStep(true, 'open')
+        } else if (picked && !needsReason) setStep(true, 'open')
       }}
     >
       <fieldset className="dform__options">
@@ -221,7 +241,9 @@ function ResolveForm({
       </fieldset>
       {apply ? null : (
         <div className="field">
-          <label htmlFor={memoId}>메모 (선택, {MEMO_MAX}자 이하)</label>
+          <label htmlFor={memoId}>
+            {rejecting ? `거절 사유 (필수, ${MEMO_MAX}자 이하)` : `메모 (선택, ${MEMO_MAX}자 이하)`}
+          </label>
           <Input
             id={memoId}
             extraClass="dform__memo"
@@ -263,7 +285,7 @@ function ResolveForm({
         </div>
       ) : (
         <div className="dform__actions">
-          <Button ref={checkRef} variant="primary" type="submit" disabled={!picked}>
+          <Button ref={checkRef} variant="primary" type="submit" disabled={!picked || needsReason}>
             선택 확인
           </Button>
         </div>

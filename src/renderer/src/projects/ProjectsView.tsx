@@ -6,6 +6,7 @@ import { PolicyDialog } from '../policy/PolicyDialog'
 import { usePolicySummaries } from '../policy/use-policy'
 import { UnassignedSection } from '../assign/UnassignedSection'
 import { useOrg } from '../org/use-org'
+import { PublicationSection } from '../publication/PublicationSection'
 import { RecurringSection } from '../recurring/RecurringSection'
 import { useRecurring } from '../recurring/use-recurring'
 import { AutoRunLog } from '../gate/AutoRunLog'
@@ -176,6 +177,7 @@ export function ProjectsView({
       {load.kind === 'ready' && (
         <RecurringSection {...recurring} projects={items} people={people} />
       )}
+      {load.kind === 'ready' && <PublicationSection projects={items} />}
 
       {dialog?.kind === 'add' && load.kind === 'ready' && (
         <AddProjectDialog
