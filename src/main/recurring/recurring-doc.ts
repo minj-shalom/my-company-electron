@@ -30,7 +30,11 @@ export interface ParsedRecurring {
   defs: RecurringDefinition[]
   /** 읽지 못해 무시한 블록 수. */
   unreadable: number
+  /** 첫 블록 뒤의 구역 순서. 정의가 아닌 구역(`## 메모` 등)과 블록 안의 알 수 없는 줄을 원문 그대로 다시 쓰기 위해 둔다. */
+  layout: LayoutEntry[]
 }
+
+export type LayoutEntry = { raw: string } | { id: string; extra: string[] }
 
 const oneLine = (v: string, max: number): boolean =>
   v.length > 0 && [...v].length <= max && !hasForbiddenChar(v)
@@ -92,50 +96,80 @@ function parseBlock(id: string, lines: string[]): RecurringDefinition | null {
 }
 
 export function parseRecurring(text: string | null): ParsedRecurring {
-  if (text === null) return { preface: DEFAULT_PREFACE, defs: [], unreadable: 0 }
+  if (text === null) return { preface: DEFAULT_PREFACE, defs: [], unreadable: 0, layout: [] }
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
   const first = lines.findIndex((l) => HEADING.test(l))
   const preface = (first < 0 ? lines : lines.slice(0, first)).join('\n').trimEnd()
   const defs: RecurringDefinition[] = []
+  const layout: LayoutEntry[] = []
   const seen = new Set<string>()
   let unreadable = 0
   let blocks = 0
-  for (let i = first < 0 ? lines.length : first; i < lines.length; i++) {
-    const h = HEADING.exec(lines[i])
-    if (!h) continue
+  let i = first < 0 ? lines.length : first
+  while (i < lines.length) {
     let end = i + 1
     while (end < lines.length && !ANY_H2.test(lines[end])) end++
-    blocks++
-    if (blocks > MAX_BLOCKS_PARSED) {
-      unreadable++
+    const section = lines.slice(i, end)
+    const h = HEADING.exec(lines[i])
+    if (!h) {
+      layout.push({ raw: section.join('\n').trimEnd() })
+      i = end
       continue
     }
-    const def = parseBlock(h[1], lines.slice(i + 1, end))
+    blocks++
+    const body = section.slice(1)
+    const def = blocks > MAX_BLOCKS_PARSED ? null : parseBlock(h[1], body)
     // 같은 id가 둘이면 먼저 나온 것만 쓴다 (중복 생성 방지).
-    if (def === null || seen.has(def.id)) unreadable++
-    else {
+    if (def === null || seen.has(def.id)) {
+      unreadable++
+      layout.push({ raw: section.join('\n').trimEnd() })
+    } else {
       seen.add(def.id)
       defs.push(def)
+      layout.push({ id: def.id, extra: body.filter((l) => l.trim() !== '' && !FIELD.test(l)) })
     }
-    i = end - 1
+    i = end
   }
-  return { preface: preface === '' ? DEFAULT_PREFACE.trimEnd() : preface, defs, unreadable }
+  return {
+    preface: preface === '' ? DEFAULT_PREFACE.trimEnd() : preface,
+    defs,
+    unreadable,
+    layout
+  }
 }
 
-export function serializeRecurring(preface: string, defs: RecurringDefinition[]): string {
-  const blocks = defs.map((d) =>
-    [
-      `## 반복: ${d.id}`,
-      `- 프로젝트: ${d.projectId}`,
-      `- 제목: ${d.titleTemplate}`,
-      `- 목표: ${d.goalTemplate}`,
-      ...d.criteriaTemplates.map((c) => `- 완료 조건: ${c}`),
-      `- 주기: ${d.cadence}`,
-      `- 개수: ${d.count}`,
-      `- 담당: ${d.assignee ?? '없음'}`,
-      `- 상태: ${d.status}`,
-      ''
-    ].join('\n')
-  )
-  return `${preface.trimEnd()}\n\n${blocks.join('\n')}`.trimEnd() + '\n'
+const renderBlock = (d: RecurringDefinition, extra: string[]): string =>
+  [
+    `## 반복: ${d.id}`,
+    `- 프로젝트: ${d.projectId}`,
+    `- 제목: ${d.titleTemplate}`,
+    `- 목표: ${d.goalTemplate}`,
+    ...d.criteriaTemplates.map((c) => `- 완료 조건: ${c}`),
+    `- 주기: ${d.cadence}`,
+    `- 개수: ${d.count}`,
+    `- 담당: ${d.assignee ?? '없음'}`,
+    `- 상태: ${d.status}`,
+    ...extra
+  ].join('\n')
+
+/** 기존 구역 순서(`layout`)를 지키고, 삭제된 정의는 빼고, 새 정의는 끝에 붙인다. */
+export function serializeRecurring(
+  preface: string,
+  defs: RecurringDefinition[],
+  layout: LayoutEntry[] = []
+): string {
+  const byId = new Map(defs.map((d) => [d.id, d]))
+  const used = new Set<string>()
+  const parts: string[] = []
+  for (const e of layout) {
+    if ('raw' in e) parts.push(e.raw)
+    else {
+      const d = byId.get(e.id)
+      if (d === undefined) continue
+      used.add(d.id)
+      parts.push(renderBlock(d, e.extra))
+    }
+  }
+  for (const d of defs) if (!used.has(d.id)) parts.push(renderBlock(d, []))
+  return [preface.trimEnd(), ...parts].join('\n\n').trimEnd() + '\n'
 }

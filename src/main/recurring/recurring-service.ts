@@ -167,7 +167,7 @@ export class RecurringService {
         if (doc.unreadable > 0) return fail('conflict', UNREADABLE_MSG)
         const out = edit(doc)
         if ('ok' in out) return out
-        const text = serializeRecurring(doc.preface, doc.defs)
+        const text = serializeRecurring(doc.preface, doc.defs, doc.layout)
         if (Buffer.byteLength(text, 'utf8') > MAX_FILE_BYTES)
           return fail('invalid-request', '반복 업무 파일이 너무 큽니다.')
         await this.deps.fs.writeText(RECURRING_FILE, text, true)

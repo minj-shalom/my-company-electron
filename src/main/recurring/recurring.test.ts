@@ -148,6 +148,34 @@ describe('recurring.md document', () => {
     expect(parseRecurring(broken).unreadable).toBe(1)
   })
 
+  it('preserves preface, non-block sections, block order and unknown block lines on rewrite', async () => {
+    const t = await setup()
+    const a = def({ id: 'zeta' })
+    const b = def({ id: 'alpha' })
+    const original = `${serializeRecurring('# 반복 업무\n\n앞머리 설명', [a])}
+## 메모
+사람이 쓴 메모
+- 항목
+
+${serializeRecurring('x', [b]).replace('x\n\n', '')}
+블록 아래 주석
+`
+    await t.c.fs.writeText('company/recurring.md', original)
+    const r = await t.svc.add(def({ id: 'new-one' }))
+    expect(r.ok).toBe(true)
+    const text = await readFile(join(t.c.dir, 'company/recurring.md'), 'utf8')
+    expect(text).toContain('앞머리 설명')
+    expect(text).toContain('## 메모\n사람이 쓴 메모\n- 항목')
+    expect(text).toContain('블록 아래 주석')
+    const order = ['zeta', '## 메모', 'alpha', 'new-one'].map((k) => text.indexOf(k))
+    expect([...order].sort((x, y) => x - y)).toEqual(order)
+    await t.svc.remove({ id: 'zeta' })
+    const after = await readFile(join(t.c.dir, 'company/recurring.md'), 'utf8')
+    expect(after).not.toContain('## 반복: zeta')
+    expect(after).toContain('## 메모\n사람이 쓴 메모')
+    expect(after).toContain('앞머리 설명')
+  })
+
   it('uses only the first of duplicate ids', () => {
     const text = serializeRecurring('# x', [def(), def({ titleTemplate: 'other' })])
     const p = parseRecurring(text)
