@@ -95,7 +95,7 @@ export type ProjectGit =
   | { status: 'ok'; branch: string | null; dirty: boolean }
   | { status: 'not-repo' } // 폴더에 `.git`이 없음 (content/other는 정상)
   | { status: 'missing' } // 폴더가 없거나 더는 안전한 경로가 아님
-  | { status: 'unavailable' } // git 실행 실패·시간 초과
+  | { status: 'unavailable'; branch?: string | null } // git 실행 실패·시간 초과 (`.git/HEAD`로 읽은 브랜치만 알 수 있으면 branch)
 
 export interface ProjectInfo {
   id: string

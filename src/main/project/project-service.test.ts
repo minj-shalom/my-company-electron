@@ -525,7 +525,23 @@ describe('git probing', () => {
     const d = await makeDir(t.ws, 'app', true)
     // git을 실행하지 못해도 `.git` 존재로 추가는 된다.
     ok(await t.svc.add({ path: await pick(t.svc, d), name: 'App' }))
-    expect(ok(await t.svc.list()).items[0].git).toEqual({ status: 'unavailable' })
+    // git 없이도 `.git/HEAD`로 브랜치는 읽는다 (dirty는 모른다).
+    const git = ok(await t.svc.list()).items[0].git
+    expect(git.status).toBe('unavailable')
+    expect(git).toHaveProperty('branch', expect.any(String))
+    expect(git).not.toHaveProperty('dirty')
+  })
+  it('falls back to .git/HEAD when git is not runnable', async () => {
+    const t = await setup({ projectMd: null, git: async () => ({ kind: 'unavailable' }) })
+    const d = await makeDir(t.ws, 'app', true)
+    ok(await t.svc.add({ path: await pick(t.svc, d), name: 'App' }))
+    await writeFile(join(d, '.git', 'HEAD'), 'ref: refs/heads/feature/x\n')
+    expect(ok(await t.svc.list()).items[0].git).toEqual({
+      status: 'unavailable',
+      branch: 'feature/x'
+    })
+    await writeFile(join(d, '.git', 'HEAD'), '0123456789abcdef0123456789abcdef01234567\n')
+    expect(ok(await t.svc.list()).items[0].git).toEqual({ status: 'unavailable', branch: null })
   })
   it('skips git entirely for a folder without .git even inside another repo', async () => {
     const g = recorder(() => ({ kind: 'done', code: 0, stdout: '' }))

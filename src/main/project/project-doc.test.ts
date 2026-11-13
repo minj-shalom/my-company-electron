@@ -33,6 +33,8 @@ describe('field line parser', () => {
     expect(parseFieldLine('- dev 명령: npm run dev -- --host')?.value).toBe('npm run dev -- --host')
   })
   it('flags forged line breaks and invisible characters', () => {
+    expect(parseFieldLine('- PM:\tpm\t')).toMatchObject({ key: 'PM', value: 'pm', forged: false })
+    expect(parseFieldLine('- dev 명령: a\tb')?.forged).toBe(false)
     expect(parseFieldLine('- PM: pm\rx')?.forged).toBe(true)
     expect(parseFieldLine('- PM: pm - 상태: archived')?.forged).toBe(true)
     expect(parseFieldLine('- PM: p​m')?.forged).toBe(true)

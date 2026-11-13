@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { lstat, open } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { ProjectGit } from '../../shared/project'
 import { MAX_BRANCH, hasForbiddenChar } from '../../shared/project'
 
@@ -25,7 +27,8 @@ export type GitRunner = (
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'USERPROFILE', 'SystemRoot', 'TMPDIR', 'TEMP', 'TMP']
 
 function minimalEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' }
+  // GIT_CONFIG_NOSYSTEM: 시스템 전역 gitconfig(/etc/gitconfig 등)의 설정이 명령 실행(fsmonitor, 외부 helper 등)에 끼어들지 못하게 막는다.
+  const env: NodeJS.ProcessEnv = { GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', LC_ALL: 'C' }
   for (const k of SAFE_ENV_KEYS) {
     const v = process.env[k]
     if (v !== undefined) env[k] = v
@@ -100,11 +103,41 @@ export async function probeGit(run: GitRunner, dir: string): Promise<ProjectGit>
     run(['rev-parse', '--abbrev-ref', 'HEAD'], dir, GIT_TIMEOUT_MS),
     run(['status', '--porcelain'], dir, GIT_TIMEOUT_MS)
   ])
-  if (status.kind !== 'done' || status.code !== 0) return { status: 'unavailable' }
+  if (status.kind !== 'done' || status.code !== 0)
+    return { status: 'unavailable', branch: await readHeadBranch(dir) }
   return {
     status: 'ok',
     // 커밋이 없는 새 레포는 HEAD를 풀지 못해 실패한다. 브랜치를 모를 뿐 오류는 아니다.
     branch: branch.kind === 'done' && branch.code === 0 ? singleLine(branch.stdout) : null,
     dirty: status.stdout.trim() !== ''
+  }
+}
+
+const MAX_HEAD_BYTES = 512
+const HEAD_REF_PREFIX = 'ref: refs/heads/'
+
+/**
+ * git을 실행하지 못할 때의 폴백. `.git`이 진짜 폴더일 때만 `HEAD` 파일을 직접 읽어 브랜치를 얻는다.
+ * `.git`이 심볼릭 링크나 파일(worktree/submodule 포인터)이면 따라가지 않는다. detached HEAD나 읽기 실패는 null.
+ */
+export async function readHeadBranch(dir: string): Promise<string | null> {
+  try {
+    const gitDir = join(dir, '.git')
+    if (!(await lstat(gitDir)).isDirectory()) return null
+    const headPath = join(gitDir, 'HEAD')
+    if (!(await lstat(headPath)).isFile()) return null
+    const fh = await open(headPath, 'r')
+    try {
+      const buf = Buffer.alloc(MAX_HEAD_BYTES)
+      const { bytesRead } = await fh.read(buf, 0, MAX_HEAD_BYTES, 0)
+      const text = buf.subarray(0, bytesRead).toString('utf8').trim()
+      return text.startsWith(HEAD_REF_PREFIX)
+        ? singleLine(text.slice(HEAD_REF_PREFIX.length))
+        : null
+    } finally {
+      await fh.close()
+    }
+  } catch {
+    return null
   }
 }

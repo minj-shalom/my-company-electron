@@ -24,7 +24,12 @@ export function parseFieldLine(line: string): (FieldLine & { forged: boolean }) 
   if (colon < 0) return null
   const key = line.slice(2, colon).trim()
   if (key.length === 0 || key.length > MAX_KEY) return null
-  return { key, value: line.slice(colon + 1).trim(), forged: hasForbiddenChar(line) }
+  // 탭은 들여쓰기·정렬에 흔히 쓰이므로 위조 문자로 보지 않는다. 값 앞뒤 탭은 trim이 지운다.
+  return {
+    key,
+    value: line.slice(colon + 1).trim(),
+    forged: hasForbiddenChar(line.replaceAll('\t', ' '))
+  }
 }
 
 export function formatFieldLine(key: string, value: string): string {
