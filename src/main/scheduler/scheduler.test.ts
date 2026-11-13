@@ -346,4 +346,63 @@ describe('Scheduler', () => {
     await clock.advance(5 * 60 * MIN)
     expect(tick).toHaveBeenCalledTimes(1)
   })
+
+  describe('resumeAfterDecision', () => {
+    it('runs the next tick right away without waiting for the interval', async () => {
+      const { sched, tick, clock } = setup({})
+      await sched.start()
+      await sched.whenIdle()
+      await clock.advance(5 * MIN)
+      expect(tick).toHaveBeenCalledTimes(1)
+      await sched.resumeAfterDecision()
+      await sched.whenIdle()
+      expect(tick).toHaveBeenCalledTimes(2)
+      expect(tick.mock.calls[1][0].trigger).toBe('decision')
+      sched.stop()
+    })
+
+    it('waits for a running tick to finish and then runs exactly one more tick', async () => {
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((r) => (release = r))
+      let calls = 0
+      const { sched, tick } = setup({
+        tick: async () => {
+          calls++
+          if (calls === 1) await gate
+        }
+      })
+      await sched.start()
+      await flush()
+      expect(tick).toHaveBeenCalledTimes(1)
+      await sched.resumeAfterDecision()
+      await sched.resumeAfterDecision()
+      await flush()
+      expect(tick).toHaveBeenCalledTimes(1)
+      release()
+      await flush()
+      await sched.whenIdle()
+      expect(tick).toHaveBeenCalledTimes(2)
+      expect(tick.mock.calls[1][0].trigger).toBe('decision')
+      sched.stop()
+    })
+
+    it('does nothing when auto run is off, halted, outside active hours, or stopped', async () => {
+      const off = setup({ schedule: '- enabled: false\n' })
+      await off.sched.start()
+      await off.sched.resumeAfterDecision()
+      const halted = setup({ extra: { isHalted: () => true } })
+      await halted.sched.start()
+      await halted.sched.resumeAfterDecision()
+      const night = setup({ start: new Date(2026, 10, 16, 3, 0) })
+      await night.sched.start()
+      await night.sched.resumeAfterDecision()
+      const stopped = setup({})
+      await stopped.sched.resumeAfterDecision()
+      for (const x of [off, halted, night, stopped]) {
+        await x.sched.whenIdle()
+        expect(x.tick).not.toHaveBeenCalled()
+        x.sched.stop()
+      }
+    })
+  })
 })
