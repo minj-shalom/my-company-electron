@@ -135,7 +135,13 @@ export function AppShell({
             {tab === 'decisions' ? (
               <DecisionInbox {...decisions} />
             ) : tab === 'tickets' ? (
-              <TicketBoard {...tickets} />
+              <TicketBoard
+                {...tickets}
+                onAssignPm={() => {
+                  setHiring(false)
+                  setView('projects')
+                }}
+              />
             ) : (
               <RunLogView {...runLog} />
             )}

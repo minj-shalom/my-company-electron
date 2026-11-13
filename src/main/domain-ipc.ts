@@ -20,6 +20,7 @@ import { sharedRepository } from './repository/shared-repository'
 import { buildOrgSnapshot } from './org/org-snapshot'
 import { createEmployeeHandlers, type EmployeeHandlers } from './employee/employee-ipc'
 import type { AssignmentSource } from './employee/employee-service'
+import { createTicketWriteHandlers, type TicketWriteHandlers } from './ticket/ticket-ipc'
 import { createProjectHandlers, type ProjectHandlers } from './project/project-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
@@ -101,8 +102,10 @@ export function createDomainHandlers(deps: DomainDeps): {
   listDecisions: (status: unknown) => Promise<ApiResult<DecisionList>>
   resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
 } & EmployeeHandlers &
-  ProjectHandlers {
+  ProjectHandlers &
+  TicketWriteHandlers {
   return {
+    ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createEmployeeHandlers({
       context: deps.context,
@@ -217,6 +220,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.ticketList, h.listTickets)
   handle(IPC_CHANNELS.ticketGet, h.getTicket)
   handle(IPC_CHANNELS.ticketMove, h.moveTicket)
+  handle(IPC_CHANNELS.ticketCreate, h.createTicket)
+  handle(IPC_CHANNELS.ticketUpdate, h.updateTicket)
   handle(IPC_CHANNELS.decisionList, h.listDecisions)
   handle(IPC_CHANNELS.decisionResolve, h.resolveDecision)
   handle(IPC_CHANNELS.employeeListTemplates, () => h.listTemplates())

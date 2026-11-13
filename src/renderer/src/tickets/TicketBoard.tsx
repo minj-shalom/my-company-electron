@@ -6,6 +6,7 @@ import { Button } from '../ui/Button'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
 import { TicketCard } from './TicketCard'
 import { TicketFilters } from './TicketFilters'
+import { TicketFormDialog, type TicketFormMode } from './TicketFormDialog'
 import {
   applyFilters,
   canMove,
@@ -27,12 +28,21 @@ interface Notice {
 }
 
 /** 티켓 보드. 상태(로딩/오류/빈/정상)를 나눠 그린다. */
-export function TicketBoard({ state, refresh, markMoved }: UseTickets): React.JSX.Element {
+export function TicketBoard({
+  state,
+  refresh,
+  markMoved,
+  onAssignPm
+}: UseTickets & {
+  /** 폼의 "PM 지정" 링크가 프로젝트 화면으로 보낸다. */
+  onAssignPm?: () => void
+}): React.JSX.Element {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [openId, setOpenId] = useState<string | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [form, setForm] = useState<TicketFormMode | null>(null)
   const lock = useRef(false)
   const root = useRef<HTMLElement>(null)
   const noticeRef = useRef<HTMLDivElement>(null)
@@ -89,6 +99,14 @@ export function TicketBoard({ state, refresh, markMoved }: UseTickets): React.JS
     return moveErrorText(r.code)
   }
 
+  const saved = async (t: Ticket): Promise<void> => {
+    const created = form?.kind === 'create'
+    setForm(null)
+    setNotice({ tone: 'ok', text: `${t.id} 티켓을 ${created ? '만들었어요' : '저장했어요'}.` })
+    focusAfterMove.current = t.id
+    await refresh({ force: true })
+  }
+
   if (state.kind === 'loading') {
     return (
       <p role="status" className="empty-state">
@@ -140,6 +158,26 @@ export function TicketBoard({ state, refresh, markMoved }: UseTickets): React.JS
         summary={ticketUnreadableSummary}
         reasonText={ticketUnreadableText}
       />
+      <div className="tboard__bar">
+        <Button variant="primary" size="small" onClick={() => setForm({ kind: 'create' })}>
+          새 티켓
+        </Button>
+      </div>
+      {form && (
+        <TicketFormDialog
+          mode={form}
+          onClose={() => setForm(null)}
+          onSaved={(t) => void saved(t)}
+          onAssignPm={
+            onAssignPm
+              ? () => {
+                  setForm(null)
+                  onAssignPm()
+                }
+              : undefined
+          }
+        />
+      )}
       {state.items.length === 0 ? (
         <p className="empty-state">아직 티켓이 없어요.</p>
       ) : (
@@ -159,6 +197,7 @@ export function TicketBoard({ state, refresh, markMoved }: UseTickets): React.JS
                 setMenuId={setMenuId}
                 busyId={busyId}
                 onMove={move}
+                onEdit={(t) => setForm({ kind: 'edit', ticket: t })}
               />
             ))}
           </div>
@@ -178,7 +217,8 @@ function Column({
   menuId,
   setMenuId,
   busyId,
-  onMove
+  onMove,
+  onEdit
 }: {
   status: TicketStatus
   items: Ticket[]
@@ -191,6 +231,7 @@ function Column({
   setMenuId: (id: string | null) => void
   busyId: string | null
   onMove: (t: Ticket, to: TicketStatus) => Promise<string | null>
+  onEdit: (t: Ticket) => void
 }): React.JSX.Element {
   const headId = useId()
   return (
@@ -216,6 +257,7 @@ function Column({
               busy={busyId === t.id}
               locked={busyId !== null}
               onMove={onMove}
+              onEdit={onEdit}
             />
           ))}
         </ul>
