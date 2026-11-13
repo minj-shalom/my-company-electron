@@ -26,6 +26,7 @@ import { createGateHandlers, type GateHandlers } from './gate/gate-ipc'
 import { createIntegrityHandlers, type IntegrityHandlers } from './integrity/integrity-ipc'
 import { integrityFor } from './integrity/integrity-runtime'
 import { createProposalHandlers, type ProposalHandlers } from './proposal/proposal-ipc'
+import { createProfileHandlers, type ProfileHandlers } from './company/profile-ipc'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import {
   createProviderSelectionHandlers,
@@ -115,6 +116,7 @@ export function createDomainHandlers(deps: DomainDeps): {
 } & EmployeeHandlers &
   ProjectHandlers &
   PolicyHandlers &
+  ProfileHandlers &
   ProviderSelectionHandlers &
   GateHandlers &
   IntegrityHandlers &
@@ -124,6 +126,7 @@ export function createDomainHandlers(deps: DomainDeps): {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createProjectHandlers({ context: deps.context, homeDir: deps.homeDir }),
     ...createPolicyHandlers({ context: deps.context }),
+    ...createProfileHandlers({ context: deps.context }),
     ...createProviderSelectionHandlers({ context: deps.context, providers: deps.providers }),
     ...createGateHandlers({
       context: deps.context,
@@ -308,6 +311,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.projectAssignEmployee, write(h.assignEmployee))
   handle(IPC_CHANNELS.projectUnassignEmployee, write(h.unassignEmployee))
   handle(IPC_CHANNELS.employeeProjects, h.employeeProjects)
+  handle(IPC_CHANNELS.companyGetProfile, () => h.getCompanyProfile())
+  handle(IPC_CHANNELS.companySaveProfile, h.saveCompanyProfile)
   handle(IPC_CHANNELS.policyGet, h.getPolicy)
   handle(IPC_CHANNELS.policySave, write(h.savePolicy))
   handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())

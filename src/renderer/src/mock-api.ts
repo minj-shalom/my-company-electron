@@ -1,3 +1,4 @@
+import type { CompanyProfile } from '../../shared/company-profile'
 import type { WindowApi } from '../../shared/api'
 import type { ThemePreference } from '../../shared/theme'
 import {
@@ -79,9 +80,18 @@ const mockUsageApi = createMockUsageApi(
 
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 let mockTheme: ThemePreference = 'system'
+const MOCK_PROFILE: CompanyProfile = {
+  name: 'My Company',
+  vision: 'AI 직원이 함께 일하는 회사를 만든다.',
+  mission: '사람이 방향을 정하고 AI 직원이 실행한다.',
+  principles: '- 마크다운이 원본이다.',
+  revision: 'r1'
+}
+let mockProfile: CompanyProfile = { ...MOCK_PROFILE }
 
 export function resetMockApi(): void {
   mockTheme = 'system'
+  mockProfile = { ...MOCK_PROFILE }
   mockTicketApi.reset()
   mockDecisionApi.reset()
   mockProjectApi.reset()
@@ -152,6 +162,17 @@ export const mockApi: WindowApi = {
   ...mockUsageApi.api,
   getWeeklyLimits: mockGetWeeklyLimits,
   saveWeeklyLimits: mockSaveWeeklyLimits,
+  getCompanyProfile: async () => ({ ok: true, value: mockProfile }),
+  saveCompanyProfile: async (req) => {
+    if (req.revision !== mockProfile.revision)
+      return {
+        ok: false,
+        code: 'conflict',
+        message: '다른 곳에서 회사 정보가 바뀌었습니다. 새로 불러오세요.'
+      }
+    mockProfile = { ...req, revision: `r${Number(mockProfile.revision.slice(1)) + 1}` }
+    return { ok: true, value: mockProfile }
+  },
   getTheme: async () => ({ ok: true, value: mockTheme }),
   saveTheme: async (theme) => {
     mockTheme = theme

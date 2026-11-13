@@ -18,6 +18,7 @@ import type {
   EmployeeUpdateRequest
 } from './employee-change'
 import type { OrgChart } from './employee'
+import type { CompanyProfile, CompanyProfileSaveRequest } from './company-profile'
 import type { FirstHireRequest, FirstHireResult, HirePmResult } from './company-hire'
 import type { OrgSnapshot } from './org'
 import type {
@@ -226,6 +227,13 @@ export interface WindowApi {
   /** 전체 교체 저장. 범위 밖 값이 있으면 `invalid-request`로 거부한다 (validateUsageSettings). */
   saveUsageSettings: (req: UsageSettings) => Promise<ApiResult<UsageSettings>>
   /** 앱 전역 테마(T-038, userData 저장). 저장된 값이 없으면 `system`. 허용 목록 밖 값은 `invalid-request`. */
+  /**
+   * 회사 정보(T-036). 원본은 `company/mission.md`이고 열린 회사 대상이다. 파일이 없으면 `not-found`(템플릿으로 만들지 않는다).
+   * `getCompanyProfile`은 이름·비전·미션·운영 원칙과 `revision`을 준다. `saveCompanyProfile`은 읽은 `revision`과 전체 값을 보내며,
+   * 다른 곳에서 바뀌었으면 `conflict`(덮어쓰지 않는다), 길이·문자 위반은 `invalid-request`. 표시 이름만 바뀌고 폴더 이름은 그대로다.
+   */
+  getCompanyProfile: () => Promise<ApiResult<CompanyProfile>>
+  saveCompanyProfile: (req: CompanyProfileSaveRequest) => Promise<ApiResult<CompanyProfile>>
   getTheme: () => Promise<ApiResult<ThemePreference>>
   saveTheme: (theme: ThemePreference) => Promise<ApiResult<ThemePreference>>
   /**
@@ -266,6 +274,8 @@ export const IPC_CHANNELS = {
   employeeRetire: 'employee:retire',
   companyHirePm: 'company:hire-pm',
   companyFirstHire: 'company:first-hire',
+  companyGetProfile: 'company:get-profile',
+  companySaveProfile: 'company:save-profile',
   projectSelectFolder: 'project:select-folder',
   projectList: 'project:list',
   projectAdd: 'project:add',
