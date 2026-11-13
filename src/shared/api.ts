@@ -26,6 +26,7 @@ import type {
   KillSwitchSetRequest,
   KillSwitchState
 } from './gate'
+import type { IntegrityActionResult } from './integrity'
 import type {
   PolicyGetRequest,
   PolicySaveRequest,
@@ -186,6 +187,13 @@ export interface WindowApi {
   setKillSwitch: (req: KillSwitchSetRequest) => Promise<ApiResult<KillSwitchState>>
   getAuditSummary: (req: AuditSummaryRequest) => Promise<ApiResult<AuditSummary>>
   /**
+   * 인사 변경 가드레일(T-052). `getQuarantinedEmployees`: 승인되지 않은 민감 변경으로 격리된 직원 id (실행 경로가 거부한다).
+   * `restoreIntegrity`/`acceptIntegrity`: CEO가 카드에서 누를 때만 호출한다 (입력 없음, 마지막 정상 스냅샷 복원 또는 현재 상태 사후 승인).
+   */
+  getQuarantinedEmployees: () => Promise<ApiResult<string[]>>
+  restoreIntegrity: () => Promise<ApiResult<IntegrityActionResult>>
+  acceptIntegrity: () => Promise<ApiResult<IntegrityActionResult>>
+  /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).
    */
@@ -247,6 +255,9 @@ export const IPC_CHANNELS = {
   gateKillSwitchGet: 'gate:kill-switch-get',
   gateKillSwitchSet: 'gate:kill-switch-set',
   auditSummary: 'audit:summary',
+  employeeQuarantined: 'employee:quarantined',
+  integrityRestore: 'integrity:restore',
+  integrityAccept: 'integrity:accept',
   providerDetect: 'provider:detect',
   providerTestConnection: 'provider:test-connection',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',

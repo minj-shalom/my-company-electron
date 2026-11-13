@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from 'chokidar'
+import { isProtectedPath } from '../integrity/protected-files'
 import { relativeInside, classifyPath } from './watch-paths'
 import type { RefreshKind } from './cached-repository'
 
@@ -7,6 +8,8 @@ export interface CompanyWatcherOptions {
   root: string
   /** 변경된 종류를 모아 한 번에 호출한다. 실패는 onError로 넘기고 감시는 계속한다. */
   onChange: (kinds: RefreshKind[]) => Promise<void>
+  /** 보호 대상 파일(직원, org.md, project.md, archive, 정책)이 바뀌면 디바운스 뒤 한 번 호출한다 (T-052 변경 감지). */
+  onProtectedChange?: () => Promise<void>
   onError?: (e: unknown) => void
   /** 이벤트가 멈춘 뒤 기다릴 시간. 에디터의 저장 폭풍/임시 파일 교체를 한 번으로 합친다. */
   debounceMs?: number
@@ -24,7 +27,12 @@ function shouldIgnore(root: string, abs: string): boolean {
   if (parts[0] !== 'company' && parts[0] !== '.claude') return true
   if (parts.length === 1) return false
   if (parts[0] === '.claude') return parts[1] !== 'agents' || parts.length > 3
-  if (!['org.md', 'tickets', 'decisions', 'reports'].includes(parts[1])) return true
+  if (
+    !['org.md', 'project.md', 'tickets', 'decisions', 'reports', 'archive', 'policies'].includes(
+      parts[1]
+    )
+  )
+    return true
   return parts.length > 4
 }
 
@@ -32,6 +40,7 @@ export class CompanyWatcher {
   private watcher: FSWatcher | null = null
   private timer: NodeJS.Timeout | null = null
   private readonly dirty = new Set<RefreshKind>()
+  private protectedDirty = false
   private flushing: Promise<void> = Promise.resolve()
 
   constructor(private readonly opts: CompanyWatcherOptions) {}
@@ -53,7 +62,10 @@ export class CompanyWatcher {
       this.opts.onRawEvent?.(path, rel)
       if (rel === null) return
       const kind = classifyPath(rel)
+      const prot = this.opts.onProtectedChange !== undefined && isProtectedPath(rel)
+      if (prot) this.protectedDirty = true
       if (kind) this.mark(kind)
+      else if (prot) this.mark(null)
     }
     w.on('add', onEvent)
       .on('change', onEvent)
@@ -78,8 +90,8 @@ export class CompanyWatcher {
     })
   }
 
-  private mark(kind: RefreshKind): void {
-    this.dirty.add(kind)
+  private mark(kind: RefreshKind | null): void {
+    if (kind !== null) this.dirty.add(kind)
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => {
       this.timer = null
@@ -89,12 +101,22 @@ export class CompanyWatcher {
 
   private async flush(): Promise<void> {
     const kinds = [...this.dirty]
+    const prot = this.protectedDirty
     this.dirty.clear()
-    if (kinds.length === 0) return
-    try {
-      await this.opts.onChange(kinds)
-    } catch (e) {
-      this.opts.onError?.(e)
+    this.protectedDirty = false
+    if (kinds.length > 0) {
+      try {
+        await this.opts.onChange(kinds)
+      } catch (e) {
+        this.opts.onError?.(e)
+      }
+    }
+    if (prot) {
+      try {
+        await this.opts.onProtectedChange?.()
+      } catch (e) {
+        this.opts.onError?.(e)
+      }
     }
   }
 

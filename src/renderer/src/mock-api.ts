@@ -80,6 +80,10 @@ const mockGateApi = createMockGateApi(
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
   ...mockGateApi.api,
+  // 인사 변경 가드레일(T-052)의 UI는 T-046이 만든다. 그 전까지 격리된 직원은 없고 복원·승인은 no-op이다.
+  getQuarantinedEmployees: async () => ({ ok: true, value: [] }),
+  restoreIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
+  acceptIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
   ...mockRunApi,
   ...createMockCompanyApi(
     parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)

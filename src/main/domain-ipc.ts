@@ -23,6 +23,8 @@ import type { AssignmentSource } from './employee/employee-service'
 import { createTicketWriteHandlers, type TicketWriteHandlers } from './ticket/ticket-ipc'
 import { createProjectHandlers, type ProjectHandlers } from './project/project-ipc'
 import { createGateHandlers, type GateHandlers } from './gate/gate-ipc'
+import { createIntegrityHandlers, type IntegrityHandlers } from './integrity/integrity-ipc'
+import { integrityFor } from './integrity/integrity-runtime'
 import { createPolicyHandlers, type PolicyHandlers } from './policy/policy-ipc'
 import { isProviderCliId, type ProviderService } from './providers/provider-service'
 import { parseWeeklyLimits, type WeeklyLimitsStore } from './settings/weekly-limits-store'
@@ -109,6 +111,7 @@ export function createDomainHandlers(deps: DomainDeps): {
   ProjectHandlers &
   PolicyHandlers &
   GateHandlers &
+  IntegrityHandlers &
   TicketWriteHandlers {
   return {
     ...createTicketWriteHandlers({ context: deps.context, homeDir: deps.homeDir }),
@@ -119,6 +122,7 @@ export function createDomainHandlers(deps: DomainDeps): {
       userDataDir: deps.userDataDir,
       homeDir: deps.homeDir
     }),
+    ...createIntegrityHandlers({ context: deps.context, userDataDir: deps.userDataDir }),
     ...createEmployeeHandlers({
       context: deps.context,
       repository: () => repositoryFor(deps),
@@ -218,6 +222,23 @@ export function trustedHandler<E, R>(
   }
 }
 
+/** 가드레일을 쓸 수 없는 환경(userData 없음, 회사 없음)에서도 앱 함수는 그대로 동작한다. 가드레일 오류가 쓰기 결과를 바꾸지 않는다. */
+export function appWrite<R>(
+  deps: Pick<DomainDeps, 'context' | 'userDataDir'>,
+  fn: (arg: unknown) => Promise<R>
+): (arg: unknown) => Promise<R> {
+  return async (arg) => {
+    if (deps.userDataDir === undefined) return fn(arg)
+    let svc
+    try {
+      svc = integrityFor({ context: deps.context, userDataDir: deps.userDataDir })
+    } catch {
+      return fn(arg)
+    }
+    return svc.withAppWrite('ceo-ui', () => fn(arg))
+  }
+}
+
 export function registerDomainHandlers(deps: DomainDeps): void {
   const h = createDomainHandlers(deps)
   const handle = (channel: string, fn: (arg: unknown) => Promise<ApiResult<unknown>>): void => {
@@ -237,29 +258,40 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.decisionList, h.listDecisions)
   handle(IPC_CHANNELS.decisionResolve, h.resolveDecision)
   handle(IPC_CHANNELS.employeeListTemplates, () => h.listTemplates())
-  handle(IPC_CHANNELS.employeeCreate, h.createEmployee)
-  handle(IPC_CHANNELS.employeeUpdate, h.updateEmployee)
-  handle(IPC_CHANNELS.employeeMove, h.moveEmployee)
-  handle(IPC_CHANNELS.employeeRetire, h.retireEmployee)
-  handle(IPC_CHANNELS.companyHirePm, () => h.hirePm())
-  handle(IPC_CHANNELS.companyFirstHire, h.firstHire)
+  // 보호 대상 파일(직원, org.md, project.md, 정책)을 쓰는 앱 함수는 `ceo-ui` 쓰기로 감싼다 (자기 쓰기는 변경 감지가 경고하지 않는다).
+  const write = (
+    fn: (arg: unknown) => Promise<ApiResult<unknown>>
+  ): ((arg: unknown) => Promise<ApiResult<unknown>>) => appWrite(deps, fn)
+  handle(IPC_CHANNELS.employeeCreate, write(h.createEmployee))
+  handle(IPC_CHANNELS.employeeUpdate, write(h.updateEmployee))
+  handle(IPC_CHANNELS.employeeMove, write(h.moveEmployee))
+  handle(IPC_CHANNELS.employeeRetire, write(h.retireEmployee))
+  handle(
+    IPC_CHANNELS.companyHirePm,
+    write(() => h.hirePm())
+  )
+  handle(IPC_CHANNELS.companyFirstHire, write(h.firstHire))
   handle(IPC_CHANNELS.projectList, () => h.list())
-  handle(IPC_CHANNELS.projectAdd, h.add)
-  handle(IPC_CHANNELS.projectRename, h.rename)
-  handle(IPC_CHANNELS.projectArchive, h.archive)
-  handle(IPC_CHANNELS.projectRestore, h.restore)
-  handle(IPC_CHANNELS.projectSetType, h.setType)
-  handle(IPC_CHANNELS.projectSetPm, h.setPm)
-  handle(IPC_CHANNELS.projectClearPm, h.clearPm)
-  handle(IPC_CHANNELS.projectAssignEmployee, h.assignEmployee)
-  handle(IPC_CHANNELS.projectUnassignEmployee, h.unassignEmployee)
+  handle(IPC_CHANNELS.projectAdd, write(h.add))
+  handle(IPC_CHANNELS.projectRename, write(h.rename))
+  handle(IPC_CHANNELS.projectArchive, write(h.archive))
+  handle(IPC_CHANNELS.projectRestore, write(h.restore))
+  handle(IPC_CHANNELS.projectSetType, write(h.setType))
+  handle(IPC_CHANNELS.projectSetPm, write(h.setPm))
+  handle(IPC_CHANNELS.projectClearPm, write(h.clearPm))
+  handle(IPC_CHANNELS.projectAssignEmployee, write(h.assignEmployee))
+  handle(IPC_CHANNELS.projectUnassignEmployee, write(h.unassignEmployee))
   handle(IPC_CHANNELS.employeeProjects, h.employeeProjects)
   handle(IPC_CHANNELS.policyGet, h.getPolicy)
-  handle(IPC_CHANNELS.policySave, h.savePolicy)
+  handle(IPC_CHANNELS.policySave, write(h.savePolicy))
   handle(IPC_CHANNELS.policyListSummaries, () => h.listPolicySummaries())
   handle(IPC_CHANNELS.gateKillSwitchGet, () => h.getKillSwitch())
-  handle(IPC_CHANNELS.gateKillSwitchSet, h.setKillSwitch)
+  // 킬 스위치 변경은 정책 변경 이력(`company/policies/**`)에 쓰므로 앱 쓰기로 감싼다.
+  handle(IPC_CHANNELS.gateKillSwitchSet, write(h.setKillSwitch))
   handle(IPC_CHANNELS.auditSummary, h.getAuditSummary)
+  handle(IPC_CHANNELS.employeeQuarantined, () => h.getQuarantined())
+  handle(IPC_CHANNELS.integrityRestore, () => h.restoreIntegrity())
+  handle(IPC_CHANNELS.integrityAccept, () => h.acceptIntegrity())
   // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).
   ipcMain.handle(IPC_CHANNELS.projectSelectFolder, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted sender')

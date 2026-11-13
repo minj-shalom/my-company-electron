@@ -4,13 +4,18 @@ import { DECISION_DIRS } from '../repository/parse-decision'
 import { FsGuardError, type SafeFs } from '../repository/safe-fs'
 
 export interface GateCardRequest {
-  kind: Extract<DecisionKind, 'git-confirm' | 'content-approval' | 'decision'>
+  kind: Extract<
+    DecisionKind,
+    'git-confirm' | 'content-approval' | 'decision' | 'integrity-warning' | 'revert-suggestion'
+  >
   title: string
   ticketId: string | null
   question: string
   /** 선택지 두 개(승인/거부) 또는 한 개(확인). */
   options: { key: string; label: string; description: string }[]
   impact: string
+  /** 추천 이유 문장. 없으면 자동 모드 게이트의 기본 문장을 쓴다. */
+  reason?: string
 }
 
 export interface GateCards {
@@ -45,7 +50,7 @@ ${options}
 
 ## 추천안과 이유
 - 추천: ${r.options[0]?.key ?? 'A'}
-- 이유: 자동 모드 게이트가 컨펌 없이 실행하지 않고 사람의 확인을 요청했습니다.
+- 이유: ${oneLine(r.reason ?? '자동 모드 게이트가 컨펌 없이 실행하지 않고 사람의 확인을 요청했습니다.', 200)}
 
 ## 영향
 - ${oneLine(r.impact, 300)}

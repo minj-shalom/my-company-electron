@@ -52,6 +52,9 @@ const api: WindowApi = {
   getKillSwitch: () => ipcRenderer.invoke(IPC_CHANNELS.gateKillSwitchGet),
   setKillSwitch: (req) => ipcRenderer.invoke(IPC_CHANNELS.gateKillSwitchSet, req),
   getAuditSummary: (req) => ipcRenderer.invoke(IPC_CHANNELS.auditSummary, req),
+  getQuarantinedEmployees: () => ipcRenderer.invoke(IPC_CHANNELS.employeeQuarantined),
+  restoreIntegrity: () => ipcRenderer.invoke(IPC_CHANNELS.integrityRestore),
+  acceptIntegrity: () => ipcRenderer.invoke(IPC_CHANNELS.integrityAccept),
   detectProviders: () => ipcRenderer.invoke(IPC_CHANNELS.providerDetect),
   testProviderConnection: (provider) =>
     ipcRenderer.invoke(IPC_CHANNELS.providerTestConnection, provider),
