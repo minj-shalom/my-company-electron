@@ -10,6 +10,7 @@ import { TicketFilters } from './TicketFilters'
 import {
   applyProjectScope,
   needsPmNote,
+  unassignedAssigneeWarn,
   projectBadge,
   projectOptions,
   type ProjectScope
@@ -285,6 +286,7 @@ function Column({
               hired={hired}
               project={projectBadge(t, projects)}
               pmNote={needsPmNote(t, projects)}
+              unassignedWarn={unassignedAssigneeWarn(t, projects)}
               expanded={openId === t.id}
               onToggle={() => setOpenId(openId === t.id ? null : t.id)}
               menuOpen={menuId === t.id}

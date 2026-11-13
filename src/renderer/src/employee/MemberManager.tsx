@@ -2,8 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { EMPLOYEE_MODELS, type EmployeeModel } from '../../../shared/employee-change'
 import type { OrgAgentDetail, OrgMember, OrgSnapshot } from '../../../shared/org'
 import type { DomainErrorCode } from '../../../shared/result'
+import { AssignedProjects } from '../assign/AssignedProjects'
+import { agentProjects } from '../assign/assign-model'
 import { runExclusive } from '../lib/refresh'
-import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Modal } from '../ui/Modal'
@@ -42,7 +43,8 @@ export function MemberManager({
   snapshot,
   onDirtyChange,
   onChanged,
-  onRetired
+  onRetired,
+  openAssign = false
 }: {
   member: OrgMember
   snapshot: OrgSnapshot
@@ -50,12 +52,17 @@ export function MemberManager({
   /** 조직을 다시 읽는다. */
   onChanged: () => void
   onRetired: () => void
+  /** 채용 직후 배정 영역을 펼쳐 시작한다. */
+  openAssign?: boolean
 }): React.JSX.Element {
   const agent = snapshot.agents.find((a) => a.id === member.agentId)
   const [mode, setMode] = useState<Mode>('view')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [retiring, setRetiring] = useState(false)
-  const pmProjects = useActivePmProjects(member.agentId)
+  // 퇴사 가능 여부 판단용: 조직 조회에 합쳐진 담당 PM 활성 프로젝트 이름.
+  const pmProjects = agentProjects(agent)
+    .filter((p) => p.role === 'pm' && p.active)
+    .map((p) => p.name)
   const note = protectedNote(member)
   const editable = member.kind === 'agent' && !!member.agentId && member.fileExists
   const finish = (text: string): void => {
@@ -80,24 +87,12 @@ export function MemberManager({
 
   return (
     <div className="member-manager">
-      <dl className="org-detail__list">
-        <dt>담당 프로젝트</dt>
-        <dd>
-          <ul className="org-tools" aria-label="담당 프로젝트">
-            {pmProjects.length > 0 ? (
-              pmProjects.map((p) => (
-                <li key={p}>
-                  <Badge tone="info">{p} · PM</Badge>
-                </li>
-              ))
-            ) : (
-              <li>
-                <Badge>배정 대기</Badge>
-              </li>
-            )}
-          </ul>
-        </dd>
-      </dl>
+      <AssignedProjects
+        member={member}
+        snapshot={snapshot}
+        defaultOpen={openAssign}
+        onChanged={onChanged}
+      />
       {note && <p className="notice">{note}</p>}
       {phase.kind === 'done' && mode === 'view' && (
         <p role="status" className="member-manager__done">
@@ -174,30 +169,6 @@ export function MemberManager({
       )}
     </div>
   )
-}
-
-/** 이 직원이 담당 PM인 활성 프로젝트 이름. 조회 실패는 빈 목록으로 두고(퇴사는 main이 최종 판정) 화면을 막지 않는다. */
-function useActivePmProjects(agentId: string | null): string[] {
-  const [names, setNames] = useState<string[]>([])
-  useEffect(() => {
-    if (!agentId) return
-    let cancelled = false
-    void window.api
-      .listProjects()
-      .then((r) => {
-        if (cancelled || !r.ok) return
-        setNames(
-          r.value.items
-            .filter((p) => p.status === 'active' && p.pmId === agentId)
-            .map((p) => p.name)
-        )
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [agentId])
-  return names
 }
 
 function RetireButton({

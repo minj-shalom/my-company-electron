@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { BadgeView } from '../assign/assign-model'
 import type { OfficeStatusMap } from '../../../shared/office'
 import { Button } from '../ui/Button'
 import type { OfficeLayout } from './layout'
@@ -10,9 +11,14 @@ interface Props {
   statuses: OfficeStatusMap
   selected: string | null
   onSelect: (title: string) => void
+  /** 직급별 프로젝트 배지와 강조할 직급(null이면 모두 강조). */
+  badges?: ReadonlyMap<string, BadgeView>
+  highlight?: ReadonlySet<string> | null
   /** 렌더러를 만들지 못했을 때 (예: WebGL/canvas 모두 불가). 목록은 그대로 쓸 수 있다. */
   onUnavailable?: () => void
 }
+
+const EMPTY_BADGES: ReadonlyMap<string, BadgeView> = new Map()
 
 type CanvasState = 'starting' | 'ready' | 'failed'
 
@@ -29,6 +35,8 @@ export function OfficeCanvas({
   statuses,
   selected,
   onSelect,
+  badges,
+  highlight = null,
   onUnavailable
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -86,6 +94,7 @@ export function OfficeCanvas({
   useEffect(() => scene?.setLayout(layout), [scene, layout])
   useEffect(() => scene?.setStatuses(statuses), [scene, statuses])
   useEffect(() => scene?.setSelected(selected, true), [scene, selected])
+  useEffect(() => scene?.setProjects(badges ?? EMPTY_BADGES, highlight), [scene, badges, highlight])
 
   // 테마가 바뀌면 data-theme 속성이 바뀐다. 캔버스 색은 CSS 변수에서 다시 읽는다.
   useEffect(() => {

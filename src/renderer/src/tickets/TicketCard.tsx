@@ -35,6 +35,8 @@ interface Props {
   project?: ProjectBadgeView | null
   /** PM이 필요한 프로젝트의 대기 티켓이면 실행되지 않는다는 안내를 붙인다. */
   pmNote?: boolean
+  /** 담당이 이 프로젝트에 배정되지 않은 직원이면 경고 배지를 붙인다. */
+  unassignedWarn?: boolean
 }
 
 /** 티켓 카드. 제목, 담당, 본문은 모두 React 텍스트 노드로만 그린다 (HTML·마크다운 렌더 없음). */
@@ -50,7 +52,8 @@ export function TicketCard({
   onMove,
   onEdit,
   project = null,
-  pmNote = false
+  pmNote = false,
+  unassignedWarn = false
 }: Props): React.JSX.Element {
   const bodyId = useId()
   const menuId = useId()
@@ -108,6 +111,11 @@ export function TicketCard({
         {assignee !== null && <span className="tcard__assignee">담당 {assignee}</span>}
         {badge && <Badge tone={ASSIGNEE_BADGE_TONE[badge]}>{ASSIGNEE_BADGE_TEXT[badge]}</Badge>}
       </div>
+      {unassignedWarn && (
+        <p className="tcard__pmnote">
+          <Badge tone="warn">프로젝트 미배정 직원</Badge>
+        </p>
+      )}
       {pmNote && <p className="hint tcard__pmnote">{PM_PENDING_NOTE}</p>}
       <div id={bodyId} className="tcard__body" hidden={!expanded}>
         {expanded && (

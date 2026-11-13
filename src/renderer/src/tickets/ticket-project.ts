@@ -1,3 +1,4 @@
+import { isAssigneeUnassigned } from '../assign/assign-model'
 import type { ProjectInfo } from '../../../shared/project'
 import type { Ticket } from '../../../shared/ticket'
 import type { BadgeTone } from '../ui/Badge'
@@ -61,4 +62,18 @@ export function projectOptions(
   const common = count('')
   if (common > 0 || scope === '') out.push({ key: '', label: COMPANY_COMMON_LABEL, count: common })
   return out
+}
+
+/** 프로젝트 티켓의 담당이 그 프로젝트에 배정되지 않았으면 경고 배지를 붙인다 (회사 공통·담당 없음은 제외). */
+export function unassignedAssigneeWarn(
+  t: Pick<Ticket, 'projectId' | 'assignee' | 'status'>,
+  projects: readonly ProjectInfo[] | null
+): boolean {
+  if (projects === null || t.status === 'done') return false
+  const key = projectKeyOf(t)
+  if (key === '') return false
+  return isAssigneeUnassigned(
+    projects.find((p) => p.id === key),
+    t.assignee
+  )
 }

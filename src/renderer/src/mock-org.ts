@@ -158,7 +158,20 @@ function manySnapshot(): OrgSnapshot {
       chart: [],
       issues: []
     },
-    agents: [],
+    // 담당 프로젝트(T-045) 표시가 직원마다 붙도록 직원 파일이 있는 모든 직원의 상세를 둔다.
+    agents: members.flatMap((m) =>
+      m.agentId
+        ? [
+            {
+              id: m.agentId,
+              name: m.agentId,
+              description: m.role,
+              model: 'sonnet',
+              tools: ['Read']
+            }
+          ]
+        : []
+    ),
     missingBaseRoles: []
   }
 }

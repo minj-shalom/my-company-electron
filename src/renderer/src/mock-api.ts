@@ -68,29 +68,29 @@ export const mockApi: WindowApi = {
   ),
   getCompany: async () => ({ ok: true, value: structuredClone(mockCompany) }),
   listEmployees: async () => ({ ok: true, value: structuredClone(mockOrg) }),
-  getOrg: (...args) =>
-    mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
+  getOrg: async (...args) => {
+    const r = await mockGetOrg(
+      parseOrgScenario(typeof location === 'undefined' ? '' : location.search)
+    )(...args)
+    if (!r.ok) return r
+    // 담당 프로젝트는 프로젝트 mock이 원본이다 (배정/해제가 조직 조회에 바로 반영된다).
+    const agents = r.value.agents.map((a) => ({
+      ...a,
+      projects: mockProjectApi.entriesFor(a.id).map((e) => ({
+        id: e.projectId,
+        name: e.projectName,
+        role: e.role,
+        active: e.active
+      }))
+    }))
+    return { ok: true, value: { ...r.value, agents } }
+  },
   ...mockTicketApi.api,
   // 티켓 생성·편집 화면은 T-044 2단계(ui-dev)에서 시나리오 mock으로 바꾼다.
   ...mockDecisionApi.api,
   ...mockHireApi.api,
   ...mockEmployeeApi.api,
   ...mockProjectApi.api,
-  // 배정 화면은 T-045 2단계(ui-dev)에서 시나리오 mock으로 바꾼다. 그 전까지는 빈 결과/실패로 계약만 맞춘다.
-  assignProjectEmployee: async () => ({
-    ok: false,
-    code: 'internal',
-    message: '브라우저 개발 모드에서는 지원하지 않습니다.'
-  }),
-  unassignProjectEmployee: async () => ({
-    ok: false,
-    code: 'internal',
-    message: '브라우저 개발 모드에서는 지원하지 않습니다.'
-  }),
-  listEmployeeProjects: async (req) => ({
-    ok: true,
-    value: { employeeId: req.id, projects: [], issues: [] }
-  }),
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,

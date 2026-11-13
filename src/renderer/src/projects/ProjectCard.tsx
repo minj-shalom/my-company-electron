@@ -1,4 +1,6 @@
+import type { OrgSnapshot } from '../../../shared/org'
 import type { ProjectInfo } from '../../../shared/project'
+import { ProjectPeople } from '../assign/ProjectPeople'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { TYPE_LABELS, gitView, stateBadge } from './project-model'
@@ -9,11 +11,14 @@ export type ProjectAction = 'rename' | 'archive' | 'restore' | 'assign-pm' | 'cl
 export function ProjectCard({
   project,
   current,
-  onAction
+  onAction,
+  people
 }: {
   project: ProjectInfo
   current: boolean
   onAction: (action: ProjectAction, project: ProjectInfo) => void
+  /** 주어지면 "함께 일하는 직원"을 보인다 (조직 조회 상태와 변경 후 새로고침). */
+  people?: { org: OrgSnapshot | null; onChanged: () => void }
 }): React.JSX.Element {
   const state = stateBadge(project)
   const git = gitView(project)
@@ -59,6 +64,7 @@ export function ProjectCard({
           PM이 없으면 이 프로젝트의 티켓이 실행되지 않아요. 티켓은 만들 수 있어요.
         </p>
       )}
+      {people && <ProjectPeople project={project} org={people.org} onChanged={people.onChanged} />}
       <div className="project-card__actions">
         {!archived && (
           <Button

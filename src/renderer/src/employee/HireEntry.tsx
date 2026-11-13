@@ -13,10 +13,13 @@ import { LeaveDialog } from './MemberManager'
 export function HireEntry({
   snapshot,
   onHired,
-  isDirty
+  isDirty,
+  offerAssign = false
 }: {
   snapshot: OrgSnapshot
-  onHired: (employeeId: string) => void
+  onHired: (employeeId: string, openAssign: boolean) => void
+  /** 채용 대화에 "채용 후 담당 프로젝트 배정하기" 선택지를 보인다. */
+  offerAssign?: boolean
   /** 편집 중인 변경이 있으면 true. 채용하면 선택이 바뀌어 편집이 사라지므로 먼저 확인한다. */
   isDirty?: () => boolean
 }): React.JSX.Element {
@@ -42,13 +45,14 @@ export function HireEntry({
       {open && (
         <HireDialog
           snapshot={snapshot}
+          offerAssign={offerAssign}
           onClose={() => {
             setOpen(false)
             openerRef.current?.focus()
           }}
-          onHired={(id) => {
+          onHired={(id, openAssign) => {
             setOpen(false)
-            onHired(id)
+            onHired(id, openAssign)
           }}
         />
       )}

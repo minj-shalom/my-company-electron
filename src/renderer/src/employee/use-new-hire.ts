@@ -10,8 +10,14 @@ export function useNewHire(
   select: (title: string) => void,
   rootRef: React.RefObject<HTMLElement | null>,
   refresh: () => void
-): { onHired: (employeeId: string) => void; notice: string | null } {
+): {
+  onHired: (employeeId: string, openAssign?: boolean) => void
+  notice: string | null
+  /** 채용 직후 담당 프로젝트 배정을 열어 달라고 한 직원 id. */
+  assignFor: string | null
+} {
   const [hired, setHired] = useState<string | null>(null)
+  const [assignFor, setAssignFor] = useState<string | null>(null)
   const handled = useRef<string | null>(null)
   const member = hired ? snapshot.org.members.find((x) => x.agentId === hired) : undefined
   const title = member?.title ?? null
@@ -31,12 +37,13 @@ export function useNewHire(
   }, [hired, title, select, rootRef])
 
   const onHired = useCallback(
-    (employeeId: string) => {
+    (employeeId: string, openAssign = false) => {
       handled.current = null
       setHired(employeeId)
+      setAssignFor(openAssign ? employeeId : null)
       refresh()
     },
     [refresh]
   )
-  return { onHired, notice: title ? `${title} 직원을 채용했어요.` : null }
+  return { onHired, notice: title ? `${title} 직원을 채용했어요.` : null, assignFor }
 }

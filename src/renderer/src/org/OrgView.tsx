@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
+import { AssignmentIssues } from '../assign/AssignmentIssues'
 import { Badge } from '../ui/Badge'
 import { needsLeaveConfirm } from '../employee/employee-model'
 import { HireEntry } from '../employee/HireEntry'
@@ -111,7 +112,7 @@ function OrgReady({
     else setSelected(title)
   }
   const listsRef = useRef<HTMLDivElement>(null)
-  const { onHired, notice } = useNewHire(snapshot, setSelected, listsRef, onChanged)
+  const { onHired, notice, assignFor } = useNewHire(snapshot, setSelected, listsRef, onChanged)
   const groups = groupByDepartment(snapshot)
   const tones = toneByTitle(groups)
   const member = snapshot.org.members.find((m) => m.title === selected) ?? null
@@ -128,7 +129,13 @@ function OrgReady({
     <>
       <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
-      <HireEntry snapshot={snapshot} onHired={onHired} isDirty={() => dirtyRef.current} />
+      <HireEntry
+        snapshot={snapshot}
+        onHired={onHired}
+        offerAssign
+        isDirty={() => dirtyRef.current}
+      />
+      <AssignmentIssues issues={snapshot.assignmentIssues ?? []} />
       <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
         {notice}
       </div>
@@ -154,6 +161,7 @@ function OrgReady({
                   onDirtyChange={setDirty}
                   onChanged={onChanged}
                   onRetired={() => setSelected(null)}
+                  openAssign={member.agentId !== null && member.agentId === assignFor}
                 />
               </>
             ) : (

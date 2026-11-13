@@ -19,14 +19,17 @@ import {
   zoomAt,
   type Camera
 } from './camera'
+import type { BadgeView } from '../assign/assign-model'
 import { hitSeat, type OfficeLayout } from './layout'
 import type { Palette } from './palette'
 import {
   createAvatar,
   createRoomFloor,
   createRoomTitle,
+  drawBadges,
   drawMark,
   poseBody,
+  setDimmed,
   setRingVisible,
   type AvatarParts
 } from './sprites'
@@ -64,6 +67,8 @@ export class OfficeScene {
   private layoutKey = ''
   private statuses: OfficeStatusMap = {}
   private selected: string | null = null
+  private badges: ReadonlyMap<string, BadgeView> = new Map()
+  private highlight: ReadonlySet<string> | null = null
   private palette: Palette
   private readonly fontFamily: string
   private reducedMotion: boolean
@@ -160,6 +165,21 @@ export class OfficeScene {
     this.fit()
   }
 
+  /** 프로젝트 배지(직급별)와 강조 필터(null이면 모두 강조). */
+  setProjects(badges: ReadonlyMap<string, BadgeView>, highlight: ReadonlySet<string> | null): void {
+    this.badges = badges
+    this.highlight = highlight
+    this.applyProjects()
+    this.requestRender()
+  }
+
+  private applyProjects(): void {
+    for (const [title, entry] of this.avatars) {
+      drawBadges(entry.parts, this.badges.get(title), this.fontFamily, this.palette)
+      setDimmed(entry.parts, this.highlight !== null && !this.highlight.has(title))
+    }
+  }
+
   setPalette(palette: Palette): void {
     this.palette = palette
     this.app.renderer.background.color = palette['bg-app']
@@ -249,6 +269,7 @@ export class OfficeScene {
       setRingVisible(parts, seat.title === this.selected)
     }
     this.world.addChild(floors, seats)
+    this.applyProjects()
     this.syncTimer()
     this.requestRender()
   }

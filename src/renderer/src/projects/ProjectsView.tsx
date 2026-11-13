@@ -1,5 +1,8 @@
 import { useId, useRef, useState } from 'react'
+import type { OrgSnapshot } from '../../../shared/org'
 import type { ProjectInfo } from '../../../shared/project'
+import { UnassignedSection } from '../assign/UnassignedSection'
+import { useOrg } from '../org/use-org'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
@@ -43,6 +46,15 @@ export function ProjectsView({
   const [notice, setNotice] = useState<string | null>(null)
   const lock = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const org = useOrg()
+  const orgSnapshot = org.status.kind === 'ready' ? org.status.snapshot : null
+  const people = {
+    org: orgSnapshot,
+    onChanged: () => {
+      org.refresh()
+      reload()
+    }
+  }
   const loading = load.kind === 'loading' || refreshing
 
   const close = (): void => {
@@ -121,9 +133,13 @@ export function ProjectsView({
         archived={archived}
         currentId={currentId}
         onAction={onAction}
+        people={people}
         onRetry={reload}
         onAdd={() => setDialog({ kind: 'add' })}
       />
+      {load.kind === 'ready' && (
+        <UnassignedSection org={orgSnapshot} failed={org.status.kind === 'error'} />
+      )}
       <p className="hint projects__script-note">{SCRIPT_KEY_NOTE}</p>
 
       {dialog?.kind === 'add' && load.kind === 'ready' && (
@@ -219,6 +235,7 @@ function ProjectsBody({
   archived,
   currentId,
   onAction,
+  people,
   onRetry,
   onAdd
 }: {
@@ -227,6 +244,7 @@ function ProjectsBody({
   archived: ProjectInfo[]
   currentId: string | null
   onAction: (a: ProjectAction, p: ProjectInfo) => void
+  people: { org: OrgSnapshot | null; onChanged: () => void }
   onRetry: () => void
   onAdd: () => void
 }): React.JSX.Element | null {
@@ -280,6 +298,7 @@ function ProjectsBody({
                 project={p}
                 current={p.id === currentId}
                 onAction={onAction}
+                people={people}
               />
             ))}
           </ul>
@@ -305,7 +324,13 @@ function ProjectsBody({
                 aria-label="보관된 프로젝트"
               >
                 {archived.map((p) => (
-                  <ProjectCard key={p.id} project={p} current={false} onAction={onAction} />
+                  <ProjectCard
+                    key={p.id}
+                    project={p}
+                    current={false}
+                    onAction={onAction}
+                    people={people}
+                  />
                 ))}
               </ul>
             </div>

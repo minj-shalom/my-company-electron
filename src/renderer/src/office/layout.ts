@@ -6,7 +6,7 @@
 import type { DeptTone, DepartmentGroup } from '../org/org-view'
 
 export const SLOT_W = 72
-export const SLOT_H = 104
+export const SLOT_H = 122
 export const ROOM_PAD = 16
 export const ROOM_HEADER = 28
 export const ROOM_GAP = 32

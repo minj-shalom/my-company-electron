@@ -24,11 +24,14 @@ type Load =
 export function HireDialog({
   snapshot,
   onClose,
-  onHired
+  onHired,
+  offerAssign = false
 }: {
   snapshot: OrgSnapshot
   onClose: () => void
-  onHired: (employeeId: string) => void
+  onHired: (employeeId: string, openAssign: boolean) => void
+  /** 채용 직후 직원 상세의 담당 프로젝트 배정을 여는 선택지를 보인다 (조직도 화면). */
+  offerAssign?: boolean
 }): React.JSX.Element {
   const titleId = useId()
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
@@ -36,6 +39,7 @@ export function HireDialog({
   const [values, setValues] = useState<HireFormValues | null>(null)
   const [submitted, setSubmitted] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [openAssign, setOpenAssign] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const lock = useRef(false)
   const alive = useRef(true)
@@ -82,7 +86,7 @@ export function HireDialog({
       try {
         const r = await window.api.createEmployee(buildCreateRequest(values, template))
         if (!alive.current) return
-        if (r.ok) onHired(r.value.record.employeeId)
+        if (r.ok) onHired(r.value.record.employeeId, offerAssign && openAssign)
         else setError(errorText(r.code, 'create'))
       } catch {
         if (alive.current) setError(errorText('internal', 'create'))
@@ -224,17 +228,17 @@ export function HireDialog({
                       </select>
                     )}
                   </Field>
-                  <p className="hint">
-                    <a
-                      href="#assign-project"
-                      aria-disabled="true"
-                      onClick={(e) => e.preventDefault()}
-                      className="hire-dialog__link"
-                    >
-                      채용 후 담당 프로젝트 배정하기
-                    </a>{' '}
-                    (준비 중)
-                  </p>
+                  {offerAssign && (
+                    <label className="hire-dialog__assign">
+                      <input
+                        type="checkbox"
+                        checked={openAssign}
+                        disabled={busy}
+                        onChange={(e) => setOpenAssign(e.target.checked)}
+                      />
+                      <span>채용 후 담당 프로젝트 배정하기</span>
+                    </label>
+                  )}
                 </div>
               )}
             </>
