@@ -10,6 +10,8 @@ export interface TicketTextFields {
   department: string | null
   /** null이면 줄을 쓰지 않는다 (회사 공통). */
   projectId: string | null
+  /** 정기 티켓(T-049)의 `<정의 id>/<YYYY-MM-DD>`. 있으면 `- **반복:**` 줄을 쓴다 (같은 날 중복 생성 방지용 표식). */
+  repeat?: string | null
 }
 
 const MAX_SLUG = 50
@@ -39,6 +41,7 @@ export function renderTicket(id: string, f: TicketTextFields): string {
     assigneeLine(f.assignee),
     ...(f.department !== null ? [`- **부서:** ${f.department}`] : []),
     ...(f.projectId !== null ? [`- **프로젝트:** ${f.projectId}`] : []),
+    ...(f.repeat ? [`- **반복:** ${f.repeat}`] : []),
     `- **브랜치:** feature/${id}`,
     `- **의존:** 없음`
   ]

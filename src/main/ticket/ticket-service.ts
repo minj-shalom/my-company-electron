@@ -28,6 +28,8 @@ const fail = (code: DomainErrorCode, message: string): ApiResult<never> => ({
 
 const STATUS_ORDER = ['backlog', 'in-progress', 'done'] as const
 const MAX_NUMBER = 999_999
+/** `<정의 id>/<YYYY-MM-DD>` */
+export const REPEAT_KEY = /^[a-z0-9][a-z0-9-]{0,39}\/\d{4}-\d{2}-\d{2}$/
 
 /** 번호 충돌은 1회만 다시 계산해 시도한다 (CLI 에이전트가 같은 이름을 먼저 만든 경우). */
 const CREATE_ATTEMPTS = 2
@@ -43,6 +45,48 @@ export class TicketService {
     const parsed = parseCreate(raw)
     if (!parsed.ok) return Promise.resolve(fail('invalid-request', parsed.message))
     return this.deps.exclusive(() => this.createNow(parsed.value))
+  }
+
+  /** 모든 상태 폴더의 `- **반복:** <키>` 줄을 세어 키별 건수를 돌려준다. 읽을 수 없는 파일은 건너뛴다. */
+  async scanRepeats(): Promise<Map<string, number>> {
+    const counts = new Map<string, number>()
+    for (const st of STATUS_ORDER) {
+      const { files } = await this.deps.fs.listMarkdown(TICKET_DIRS[st])
+      for (const name of files) {
+        let key: string | null
+        try {
+          key = metaValue(await this.deps.fs.readText(relPath(TICKET_DIRS[st], name)), '반복')
+        } catch {
+          continue
+        }
+        if (key !== null && REPEAT_KEY.test(key)) counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
+    }
+    return counts
+  }
+
+  /**
+   * 정기 티켓 한 건 생성 (T-049). 같은 `repeatKey`의 티켓이 이미 `limit`건 이상이면 만들지 않고 `value: null`을 돌려준다.
+   * 확인과 생성이 같은 쓰기 큐 안에서 이어져 재시작·동시 실행에도 중복이 생기지 않는다.
+   */
+  createRecurring(
+    raw: unknown,
+    repeatKey: string,
+    limit: number
+  ): Promise<ApiResult<Ticket | null>> {
+    const parsed = parseCreate(raw)
+    if (!parsed.ok) return Promise.resolve(fail('invalid-request', parsed.message))
+    if (!REPEAT_KEY.test(repeatKey))
+      return Promise.resolve(fail('invalid-request', '반복 표식이 올바르지 않습니다.'))
+    return this.deps.exclusive(async () => {
+      try {
+        if (((await this.scanRepeats()).get(repeatKey) ?? 0) >= limit)
+          return { ok: true, value: null }
+      } catch {
+        return fail('internal', '티켓을 저장하지 못했습니다.')
+      }
+      return this.createNow(parsed.value, repeatKey)
+    })
   }
 
   update(raw: unknown): Promise<ApiResult<Ticket>> {
@@ -84,7 +128,10 @@ export class TicketService {
     return max + 1
   }
 
-  private async createNow(f: TicketFields): Promise<ApiResult<Ticket>> {
+  private async createNow(
+    f: TicketFields,
+    repeat: string | null = null
+  ): Promise<ApiResult<Ticket>> {
     try {
       const refs = await this.resolveRefs(f, null)
       if ('error' in refs) return refs.error
@@ -92,7 +139,7 @@ export class TicketService {
         const num = await this.nextNumber()
         if (num > MAX_NUMBER) return fail('internal', '티켓 번호를 더 부여할 수 없습니다.')
         const id = `T-${String(num).padStart(3, '0')}`
-        const text = renderTicket(id, refs.fields)
+        const text = renderTicket(id, { ...refs.fields, repeat })
         if (Buffer.byteLength(text, 'utf8') > MAX_FILE_BYTES)
           return fail('invalid-request', '티켓 내용이 너무 깁니다.')
         const path = relPath(TICKET_DIRS.backlog, ticketFileName(num, f.title))
