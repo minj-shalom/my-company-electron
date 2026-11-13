@@ -19,6 +19,7 @@ import type { FileCompanyRepository } from './repository/file-repository'
 import { sharedRepository } from './repository/shared-repository'
 import { buildOrgSnapshot } from './org/org-snapshot'
 import { createEmployeeHandlers, type EmployeeHandlers } from './employee/employee-ipc'
+import { createDepartmentHandlers, type DepartmentHandlers } from './org/department-ipc'
 import type { AssignmentSource } from './employee/employee-service'
 import { createTicketWriteHandlers, type TicketWriteHandlers } from './ticket/ticket-ipc'
 import { createProjectHandlers, type ProjectHandlers } from './project/project-ipc'
@@ -114,6 +115,7 @@ export function createDomainHandlers(deps: DomainDeps): {
   listDecisions: (status: unknown) => Promise<ApiResult<DecisionList>>
   resolveDecision: (req: unknown) => Promise<ApiResult<Decision>>
 } & EmployeeHandlers &
+  DepartmentHandlers &
   ProjectHandlers &
   PolicyHandlers &
   ProfileHandlers &
@@ -144,6 +146,7 @@ export function createDomainHandlers(deps: DomainDeps): {
       repository: () => repositoryFor(deps),
       assignments: deps.assignments
     }),
+    ...createDepartmentHandlers({ context: deps.context, repository: () => repositoryFor(deps) }),
     // SafeFs는 열린 회사 컨텍스트에서만 얻는다 (renderer가 경로를 넘기지 않는다).
     getOrg: () => guarded(() => buildOrgSnapshot(deps.context.requireOpenCompany().fs)),
     detectProviders: () => guarded(() => deps.providers.detect()),
@@ -295,6 +298,9 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.employeeUpdate, write(h.updateEmployee))
   handle(IPC_CHANNELS.employeeMove, write(h.moveEmployee))
   handle(IPC_CHANNELS.employeeRetire, write(h.retireEmployee))
+  handle(IPC_CHANNELS.orgAddDepartment, write(h.addDepartment))
+  handle(IPC_CHANNELS.orgRenameDepartment, write(h.renameDepartment))
+  handle(IPC_CHANNELS.orgRemoveDepartment, write(h.removeDepartment))
   handle(
     IPC_CHANNELS.companyHirePm,
     write(() => h.hirePm())

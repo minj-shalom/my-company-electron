@@ -12,6 +12,7 @@ import {
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario, resetMockOrgState } from './mock-org'
 import { MOCK_TEMPLATES, createMockHireApi, parseHireScenario } from './mock-hire'
+import { mockDepartmentApi } from './mock-department'
 import { createMockEmployeeApi, parseEmployeeScenario } from './mock-employee'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
@@ -155,6 +156,7 @@ export const mockApi: WindowApi = {
   ...mockDecisionApi.api,
   ...mockHireApi.api,
   ...mockEmployeeApi.api,
+  ...mockDepartmentApi,
   ...mockProjectApi.api,
   ...mockPolicyApi.api,
   detectProviders: mockDetectProviders,

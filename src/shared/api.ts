@@ -8,6 +8,12 @@ import type {
   CompanySelectFolderResult,
   CompanyState
 } from './company'
+import type {
+  DepartmentAddRequest,
+  DepartmentChangeResult,
+  DepartmentRemoveRequest,
+  DepartmentRenameRequest
+} from './department'
 import type { Decision, DecisionList, DecisionResolveRequest } from './decision'
 import type {
   EmployeeChangeResult,
@@ -131,6 +137,15 @@ export interface WindowApi {
   moveEmployee: (req: EmployeeMoveRequest) => Promise<ApiResult<EmployeeChangeResult>>
   /** 직원 파일을 `company/archive/employees/`로 옮기고 표에서 행을 지운다 (삭제하지 않는다). */
   retireEmployee: (req: EmployeeRetireRequest) => Promise<ApiResult<EmployeeChangeResult>>
+  /**
+   * 부서 관리 (T-040, 화면은 2단계). 부서는 직원의 부서 값으로만 존재한다. 호출자는 main이 항상 `ceo-ui`로 처리한다.
+   * `addDepartment`: 먼저 채용한 직원(`leadId`)을 새 부서로 옮긴다 (이름 중복 `conflict`, 직원 없음 `not-found`).
+   * `renameDepartment`: 직원 행과 조직도 블록을 한 번의 쓰기로 바꾼다. `removeDepartment`: 직원이 0명일 때만 (있으면 `conflict`).
+   * cto·cfo·hr가 속한 변경은 `approval-required`, COO·CEO가 속한 부서는 `forbidden`. 성공하면 `org:get`을 다시 읽는다.
+   */
+  addDepartment: (req: DepartmentAddRequest) => Promise<ApiResult<DepartmentChangeResult>>
+  renameDepartment: (req: DepartmentRenameRequest) => Promise<ApiResult<DepartmentChangeResult>>
+  removeDepartment: (req: DepartmentRemoveRequest) => Promise<ApiResult<DepartmentChangeResult>>
   /**
    * PM 한 명을 바로 채용한다 (T-051). 입력 없음. 이미 PM 직급 직원이 있으면 `conflict`로 거부하니 기존 PM을 선택하게 안내한다.
    * 프로젝트의 `PM:` 줄은 이 호출이 건드리지 않는다. 반환된 `employeeId`로 호출 쪽이 `project:set-pm`(T-037)을 부른다.
@@ -260,6 +275,9 @@ export const IPC_CHANNELS = {
   companyGet: 'company:get',
   employeeList: 'employee:list',
   orgGet: 'org:get',
+  orgAddDepartment: 'org:add-department',
+  orgRenameDepartment: 'org:rename-department',
+  orgRemoveDepartment: 'org:remove-department',
   ticketList: 'ticket:list',
   ticketGet: 'ticket:get',
   ticketMove: 'ticket:move',
