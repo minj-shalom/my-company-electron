@@ -17,20 +17,14 @@ import {
   type PolicyViolationCode,
   type PolicyWarningCode
 } from '../../../shared/policy'
+import type { ProjectType } from '../../../shared/project'
 import type { BadgeTone } from '../ui/Badge'
+import { violationOverride, warningOverride, wordingFor } from './policy-wording'
 
-export const FLOW_LABELS: Record<PolicyFlow, string> = {
-  'dev-git-pr': '개발 (feature 브랜치 → PR)',
-  'content-draft-approve': '콘텐츠 (초안 → 승인 → 발행)',
-  custom: '직접 정하기'
-}
+export const flowLabels = (type: ProjectType): Record<PolicyFlow, string> => wordingFor(type).flows
 
-export const ACTION_LABELS: Record<PolicyAction, string> = {
-  push: '푸시',
-  merge: '머지',
-  publish: '발행',
-  'draft-approve': '초안 승인'
-}
+export const actionLabels = (type: ProjectType): Record<PolicyAction, string> =>
+  wordingFor(type).actions
 
 export const MODE_LABELS: Record<ApprovalMode, string> = {
   every: '매번 컨펌',
@@ -52,8 +46,8 @@ export function visibleActions(flow: PolicyFlow): PolicyAction[] {
 }
 
 /** 항상 지켜지는 규칙 안내 (읽기 전용). */
-export const IMMUTABLE_RULES: readonly string[] = [
-  '강제 푸시와 히스토리 재작성은 자동 모드에서도 할 수 없어요.',
+export const immutableRules = (type: ProjectType = 'development'): readonly string[] => [
+  wordingFor(type).immutableForce,
   '등록된 프로젝트 폴더와 회사 폴더 밖에는 쓰지 않아요.',
   '프로젝트 폴더를 지우거나 옮기지 않아요.',
   '로그인 정보와 발행 토큰은 AI 직원에게 보이지 않아요.',
@@ -96,8 +90,12 @@ const WARNING_TEXT: Record<PolicyWarningCode, string> = {
   'file-unreadable': '정책 파일을 읽지 못해 기본값을 보여 줘요.'
 }
 
-export const violationText = (code: PolicyViolationCode): string => VIOLATION_TEXT[code]
-export const warningText = (code: PolicyWarningCode): string => WARNING_TEXT[code]
+export const violationText = (
+  code: PolicyViolationCode,
+  type: ProjectType = 'development'
+): string => violationOverride(wordingFor(type), code) ?? VIOLATION_TEXT[code]
+export const warningText = (code: PolicyWarningCode, type: ProjectType = 'development'): string =>
+  warningOverride(wordingFor(type), code) ?? WARNING_TEXT[code]
 
 /** 같은 문구는 한 번만. */
 export function uniqueMessages(texts: string[]): string[] {
@@ -139,30 +137,32 @@ export function autoChanges(initial: PolicyValues, draft: PolicyValues): PolicyA
 }
 
 /** 저장 전에 화면에서 먼저 잡는 입력 오류 (서버가 다시 검증한다). */
-export function checkDraft(draft: PolicyValues, projectName: string): string[] {
+export function checkDraft(
+  draft: PolicyValues,
+  projectName: string,
+  type: ProjectType = 'development'
+): string[] {
+  const w = wordingFor(type)
   const out: string[] = []
   for (const a of LIMITED_ACTIONS) {
     if (draft.modes[a] !== 'auto') continue
     const limit = draft.dailyLimits[a]
-    const label = ACTION_LABELS[a]
+    const label = w.actions[a]
     if (limit === undefined || !Number.isInteger(limit) || limit < 1)
       out.push(`${label}: 일일 상한을 1 이상의 정수로 입력해 주세요.`)
     else if (limit > MAX_DAILY_LIMIT[a])
       out.push(`${label}: 일일 상한은 ${MAX_DAILY_LIMIT[a]} 이하여야 해요.`)
   }
   if (draft.modes.push === 'auto' && draft.autoPushPrefixes.length === 0)
-    out.push('푸시: 허용할 브랜치 접두어를 하나 이상 입력해 주세요.')
+    out.push(w.checkPushTarget)
   if (draft.modes.merge === 'auto') {
-    if (draft.autoMergeBranches.length === 0)
-      out.push('머지: 허용할 브랜치를 하나 이상 입력해 주세요.')
-    if (!draft.usePr || draft.reviewStage !== 'required')
-      out.push('머지: 자동 머지에는 PR 사용과 "reviewer-qa 필수"가 필요해요.')
+    if (draft.autoMergeBranches.length === 0) out.push(w.checkMergeTarget)
+    if (!draft.usePr || draft.reviewStage !== 'required') out.push(w.checkMergeRequirement)
     if (hasProtectedTarget(draft.autoMergeBranches)) {
       const limit = draft.dailyLimits.merge
       if (limit !== undefined && limit > PROTECTED_MERGE_MAX_DAILY)
-        out.push(`머지: 보호 브랜치는 하루 1~${PROTECTED_MERGE_MAX_DAILY}회까지만 허용돼요.`)
-      if (draft.confirmInput !== projectName)
-        out.push('머지: 보호 브랜치 자동 머지는 프로젝트 이름을 정확히 입력해야 해요.')
+        out.push(w.checkProtectedLimit(PROTECTED_MERGE_MAX_DAILY))
+      if (draft.confirmInput !== projectName) out.push(w.checkProtectedConfirm)
     }
   }
   return out
@@ -170,12 +170,14 @@ export function checkDraft(draft: PolicyValues, projectName: string): string[] {
 
 /** 프로젝트 목록 배지. 자동 모드가 하나도 없으면 null. */
 export function policyBadge(
-  s: PolicySummary | undefined
+  s: PolicySummary | undefined,
+  type: ProjectType = 'development'
 ): { label: string; tone: BadgeTone } | null {
   if (!s || s.autoActions.length === 0) return null
-  const names = s.autoActions.map((a) => ACTION_LABELS[a]).join('·')
+  const w = wordingFor(type)
+  const names = s.autoActions.map((a) => w.actions[a]).join('·')
   return s.protectedMergeEnabled
-    ? { label: `자동 ${names} (보호 브랜치 포함)`, tone: 'bad' }
+    ? { label: `자동 ${names} (${w.badgeProtected})`, tone: 'bad' }
     : { label: `자동 ${names}`, tone: 'warn' }
 }
 
@@ -239,7 +241,8 @@ export async function loadPolicy(api: WindowApi, projectId: string): Promise<Pol
 /** 저장 결과를 화면 상태로 바꾼다. 성공하면 새 state도 돌려준다. */
 export async function submitPolicy(
   api: WindowApi,
-  req: PolicySaveRequest
+  req: PolicySaveRequest,
+  type: ProjectType = 'development'
 ): Promise<{ status: SaveStatus; state?: PolicyState }> {
   try {
     const r = await api.savePolicy(req)
@@ -254,7 +257,7 @@ export async function submitPolicy(
     return {
       status: {
         kind: 'violations',
-        messages: uniqueMessages(r.value.violations.map((v) => violationText(v.code)))
+        messages: uniqueMessages(r.value.violations.map((v) => violationText(v.code, type)))
       }
     }
   } catch {
@@ -263,13 +266,18 @@ export async function submitPolicy(
 }
 
 /** 이 동작이 컨펌 없이 무엇을 하는지. 값은 React 텍스트로만 렌더링한다. */
-export function describeAuto(action: PolicyAction, d: PolicyValues): string {
+export function describeAuto(
+  action: PolicyAction,
+  d: PolicyValues,
+  type: ProjectType = 'development'
+): string {
+  const w = wordingFor(type)
   const limit = d.dailyLimits[action as 'push' | 'merge' | 'publish']
   switch (action) {
     case 'push':
-      return `${listText(d.autoPushPrefixes)} 브랜치를 하루 최대 ${limit}회까지 컨펌 없이 푸시해요.`
+      return w.describePush(listText(d.autoPushPrefixes), limit)
     case 'merge':
-      return `${listText(d.autoMergeBranches)}로 가는 PR을 하루 최대 ${limit}회까지 컨펌 없이 머지해요 (PR과 reviewer-qa 통과 필수).`
+      return w.describeMerge(listText(d.autoMergeBranches), limit)
     case 'publish':
       return `콘텐츠를 하루 최대 ${limit}건까지 컨펌 없이 발행해요.`
     case 'draft-approve':

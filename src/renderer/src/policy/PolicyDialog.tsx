@@ -4,12 +4,13 @@ import { POLICY_FLOWS, REVIEW_STAGES, type PolicyFlow } from '../../../shared/po
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import type { ProjectType } from '../../../shared/project'
 import { Modal } from '../ui/Modal'
 import { AutoConfirmDialog } from './AutoConfirmDialog'
 import { ModeRow } from './ModeFields'
 import {
-  FLOW_LABELS,
-  IMMUTABLE_RULES,
+  flowLabels,
+  immutableRules,
   autoChanges,
   checkDraft,
   formatAt,
@@ -19,6 +20,7 @@ import {
   visibleActions,
   warningText
 } from './policy-model'
+import { wordingFor } from './policy-wording'
 import { usePolicyEditor } from './use-policy'
 
 const REVIEW_LABELS: Record<ReviewStage, string> = {
@@ -30,16 +32,18 @@ const REVIEW_LABELS: Record<ReviewStage, string> = {
 export function PolicyDialog({
   projectId,
   projectName,
+  projectType = 'development',
   onClose,
   onSaved
 }: {
   projectId: string
   projectName: string
+  projectType?: ProjectType
   onClose: () => void
   onSaved: () => void
 }): React.JSX.Element {
   const titleId = useId()
-  const ed = usePolicyEditor(projectId, onSaved)
+  const ed = usePolicyEditor(projectId, onSaved, projectType)
   const [confirming, setConfirming] = useState<PolicyAction[] | null>(null)
   const [localErrors, setLocalErrors] = useState<string[]>([])
   const saving = ed.save.kind === 'saving'
@@ -47,7 +51,7 @@ export function PolicyDialog({
 
   const trySave = (): void => {
     if (!state || !ed.draft || saving) return
-    const errors = checkDraft(ed.draft, projectName)
+    const errors = checkDraft(ed.draft, projectName, projectType)
     setLocalErrors(errors)
     if (errors.length > 0) return
     const changed = autoChanges(state.values, ed.draft)
@@ -78,24 +82,27 @@ export function PolicyDialog({
           <>
             {!state.exists && (
               <p className="notice" role="note">
-                아직 정책 파일이 없어요. 모든 푸시·머지·발행·승인은 &ldquo;매번 컨펌&rdquo;으로
-                처리돼요.
+                아직 정책 파일이 없어요. {wordingFor(projectType).noPolicyFile} &ldquo;매번
+                컨펌&rdquo;으로 처리돼요.
               </p>
             )}
             {state.warnings.length > 0 && (
               <div className="notice policy__warnings" role="note">
                 <strong>확인이 필요한 값 {state.warnings.length}건</strong>
                 <ul>
-                  {uniqueMessages(state.warnings.map((w) => warningText(w.code))).map((t) => (
-                    <li key={t}>{t}</li>
-                  ))}
+                  {uniqueMessages(state.warnings.map((w) => warningText(w.code, projectType))).map(
+                    (t) => (
+                      <li key={t}>{t}</li>
+                    )
+                  )}
                 </ul>
               </div>
             )}
-            <ImmutableRules />
+            <ImmutableRules type={projectType} />
             <PolicyForm
               draft={ed.draft}
               projectName={projectName}
+              projectType={projectType}
               disabled={saving}
               onChange={ed.setDraft}
             />
@@ -123,6 +130,7 @@ export function PolicyDialog({
           actions={confirming}
           draft={ed.draft}
           projectName={projectName}
+          projectType={projectType}
           busy={saving}
           onCancel={() => setConfirming(null)}
           onConfirm={async () => {
@@ -135,13 +143,13 @@ export function PolicyDialog({
   )
 }
 
-function ImmutableRules(): React.JSX.Element {
+function ImmutableRules({ type }: { type: ProjectType }): React.JSX.Element {
   const id = useId()
   return (
     <section className="policy__rules" aria-labelledby={id}>
       <h3 id={id}>항상 지켜져요</h3>
       <ul>
-        {IMMUTABLE_RULES.map((r) => (
+        {immutableRules(type).map((r) => (
           <li key={r}>{r}</li>
         ))}
       </ul>
@@ -153,15 +161,19 @@ function ImmutableRules(): React.JSX.Element {
 function PolicyForm({
   draft,
   projectName,
+  projectType,
   disabled,
   onChange
 }: {
   draft: PolicyValues
   projectName: string
+  projectType: ProjectType
   disabled: boolean
   onChange: (v: PolicyValues) => void
 }): React.JSX.Element {
   const id = useId()
+  const w = wordingFor(projectType)
+  const flows = flowLabels(projectType)
   const dev = draft.flow !== 'content-draft-approve'
   const content = draft.flow !== 'dev-git-pr'
   return (
@@ -177,7 +189,7 @@ function PolicyForm({
         >
           {POLICY_FLOWS.map((f) => (
             <option key={f} value={f}>
-              {FLOW_LABELS[f]}
+              {flows[f]}
             </option>
           ))}
         </select>
@@ -191,15 +203,16 @@ function PolicyForm({
           action={a}
           draft={draft}
           projectName={projectName}
+          projectType={projectType}
           disabled={disabled}
           onChange={onChange}
         />
       ))}
       {dev && (
         <fieldset className="policy__group" disabled={disabled}>
-          <legend>개발 흐름</legend>
+          <legend>{w.devGroupLegend}</legend>
           <div className="field">
-            <label htmlFor={`${id}-prefix`}>브랜치 접두어</label>
+            <label htmlFor={`${id}-prefix`}>{w.prefixLabel}</label>
             <Input
               id={`${id}-prefix`}
               value={draft.branchPrefix}
@@ -207,7 +220,7 @@ function PolicyForm({
             />
           </div>
           <div className="field">
-            <label htmlFor={`${id}-base`}>기반 브랜치</label>
+            <label htmlFor={`${id}-base`}>{w.baseLabel}</label>
             <Input
               id={`${id}-base`}
               value={draft.baseBranch ?? ''}
@@ -220,7 +233,7 @@ function PolicyForm({
               checked={draft.usePr}
               onChange={(e) => onChange({ ...draft, usePr: e.target.checked })}
             />
-            <span>PR을 사용해요</span>
+            <span>{w.usePrLabel}</span>
           </label>
           <div className="field">
             <label htmlFor={`${id}-review`}>검수 단계</label>
@@ -232,7 +245,7 @@ function PolicyForm({
             >
               {REVIEW_STAGES.map((s) => (
                 <option key={s} value={s}>
-                  {REVIEW_LABELS[s]}
+                  {s === 'required' ? w.reviewRequired : REVIEW_LABELS[s]}
                 </option>
               ))}
             </select>

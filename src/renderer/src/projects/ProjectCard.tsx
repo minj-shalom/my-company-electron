@@ -5,6 +5,7 @@ import { ProjectPeople } from '../assign/ProjectPeople'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { policyBadge } from '../policy/policy-model'
+import { wordingFor } from '../policy/policy-wording'
 import { TYPE_LABELS, gitView, stateBadge } from './project-model'
 
 export type ProjectAction = 'rename' | 'archive' | 'restore' | 'assign-pm' | 'clear-pm' | 'policy'
@@ -28,7 +29,7 @@ export function ProjectCard({
   const state = stateBadge(project)
   const git = gitView(project)
   const archived = project.status === 'archived'
-  const autoBadge = policyBadge(policy)
+  const autoBadge = policyBadge(policy, project.type)
   const label = (verb: string): string => `${project.name} ${verb}`
   return (
     <li className="project-card" data-state={project.state}>
@@ -47,7 +48,7 @@ export function ProjectCard({
         <dd>
           <code>{project.path}</code>
         </dd>
-        <dt>브랜치</dt>
+        <dt>{wordingFor(project.type).gitBranchLabel}</dt>
         <dd>
           {git.branch !== null ? <code>{git.branch}</code> : <span>{git.branchText}</span>}
           <span className="project-card__dirty">

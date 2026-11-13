@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest'
 import type { PolicyValues, PolicyViolationCode } from '../../../shared/policy'
 import { POLICY_ACTIONS } from '../../../shared/policy'
 import {
+  actionLabels,
   autoChanges,
   checkDraft,
+  describeAuto,
   failureText,
+  flowLabels,
   hasProtectedTarget,
+  immutableRules,
   latestFirst,
   parseList,
   policyBadge,
@@ -13,7 +17,8 @@ import {
   submitPolicy,
   uniqueMessages,
   violationText,
-  visibleActions
+  visibleActions,
+  warningText
 } from './policy-model'
 import type { WindowApi } from '../../../shared/api'
 
@@ -170,5 +175,62 @@ describe('submitPolicy', () => {
     expect(
       (await submitPolicy(api({ ok: false, code: 'internal', message: '/etc' }), req)).status
     ).toEqual({ kind: 'error', message: failureText('internal') })
+  })
+})
+
+describe('project type wording (D-024)', () => {
+  const JARGON = /PR|머지|푸시|브랜치/
+  const autoDraft = (): PolicyValues => ({
+    ...base(),
+    modes: { push: 'auto', merge: 'auto', publish: 'every', 'draft-approve': 'every' },
+    dailyLimits: { push: 3, merge: 2 },
+    autoPushPrefixes: ['feature/'],
+    autoMergeBranches: ['master'],
+    confirmInput: 'x'
+  })
+
+  it('keeps development wording unchanged', () => {
+    expect(describeAuto('merge', autoDraft())).toContain('머지')
+    expect(
+      policyBadge({ projectId: 'a', autoActions: ['push'], protectedMergeEnabled: true } as never)
+        ?.label
+    ).toContain('보호 브랜치')
+    expect(violationText('protected-limit-exceeded')).toContain('보호 브랜치')
+  })
+
+  it.each(['content', 'other'] as const)('uses plain words for %s projects', (type) => {
+    const texts = [
+      describeAuto('push', autoDraft(), type),
+      describeAuto('merge', autoDraft(), type),
+      ...checkDraft({ ...autoDraft(), usePr: false, confirmInput: null }, 'p', type),
+      ...immutableRules(type),
+      policyBadge(
+        { projectId: 'a', autoActions: ['push', 'merge'], protectedMergeEnabled: true } as never,
+        type
+      )?.label ?? '',
+      ...Object.values(flowLabels(type)),
+      ...Object.values(actionLabels(type))
+    ]
+    for (const code of [
+      'auto-limit-exceeded',
+      'auto-target-missing',
+      'auto-target-invalid',
+      'auto-requirement-missing',
+      'protected-merge-unconfirmed',
+      'protected-limit-exceeded'
+    ] as const)
+      texts.push(violationText(code, type))
+    for (const code of [
+      'auto-requirement-missing',
+      'protected-limit-exceeded',
+      'protected-merge-unconfirmed'
+    ] as const)
+      texts.push(warningText(code, type))
+    for (const t of texts) expect(t).not.toMatch(JARGON)
+  })
+
+  it('keeps all approval modes and actions for every type', () => {
+    for (const type of ['development', 'content', 'other'] as const)
+      expect(Object.keys(actionLabels(type)).sort()).toEqual([...POLICY_ACTIONS].sort())
   })
 })
