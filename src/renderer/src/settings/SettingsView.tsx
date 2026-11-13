@@ -1,6 +1,7 @@
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { BreakdownSection } from './BreakdownSection'
+import { CompanyProfileSection } from './CompanyProfileSection'
 import { LimitsSection } from './LimitsSection'
 import { PrefsSection } from './PrefsSection'
 import { ProvidersSection } from './ProvidersSection'
@@ -9,7 +10,13 @@ import { UsageSection } from './UsageSection'
 import { useSettings } from './use-settings'
 
 /** 설정·예산 화면. 상태: 로딩, 오류(다시 시도), 정상. 사용량이 비어 있어도 설정 입력은 쓸 수 있다. */
-export function SettingsView(): React.JSX.Element {
+export function SettingsView({
+  onProfileDirtyChange = () => undefined,
+  onCompanyNameSaved = () => undefined
+}: {
+  onProfileDirtyChange?: (dirty: boolean) => void
+  onCompanyNameSaved?: (name: string) => void
+}): React.JSX.Element {
   const { load, reload, detection, recheck } = useSettings()
   return (
     <section className="settings" aria-labelledby="settings-heading">
@@ -27,6 +34,12 @@ export function SettingsView(): React.JSX.Element {
         className={load.kind === 'loading' ? 'hint' : 'visually-hidden'}
       >
         {load.kind === 'loading' && '설정과 사용량을 불러오고 있어요…'}
+      </div>
+      <div className="settings__profile">
+        <CompanyProfileSection
+          onDirtyChange={onProfileDirtyChange}
+          onNameSaved={onCompanyNameSaved}
+        />
       </div>
       {load.kind === 'error' && (
         <Panel>

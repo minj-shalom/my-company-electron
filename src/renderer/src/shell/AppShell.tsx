@@ -42,13 +42,21 @@ const MAIN_VIEWS: readonly TabItem[] = [
 
 /** 앱 셸. 사이드 패널 탭: 직원 로그(실행 이벤트), 티켓 보드, 결재함. */
 export function AppShell({
-  companyName,
+  companyName: initialName,
   initialFirstHire = false
 }: {
   companyName: string
   /** 온보딩 직후처럼 첫 채용 화면을 먼저 보여 줄지. */
   initialFirstHire?: boolean
 }): React.JSX.Element {
+  // 회사 정보를 저장하면 상단 표시 이름을 바로 바꾼다. 열린 회사가 바뀌면 새 prop으로 다시 맞춘다.
+  const [companyName, setCompanyName] = useState(initialName)
+  const [shownFrom, setShownFrom] = useState(initialName)
+  if (shownFrom !== initialName) {
+    setShownFrom(initialName)
+    setCompanyName(initialName)
+  }
+  const profileDirty = useRef(false)
   const [hiring, setHiring] = useState(initialFirstHire)
   const returnFocus = useRef(false)
   const closeHiring = (): void => {
@@ -135,6 +143,13 @@ export function AppShell({
             tabs={mainViews}
             selectedId={view}
             onSelect={(id) => {
+              if (
+                view === 'settings' &&
+                id !== 'settings' &&
+                profileDirty.current &&
+                !window.confirm('저장하지 않은 회사 정보 변경이 있어요. 저장하지 않고 이동할까요?')
+              )
+                return
               const narrow = window.matchMedia?.('(max-width: 899px)').matches ?? false
               // 좁은 화면에서는 하단 시트가 조직도를 가리므로 접는다 (버튼으로 다시 열 수 있다).
               if (shouldCollapsePanel(view, id, narrow)) setPanelOpen(false)
@@ -145,7 +160,12 @@ export function AppShell({
             {hiring ? (
               <FirstHireScreen onClose={closeHiring} />
             ) : view === 'settings' ? (
-              <SettingsView />
+              <SettingsView
+                onProfileDirtyChange={(d) => {
+                  profileDirty.current = d
+                }}
+                onCompanyNameSaved={setCompanyName}
+              />
             ) : view === 'status' ? (
               <ProjectStatusView
                 view={statusView}

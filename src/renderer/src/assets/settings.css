@@ -159,3 +159,15 @@
 .employee-provider {
   margin-top: var(--space-4);
 }
+
+.settings__profile {
+  margin-bottom: var(--space-4);
+}
+.profile-textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.5;
+}
+.profile-dirty {
+  align-self: center;
+}
