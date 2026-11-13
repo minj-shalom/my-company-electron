@@ -1,6 +1,6 @@
 import type { OrgModel } from '../../shared/org'
 import { EMPLOYEE_ID } from '../repository/ids'
-import { MAX_CHART_LINES, chartLabelCol, splitChartText } from './parse-org-doc'
+import { MAX_CHART_LINES, MAX_LINE, chartLabelCol, splitChartText } from './parse-org-doc'
 
 const FENCE = /^\s*(```|~~~)/
 const CHART_HEADING = /^##\s+조직도/
@@ -51,7 +51,7 @@ export type ChartChange =
 
 export type ChartResult = { ok: true; text: string } | { ok: false }
 
-interface Node {
+export interface Node {
   idx: number
   col: number
   label: string
@@ -64,7 +64,7 @@ interface Chart {
 }
 
 /** parseChart와 같은 규칙으로 조직도 블록의 줄을 찾는다. 블록이 없으면 'none', 닫히지 않았거나 너무 길면 'invalid'. */
-function readChart(lines: string[]): Chart | 'none' | 'invalid' {
+export function readChart(lines: string[]): Chart | 'none' | 'invalid' {
   let i = 0
   let fence = false
   for (; i < lines.length; i++) {
@@ -90,7 +90,7 @@ function readChart(lines: string[]): Chart | 'none' | 'invalid' {
     if (nodes.length >= MAX_CHART_LINES) return 'invalid'
     const col = chartLabelCol(line)
     if (col < 0) continue
-    const { label, detail } = splitChartText(line.slice(col, 5000).trim())
+    const { label, detail } = splitChartText(line.slice(col, MAX_LINE).trim())
     while (stack.length && stack[stack.length - 1].col >= col) stack.pop()
     nodes.push({
       idx: i,
@@ -111,7 +111,7 @@ interface Group {
   sep: string
 }
 
-function groupOf(line: string, node: Node): Group | null {
+export function groupOf(line: string, node: Node): Group | null {
   if (!node.detail) return null
   const m = /\(([^()]*)\)/.exec(node.detail)
   if (!m) return null
@@ -133,12 +133,12 @@ function groupOf(line: string, node: Node): Group | null {
 const render = (g: Group): string => `(${g.tokens.join(g.sep)})`
 
 /** 항목 이름: `개발팀 (..)`은 라벨, `CTO ── 개발팀 (..)`은 대시 뒤의 이름. */
-function deptName(n: Node): string {
+export function deptName(n: Node): string {
   const head = n.detail.split('(')[0].trim()
   return head !== '' ? head : n.label
 }
 
-const descendants = (nodes: Node[], at: number): number[] => {
+export const descendants = (nodes: Node[], at: number): number[] => {
   const out: number[] = []
   for (let i = at + 1; i < nodes.length && nodes[i].col > nodes[at].col; i++) out.push(i)
   return out
@@ -223,6 +223,7 @@ function removeEverywhere(
   const { nodes } = chart
   const titles = new Set(memberTitles.map((t) => t.toLowerCase()))
   const lower = title?.toLowerCase() ?? null
+  const deleted = new Set<number>()
   for (let k = nodes.length - 1; k >= 0; k--) {
     const n = nodes[k]
     const line = lines[n.idx]
@@ -248,22 +249,34 @@ function removeEverywhere(
     if (isTitleLine) {
       // 제목 라벨 줄은 자식이나 다른 설명이 없을 때만 지운다. 그렇지 않으면 구조를 알 수 없어 거부한다.
       if (!leaf || !bare) return false
-      deleteNode(lines, seps, nodes, k)
+      deleteNode(lines, seps, nodes, k, deleted)
+      deleted.add(k)
     } else if (emptied && leaf && bare && !titles.has(n.label.toLowerCase())) {
       const head = line.slice(n.col).split('(')[0].trim()
       // `부서 (id)` 형태만 줄째 지운다. 다른 설명이 있는 줄은 괄호만 걷어낸다.
-      if (head === n.label) deleteNode(lines, seps, nodes, k)
-      else lines[n.idx] = residual
+      if (head === n.label) {
+        deleteNode(lines, seps, nodes, k, deleted)
+        deleted.add(k)
+      } else lines[n.idx] = residual
     } else lines[n.idx] = residual
   }
   return true
 }
 
 /** 줄을 지우고, 마지막 형제였다면 앞 형제의 `├`를 `└`로 되돌려 트리 모양을 유지한다. */
-function deleteNode(lines: string[], seps: string[], nodes: Node[], k: number): void {
+export function deleteNode(
+  lines: string[],
+  seps: string[],
+  nodes: Node[],
+  k: number,
+  deleted: ReadonlySet<number> = new Set()
+): void {
   const n = nodes[k]
   const corner = lines[n.idx].slice(0, n.col).indexOf('└')
-  const siblings = nodes.map((x, i) => ({ x, i })).filter((s) => s.x.parent === n.parent)
+  // 같은 호출에서 이미 지운 형제는 건너뛰어, 연속 삭제에서도 마지막 형제의 `└`가 이어지게 한다.
+  const siblings = nodes
+    .map((x, i) => ({ x, i }))
+    .filter((s) => s.x.parent === n.parent && !deleted.has(s.i))
   const pos = siblings.findIndex((s) => s.i === k)
   if (corner >= 0 && pos > 0 && pos === siblings.length - 1) {
     const prev = siblings[pos - 1]

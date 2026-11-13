@@ -70,7 +70,7 @@ export function escapeCell(v: string): string {
 }
 
 // 정규식 대신 셀 단위로 판정한다 (긴 줄에서 역추적이 폭증하지 않도록 길이도 먼저 제한).
-const MAX_LINE = 5000
+export const MAX_LINE = 5000
 const isSeparator = (line: string): boolean =>
   line.length <= MAX_LINE && splitRow(line).every((c) => /^:?-+:?$/.test(c))
 

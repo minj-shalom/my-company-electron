@@ -22,8 +22,9 @@ type Fail = {
   code: 'invalid-request' | 'not-found' | 'conflict' | 'internal'
   message: string
 }
-const CHART_REJECT = '조직도 블록을 자동으로 갱신할 수 없어 취소했습니다. 블록 형식을 확인하세요.'
-const fail = (code: Fail['code'], message: string): Fail => ({ ok: false, code, message })
+export const CHART_REJECT =
+  '조직도 블록을 자동으로 갱신할 수 없어 취소했습니다. 블록 형식을 확인하세요.'
+export const fail = (code: Fail['code'], message: string): Fail => ({ ok: false, code, message })
 
 export async function agentIdSet(fs: SafeFs): Promise<Set<string>> {
   const { files } = await fs.listMarkdown(AGENTS_DIR)
@@ -58,7 +59,7 @@ export async function loadOrg(fs: SafeFs): Promise<OrgModel> {
   return model
 }
 
-async function readOrgText(
+export async function readOrgText(
   fs: SafeFs
 ): Promise<
   | { ok: true; text: string }
@@ -80,7 +81,7 @@ async function readOrgText(
 
 // 같은 프로세스 안의 읽기-수정-쓰기가 서로 덮어쓰지 않도록 회사 폴더별로 직렬화한다.
 const queues = new Map<string, Promise<unknown>>()
-function serialized<T>(root: string, task: () => Promise<T>): Promise<T> {
+export function serialized<T>(root: string, task: () => Promise<T>): Promise<T> {
   const next = (queues.get(root) ?? Promise.resolve()).then(task, task)
   queues.set(
     root,
@@ -108,13 +109,21 @@ export async function addMember(fs: SafeFs, input: OrgMemberInput): Promise<ApiR
   return addRow(fs, input, false)
 }
 
+/** 조직도 블록의 줄 구조를 깨는 문자. 부서·직급 이름이 블록에 그대로 쓰이므로 거부한다. */
+export const CHART_BREAKING = /[()│├└]|──/
+
 function validate(input: OrgMemberInput): string | null {
   const str = (v: unknown): v is string => typeof v === 'string'
   if (![input.title, input.agentId, input.department, input.reportsTo, input.role].every(str))
     return '입력 형식이 올바르지 않습니다.'
   // trim 후 달라지는 값은 표에서 다른 이름으로 읽히므로 정규화하지 않고 거부한다.
-  if (!isValidName(input.title) || MULTI.test(input.title)) return '직급 형식이 올바르지 않습니다.'
-  if (!isValidName(input.department) || MULTI.test(input.department))
+  if (!isValidName(input.title) || MULTI.test(input.title) || CHART_BREAKING.test(input.title))
+    return '직급 형식이 올바르지 않습니다.'
+  if (
+    !isValidName(input.department) ||
+    MULTI.test(input.department) ||
+    CHART_BREAKING.test(input.department)
+  )
     return '부서 이름 형식이 올바르지 않습니다.'
   if (!EMPLOYEE_ID.test(input.agentId)) return '직원 파일 id 형식이 올바르지 않습니다.'
   if (!isValidName(input.reportsTo)) return '보고 대상 형식이 올바르지 않습니다.'
@@ -171,8 +180,10 @@ async function addRowOnce(
     if (!model.members.some((m) => m.title === input.reportsTo))
       return fail('invalid-request', '보고 대상이 표에 없습니다.')
 
-    const eol = read.text.includes('\r\n') ? '\r\n' : '\n'
-    const lines = read.text.split(/\r?\n/)
+    // 줄과 줄바꿈을 따로 들고 있어 새 줄 말고는 줄바꿈(CRLF 혼재 포함)을 그대로 보존한다.
+    const parts = read.text.split(/(\r?\n)/)
+    const lines: string[] = []
+    for (let i = 0; i < parts.length; i += 2) lines.push(parts[i])
     const table = locateTable(lines)
     if (!table || table.headerIdx === null)
       return fail('invalid-request', '직원 표를 찾지 못했습니다.')
@@ -197,8 +208,11 @@ async function addRowOnce(
       .map(escapeCell)
       .map((c, i) => c + ' '.repeat(Math.max(0, widths[i] - displayWidth(c))))
       .join(' | ')} |`
-    lines.splice(table.lastIdx + 1, 0, row)
-    let next = lines.join(eol)
+    // 표 마지막 줄의 줄바꿈을 새 줄에도 쓴다. 마지막 줄이면 문서의 첫 줄바꿈을 쓴다.
+    const lastSep = parts[2 * table.lastIdx + 1]
+    if (lastSep !== undefined) parts.splice(2 * table.lastIdx + 2, 0, row, lastSep)
+    else parts.push(parts.find((_, i) => i % 2 === 1) ?? '\n', row)
+    let next = parts.join('')
     if (model.chart.length > 0) {
       const synced = syncChartText(next, {
         kind: 'add',
@@ -293,7 +307,7 @@ function editRow(fs: SafeFs, agentId: string, edit: RowEdit): Promise<ApiResult<
 }
 
 /** 쓰기 전 상태에 없던 조직도 블록 불일치가 생겼는지 (T-052 chart-mismatch와 같은 기준). */
-function hasNewChartMismatch(before: OrgModel, after: OrgModel): boolean {
+export function hasNewChartMismatch(before: OrgModel, after: OrgModel): boolean {
   const known = new Set(chartMismatches(before))
   return chartMismatches(after).some((m) => !known.has(m))
 }
@@ -323,7 +337,7 @@ function chartChangeOf(
   }
 }
 
-const issueKey = (i: { code: string; message: string }): string => `${i.code}:${i.message}`
+export const issueKey = (i: { code: string; message: string }): string => `${i.code}:${i.message}`
 
 /** 직원 행 하나를 고치거나 지운다. 읽기-수정-재파싱 검증-재읽기 비교-쓰기 순서는 addRowOnce와 같다. */
 async function editRowOnce(
