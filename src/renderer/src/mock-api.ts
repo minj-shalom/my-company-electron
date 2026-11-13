@@ -24,6 +24,7 @@ import { createMockGateApi, parseGateScenario } from './mock-gate'
 import { createMockRecurringApi, parseRecurringScenario } from './mock-recurring'
 import { createMockPublicationApi } from './mock-publication'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
+import { mockVisitSummary } from './mock-visit'
 import { mockProjectTemplateApi } from './mock-project-templates'
 import { createMockUsageApi, parseUsageScenario } from './mock-usage'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
@@ -95,6 +96,7 @@ const mockCredentialApi = createMockCredentialApi(
   typeof location === 'undefined' ? 0 : 300
 )
 let mockTheme: ThemePreference = 'system'
+let mockVisitNotify = true
 const MOCK_PROFILE: CompanyProfile = {
   name: 'My Company',
   vision: 'AI 직원이 함께 일하는 회사를 만든다.',
@@ -107,6 +109,7 @@ let mockProfile: CompanyProfile = { ...MOCK_PROFILE }
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
   mockTheme = 'system'
+  mockVisitNotify = true
   mockProfile = { ...MOCK_PROFILE }
   mockTicketApi.reset()
   mockDecisionApi.reset()
@@ -205,6 +208,13 @@ export const mockApi: WindowApi = {
     return { ok: true, value: mockProfile }
   },
   ...mockCredentialApi.api,
+  getVisitSummary: async () => ({ ok: true, value: mockVisitSummary() }),
+  markVisitSeen: async () => ({ ok: true, value: { lastVisitAt: new Date().toISOString() } }),
+  getVisitNotify: async () => ({ ok: true, value: { enabled: mockVisitNotify } }),
+  setVisitNotify: async (req) => {
+    mockVisitNotify = req.enabled
+    return { ok: true, value: { enabled: mockVisitNotify } }
+  },
   getTheme: async () => ({ ok: true, value: mockTheme }),
   saveTheme: async (theme) => {
     mockTheme = theme

@@ -20,6 +20,8 @@ import { ProjectStatusView } from '../status/ProjectStatusView'
 import { buildStatusView } from '../status/status-model'
 import { RunLogView } from '../runs/RunLogView'
 import { useRunLog } from '../runs/use-run-log'
+import { VisitSummaryBanner } from '../visit/VisitSummaryBanner'
+import { useVisitSummary } from '../visit/use-visit-summary'
 import { TicketBoard } from '../tickets/TicketBoard'
 import { useTickets } from '../tickets/use-tickets'
 import { initialPanelOpen, shouldCollapsePanel } from './panel-rules'
@@ -104,6 +106,7 @@ export function AppShell({
     setHiring(false)
     setView('projects')
   }
+  const visit = useVisitSummary(currentId)
   const needPm = pmRequiredCount(projectItems)
   const mainViews = MAIN_VIEWS.map((v) =>
     v.id === 'projects' && needPm > 0
@@ -136,6 +139,13 @@ export function AppShell({
           {panelOpen ? '패널 접기' : '패널 열기'}
         </Button>
       </header>
+      <VisitSummaryBanner
+        visit={visit}
+        onOpenDecisions={() => {
+          setTab('decisions')
+          setPanelOpen(true)
+        }}
+      />
       <div
         className="shell__body"
         data-panel={panelOpen ? 'open' : 'closed'}

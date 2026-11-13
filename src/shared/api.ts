@@ -90,6 +90,12 @@ import type { ProviderSelection } from './provider-selection'
 import type { ApiResult } from './result'
 import type { ThemePreference } from './theme'
 import type {
+  VisitNotifySettings,
+  VisitSeenResult,
+  VisitSummary,
+  VisitSummaryRequest
+} from './visit'
+import type {
   CredentialAdapterStatus,
   CredentialDisconnectRequest,
   CredentialDisconnectResult
@@ -341,6 +347,16 @@ export interface WindowApi {
   disconnectCredential: (
     req: CredentialDisconnectRequest
   ) => Promise<ApiResult<CredentialDisconnectResult>>
+  /**
+   * CEO 방문 요약(T-043). `getVisitSummary`: 마지막 방문 이후 새 브리핑·완료 티켓·새 pending 결정·실패 틱 수와 자동 실행 요약(파일 수정 시각 기준, 읽기 전용).
+   * 요청 `{ projectId? }`는 티켓 항목을 그 프로젝트로 좁힌다. 첫 방문이면 `firstVisit: true`이고 목록은 비어 있다.
+   * `markVisitSeen`: 요약을 확인한 시각을 마지막 방문으로 기록한다 (입력 없음, main 시계). 요약을 화면에 그린 뒤에 호출한다.
+   * `getVisitNotify`/`setVisitNotify`: 창이 비활성일 때 새 결재 요청 OS 알림(제목과 건수만) 켜기/끄기. 기본 켜짐.
+   */
+  getVisitSummary: (req?: VisitSummaryRequest) => Promise<ApiResult<VisitSummary>>
+  markVisitSeen: () => Promise<ApiResult<VisitSeenResult>>
+  getVisitNotify: () => Promise<ApiResult<VisitNotifySettings>>
+  setVisitNotify: (req: VisitNotifySettings) => Promise<ApiResult<VisitNotifySettings>>
   getTheme: () => Promise<ApiResult<ThemePreference>>
   saveTheme: (theme: ThemePreference) => Promise<ApiResult<ThemePreference>>
   /**
@@ -447,6 +463,10 @@ export const IPC_CHANNELS = {
   gateKillSwitchGet: 'gate:kill-switch-get',
   gateKillSwitchSet: 'gate:kill-switch-set',
   auditSummary: 'audit:summary',
+  visitSummary: 'visit:summary',
+  visitMarkSeen: 'visit:mark-seen',
+  visitNotifyGet: 'visit:notify-get',
+  visitNotifySet: 'visit:notify-set',
   employeeQuarantined: 'employee:quarantined',
   integrityRestore: 'integrity:restore',
   integrityAccept: 'integrity:accept',

@@ -97,6 +97,17 @@ export class SafeFs {
     }
   }
 
+  /** 일반 파일의 수정 시각(ms). 없거나 일반 파일이 아니면 null. 링크는 따라가지 않는다. */
+  async mtimeMs(rel: string): Promise<number | null> {
+    try {
+      const st = await lstat(await this.resolve(rel))
+      return st.isFile() ? st.mtimeMs : null
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw e
+    }
+  }
+
   /** `.md` 일반 파일 이름만 돌려준다. 심볼릭 링크 등은 `skipped`로 따로 알린다. 디렉터리가 없으면 빈 결과. */
   async listMarkdown(relDir: string): Promise<{ files: string[]; skipped: string[] }> {
     const abs = await this.resolve(relDir)

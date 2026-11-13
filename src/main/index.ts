@@ -1,4 +1,4 @@
-import { app, BrowserWindow, type Tray } from 'electron'
+import { app, BrowserWindow, Notification, type Tray } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createMainWindow } from './window'
 import { registerIpcHandlers } from './ipc'
@@ -28,14 +28,19 @@ import { tickDepsFor } from './tick/tick-wiring'
 import type { ProviderCliId } from '../shared/provider'
 import { createChatService } from './chat/chat-runtime'
 import { broadcastChatEvent, registerChatHandlers } from './chat/chat-ipc'
+import { registerVisitHandlers } from './visit/visit-ipc'
+import { createDecisionNotifier } from './visit/decision-notifier'
+import { visitServiceFor, visitStoreFor } from './visit/visit-runtime'
 import { createAppTray, shouldQuitWhenAllWindowsClosed } from './scheduler/tray'
 
 const RESTORE_TIMEOUT_MS = 5000
+const NOTIFY_POLL_MS = 60_000
 
 let runner: ProviderAdapter | undefined
 let providers: ProviderService | undefined
 let scheduler: Scheduler | undefined
 let tray: Tray | undefined
+let notifyTimer: NodeJS.Timeout | undefined
 
 function showMainWindow(): void {
   const win = BrowserWindow.getAllWindows()[0]
@@ -88,6 +93,27 @@ app
     registerRunHandlers(runner)
     registerUsageHandlers(usageDeps)
     registerThemeHandlers(app.getPath('userData'))
+    registerVisitHandlers({ context: companyContext, userDataDir: app.getPath('userData') })
+    // 창이 비활성일 때 새 결재 요청을 건수만 OS 알림으로 알린다. 틱이 아니라 대화·외부 편집으로 생긴 카드도 잡도록 주기 점검한다.
+    const notifier = createDecisionNotifier({
+      isEnabled: () => visitStoreFor(app.getPath('userData')).loadNotifyEnabled(),
+      isWindowActive: () => BrowserWindow.getAllWindows().some((w) => w.isFocused()),
+      takeUnnotified: async () =>
+        companyContext.getOpenCompany() === null
+          ? []
+          : visitServiceFor({
+              context: companyContext,
+              userDataDir: app.getPath('userData')
+            }).takeUnnotified(),
+      show: (title, body) => {
+        if (!Notification.isSupported()) return
+        const n = new Notification({ title, body })
+        n.on('click', showMainWindow)
+        n.show()
+      }
+    })
+    notifyTimer = setInterval(() => void notifier.check().catch(() => undefined), NOTIFY_POLL_MS)
+    notifyTimer.unref()
     registerCredentialHandlers(createCredentialRuntime(app.getPath('userData')).service)
     // 스케줄러는 열린 회사 1개만 다룬다. 틱은 회사에 묶인 입력으로 틱마다 새로 만들고, 한도 카드 쿨다운만 공유한다.
     // 한도 점검은 CFO 사용량 집계(T-019)에 연결되어 있고, 점검이 실패하면 틱은 실행하지 않는다 (가장 보수적).
@@ -195,6 +221,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   scheduler?.stop()
+  if (notifyTimer) clearInterval(notifyTimer)
   tray?.destroy()
   runner?.cancelAll()
   providers?.shutdown()
