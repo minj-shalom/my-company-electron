@@ -406,3 +406,19 @@ describe('Scheduler', () => {
     })
   })
 })
+
+describe('Scheduler external block (CEO chat)', () => {
+  it('does not start a tick or run-now while another run holds the company folder', async () => {
+    const blocked = { value: true }
+    const { sched, tick } = setup({ extra: { isBlocked: () => blocked.value } })
+    expect(await sched.runNow()).toEqual({ started: false, reason: 'busy' })
+    await sched.start()
+    await sched.whenIdle()
+    expect(tick).not.toHaveBeenCalled()
+    blocked.value = false
+    expect(await sched.runNow()).toEqual({ started: true })
+    await sched.whenIdle()
+    expect(tick).toHaveBeenCalledTimes(1)
+    sched.stop()
+  })
+})

@@ -60,6 +60,8 @@ export interface SchedulerDeps {
   tick: (ctx: TickContext) => Promise<void>
   /** 회사 전체 킬 스위치 등으로 자동 실행을 멈춰야 하면 true. 읽지 못하면 true로 답해야 안전하다. */
   isHalted?: () => Promise<boolean> | boolean
+  /** 다른 실행(CEO 대화 응답, T-018)이 회사 폴더를 쓰는 중이면 true. 그동안 틱은 시작하지 않는다. */
+  isBlocked?: () => boolean
   /** 점검 주기. 설정 파일 변경과 활동 시간 진입을 이 주기로 반영한다. */
   pollMs?: number
   onChange?: () => void
@@ -137,12 +139,12 @@ export class Scheduler {
   async runNow(): Promise<SchedulerRunNowResult> {
     const key = this.deps.companyKey()
     if (key === null) return { started: false, reason: 'no-company' }
-    if (this.running) return { started: false, reason: 'busy' }
+    if (this.running || this.deps.isBlocked?.()) return { started: false, reason: 'busy' }
     if (await this.halted()) return { started: false, reason: 'halted' }
     const allowed = await this.allowedProjects(false)
     if (allowed.failed) return { started: false, reason: 'policy-unavailable' }
     // await 사이에 다른 틱이 시작됐을 수 있다. 재검사부터 begin까지는 await 없이 이어 붙여 잠금 경쟁을 막는다.
-    if (this.running) return { started: false, reason: 'busy' }
+    if (this.running || this.deps.isBlocked?.()) return { started: false, reason: 'busy' }
     if (this.deps.companyKey() !== key) return { started: false, reason: 'no-company' }
     void this.begin(key, 'run-now', allowed.ids)
     return { started: true }
@@ -226,13 +228,13 @@ export class Scheduler {
       now - this.lastRunAt < config.intervalMinutes * 60_000
     )
       return 'not-due'
-    if (this.running) return 'not-due'
+    if (this.running || this.deps.isBlocked?.()) return 'not-due'
     if (!isWithinCompanyHours(new Date(now), config.activeHours)) return 'outside-hours'
     if (await this.halted()) return 'halted'
     const allowed = await this.allowedProjects(true)
     if (allowed.blocked) return 'policy-hours'
     // 위 await 동안 다른 틱이 시작됐거나 회사가 바뀌었을 수 있다. 재검사와 begin 사이에는 await가 없다.
-    if (this.running) return 'not-due'
+    if (this.running || this.deps.isBlocked?.()) return 'not-due'
     if (this.deps.companyKey() !== key) return 'no-company'
     void this.begin(key, trigger, allowed.ids)
     return null
