@@ -14,6 +14,7 @@ import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
+import { createMockGateApi, parseGateScenario } from './mock-gate'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
@@ -67,22 +68,18 @@ export function resetMockApi(): void {
   mockDecisionApi.reset()
   mockProjectApi.reset()
   mockPolicyApi.reset()
+  mockGateApi.reset()
   resetMockOnboarding()
   resetMockOrgState()
 }
 
-/** 게이트(T-053) mock은 2단계(ui-dev)에서 시나리오 mock으로 바꾼다. 그 전까지는 main이 연결되지 않은 것으로 답한다. */
-const GATE_NOT_READY = {
-  ok: false,
-  code: 'not-implemented',
-  message: '게이트가 아직 연결되지 않았습니다.'
-} as const
+const mockGateApi = createMockGateApi(
+  parseGateScenario(typeof location === 'undefined' ? '' : location.search)
+)
 
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
-  getKillSwitch: async () => GATE_NOT_READY,
-  setKillSwitch: async () => GATE_NOT_READY,
-  getAuditSummary: async () => GATE_NOT_READY,
+  ...mockGateApi.api,
   ...mockRunApi,
   ...createMockCompanyApi(
     parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)

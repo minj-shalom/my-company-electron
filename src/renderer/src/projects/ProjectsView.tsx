@@ -6,6 +6,9 @@ import { PolicyDialog } from '../policy/PolicyDialog'
 import { usePolicySummaries } from '../policy/use-policy'
 import { UnassignedSection } from '../assign/UnassignedSection'
 import { useOrg } from '../org/use-org'
+import { AutoRunLog } from '../gate/AutoRunLog'
+import type { AuditLoad } from '../gate/use-audit-summary'
+import type { UseKillSwitch } from '../gate/use-kill-switch'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
@@ -34,6 +37,8 @@ type Failed = Extract<ActionResult, { ok: false }>
 export interface ProjectsViewProps extends UseProjects {
   /** 상단 "현재 프로젝트" 선택. 보기 필터일 뿐이다. */
   currentId: string | null
+  /** 자동 실행 기록과 프로젝트별 중지. 없으면 그 구역을 보이지 않는다. */
+  gate?: { ks: UseKillSwitch; audit: AuditLoad; onReload: () => void }
 }
 
 /** 프로젝트 탭: 목록, 추가, 이름 수정, 보관/복원, 담당 PM. 변경은 모두 window.api 경유이고 끝나면 목록을 다시 읽는다. */
@@ -41,7 +46,8 @@ export function ProjectsView({
   load,
   refreshing,
   reload,
-  currentId
+  currentId,
+  gate
 }: ProjectsViewProps): React.JSX.Element {
   const [dialog, setDialog] = useState<Dialog>(null)
   const [busy, setBusy] = useState(false)
@@ -142,6 +148,9 @@ export function ProjectsView({
         onRetry={reload}
         onAdd={() => setDialog({ kind: 'add' })}
       />
+      {load.kind === 'ready' && gate && (
+        <AutoRunLog projects={active} audit={gate.audit} onReload={gate.onReload} ks={gate.ks} />
+      )}
       {load.kind === 'ready' && (
         <UnassignedSection org={orgSnapshot} failed={org.status.kind === 'error'} />
       )}
