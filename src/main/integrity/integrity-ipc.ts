@@ -7,9 +7,9 @@ export interface IntegrityHandlers {
   /** T-016이 읽는 조회: 격리된 직원 id 목록 (`employee:quarantined`). */
   getQuarantined: () => Promise<ApiResult<string[]>>
   /** CEO가 카드에서 "되돌리기"를 눌렀을 때. */
-  restoreIntegrity: (req?: unknown) => Promise<ApiResult<IntegrityActionResult>>
+  restoreIntegrity: (req: unknown) => Promise<ApiResult<IntegrityActionResult>>
   /** CEO가 카드에서 "사후 승인"을 눌렀을 때. */
-  acceptIntegrity: (req?: unknown) => Promise<ApiResult<IntegrityActionResult>>
+  acceptIntegrity: (req: unknown) => Promise<ApiResult<IntegrityActionResult>>
 }
 
 const fail = (code: 'no-company' | 'internal', message: string): ApiResult<never> => ({
@@ -19,7 +19,7 @@ const fail = (code: 'no-company' | 'internal', message: string): ApiResult<never
 })
 
 /**
- * 입력이 없는 핸들러다 (복원 대상은 main이 마지막 정상 스냅샷으로만 정한다. renderer가 경로나 스냅샷 id를 넘기지 않는다).
+ * 입력은 카드의 상태 해시뿐이다 (복원 대상은 main이 마지막 정상 스냅샷으로만 정한다. renderer가 경로나 스냅샷 id를 넘기지 않는다).
  * 발신자 신뢰 확인은 등록 쪽(`trustedHandler`)이 한다.
  */
 export function createIntegrityHandlers(
@@ -40,17 +40,14 @@ export function createIntegrityHandlers(
   }
   const withHash = (
     raw: unknown,
-    fn: (
-      svc: ReturnType<typeof integrityFor>,
-      hash: string | undefined
-    ) => Promise<IntegrityActionResult>
+    fn: (svc: ReturnType<typeof integrityFor>, hash: string) => Promise<IntegrityActionResult>
   ): Promise<ApiResult<IntegrityActionResult>> => {
-    // 선택 입력: 카드에 실린 상태 해시. 있으면 형식을 검증하고, 현재 상태와 다르면 main이 거부한다.
+    // 필수 입력: 카드에 실린 상태 해시. 형식이 맞지 않거나 없으면 거부하고, 현재 상태와 다르면 서비스가 거부한다.
     const h =
       typeof raw === 'object' && raw !== null
         ? (raw as Record<string, unknown>).stateHash
         : undefined
-    if (h !== undefined && (typeof h !== 'string' || !/^[0-9a-f]{64}$/.test(h)))
+    if (typeof h !== 'string' || !/^[0-9a-f]{64}$/.test(h))
       return Promise.resolve({
         ok: false,
         code: 'invalid-request',

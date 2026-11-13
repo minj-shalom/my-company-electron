@@ -132,6 +132,19 @@ export class IntegrityService {
   }
 
   /**
+   * 묶음 승인 중간에 실패했을 때 앞서 저장한 승인 레코드를 지운다 (같은 (파일, 전, 후) 쌍 하나만 제거한다).
+   * 승인 없는 변경이 승인된 것으로 남지 않게 하는 정리용이며 LLM 경로에서는 호출할 수 없다.
+   */
+  unapprove(file: string, beforeHash: string, hash: string): Promise<void> {
+    return this.deps.state.update((d) => {
+      const i = d.approvals.findIndex(
+        (a) => a.file === file && a.before === beforeHash && a.hash === hash
+      )
+      if (i >= 0) d.approvals.splice(i, 1)
+    })
+  }
+
+  /**
    * 앱 함수(T-035/T-045/T-040)가 파일을 쓰는 동안을 감싼다. 앱이 SafeFs로 쓴 파일의 최종 해시와 일치하는 변경만
    * `actor`의 변경으로 인정한다. 창 안에서 앱이 쓰지 않은 파일이 바뀌었거나 앱이 쓴 뒤 다시 바뀌었으면 외부 변경으로 판정한다.
    * 시작 전 정리가 실패하면 앱 쓰기를 거부한다 (fail-closed). 종료 정리가 실패하면 기준선을 올리지 않으므로

@@ -190,11 +190,11 @@ export interface WindowApi {
   getAuditSummary: (req: AuditSummaryRequest) => Promise<ApiResult<AuditSummary>>
   /**
    * 인사 변경 가드레일(T-052). `getQuarantinedEmployees`: 승인되지 않은 민감 변경으로 격리된 직원 id (실행 경로가 거부한다).
-   * `restoreIntegrity`/`acceptIntegrity`: CEO가 카드에서 누를 때만 호출한다 (입력 없음, 마지막 정상 스냅샷 복원 또는 현재 상태 사후 승인).
+   * `restoreIntegrity`/`acceptIntegrity`: CEO가 카드에서 누를 때만 호출한다 (카드의 상태 해시가 필수이며 현재 상태와 다르면 거부된다. 마지막 정상 스냅샷 복원 또는 현재 상태 사후 승인).
    */
   getQuarantinedEmployees: () => Promise<ApiResult<string[]>>
-  restoreIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
-  acceptIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
+  restoreIntegrity: (req: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
+  acceptIntegrity: (req: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
   /** 결재함 승인 카드(T-046) 처리. 승인/거절 클릭 이벤트에서만 호출한다. 적용 대상은 카드 본문이 정하며 renderer가 경로나 값을 넘기지 않는다. */
   applyProposal: (req: ProposalApplyRequest) => Promise<ApiResult<ProposalApplyResult>>
   /**

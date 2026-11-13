@@ -220,15 +220,26 @@ export class ProposalService {
     }
     if (code !== null) return this.undo(before, code)
     // 승인 레코드는 모든 적용이 성공한 뒤에만 저장한다 (T-052가 승인 해시와 대조한다).
+    const saved: Array<{ file: string; base: string; after: string }> = []
     for (const ap of approvals) {
       try {
         await this.deps.integrity.approve(ap.file, ap.base, ap.after)
+        saved.push(ap)
       } catch {
-        // 승인 기록을 못 남기면 적용분도 남기지 않는다 (기록 없는 변경은 미승인으로 감지된다).
+        // 승인 기록을 못 남기면 적용분도 남기지 않고, 앞서 저장한 기록은 지운다 (기록 없는 변경은 미승인으로 감지된다).
+        await this.revokeApprovals(saved)
         return this.undo(before, 'failed')
       }
     }
     return { ok: true }
+  }
+
+  /** 정리는 최선을 다하되 실패해도 던지지 않는다 (남은 기록은 7일 뒤 만료되고, 해시가 맞아야만 쓰인다). */
+  private async revokeApprovals(
+    saved: ReadonlyArray<{ file: string; base: string; after: string }>
+  ): Promise<void> {
+    for (const ap of saved)
+      await this.deps.integrity.unapprove(ap.file, ap.base, ap.after).catch(() => undefined)
   }
 
   private async applyOne(
