@@ -1,6 +1,6 @@
 /**
- * 가상 사무실의 직원 상태 계약. 지금은 renderer 안의 공급자(개발 모드 mock)가 채우고,
- * 실행 이벤트(`RunEvent`)와 티켓/결재 상태가 연결되면 같은 인터페이스를 구현하는 실제 공급자로 교체한다.
+ * 가상 사무실의 직원 상태 계약. 기본 공급자는 renderer가 `window.api`(티켓, 결재함, 실행 이벤트)로 조합하고,
+ * 개발 모드 mock은 같은 인터페이스를 구현한다.
  */
 
 /** 아바타 상태: 대기, 작업 중, 승인(결재) 대기. */
@@ -17,6 +17,8 @@ export interface OfficeStatusSource {
    */
   subscribe: (
     titles: readonly string[],
-    onChange: (statuses: OfficeStatusMap) => void
+    onChange: (statuses: OfficeStatusMap) => void,
+    /** 직급 -> 에이전트 id (티켓 담당자 id와 대조한다). 에이전트가 아닌 직원은 null이거나 없다. */
+    agentIds?: Readonly<Record<string, string | null>>
   ) => () => void
 }

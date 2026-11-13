@@ -32,8 +32,8 @@ import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { computeLayout, toOfficeGroups } from './layout'
 import { OfficeCanvas } from './OfficeCanvas'
-import { STATUS_LABEL, countByStatus, hasLiveStatusSource, statusOf } from './status'
-import { useOfficeStatuses } from './use-office-statuses'
+import { STATUS_LABEL, countByStatus, statusOf } from './status'
+import { agentIdsByTitle, useOfficeStatuses } from './use-office-statuses'
 
 const STATUS_TONE: Record<AvatarStatus, BadgeTone> = {
   idle: 'neutral',
@@ -42,7 +42,14 @@ const STATUS_TONE: Record<AvatarStatus, BadgeTone> = {
 }
 
 /** 사무실 맵 화면. 조직 데이터 상태(로딩/오류/빈/정상)를 나누고 정상일 때만 맵과 목록을 그린다. */
-export function OfficeView({ onFirstHire }: { onFirstHire?: () => void }): React.JSX.Element {
+export function OfficeView({
+  onFirstHire,
+  onOpenLog
+}: {
+  onFirstHire?: () => void
+  /** 직원 로그 탭으로 이동한다 (실행 이벤트에 직원 정보가 없어 지금은 전체 로그가 열린다). */
+  onOpenLog?: (title: string) => void
+}): React.JSX.Element {
   const { status, refreshing, refresh } = useOrg()
   const loading = status.kind === 'loading' || refreshing
   return (
@@ -81,6 +88,7 @@ export function OfficeView({ onFirstHire }: { onFirstHire?: () => void }): React
           snapshot={status.snapshot}
           issues={status.issues}
           onFirstHire={onFirstHire}
+          onOpenLog={onOpenLog}
           onChanged={refresh}
         />
       )}
@@ -92,11 +100,13 @@ function OfficeReady({
   snapshot,
   issues,
   onFirstHire,
+  onOpenLog,
   onChanged
 }: {
   snapshot: OrgSnapshot
   issues: OrgIssueView[]
   onFirstHire?: () => void
+  onOpenLog?: (title: string) => void
   onChanged: () => void
 }): React.JSX.Element {
   const [selected, setSelected] = useState<string | null>(null)
@@ -104,7 +114,8 @@ function OfficeReady({
   const layout = useMemo(() => computeLayout(toOfficeGroups(groups)), [groups])
   const titles = useMemo(() => layout.seats.map((s) => s.title), [layout])
   const tones = useMemo(() => toneByTitle(groups), [groups])
-  const statuses = useOfficeStatuses(titles)
+  const agentIds = useMemo(() => agentIdsByTitle(snapshot.org.members), [snapshot])
+  const statuses = useOfficeStatuses(titles, agentIds)
   const member = snapshot.org.members.find((m) => m.title === selected) ?? null
   const counts = countByStatus(titles, statuses)
   const byTitle = useMemo(() => projectsByTitle(snapshot), [snapshot])
@@ -131,9 +142,6 @@ function OfficeReady({
       <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
         {notice}
       </div>
-      {!hasLiveStatusSource() && (
-        <p className="office__notice hint">상태 연동 전이라 모두 대기로 보여요.</p>
-      )}
       <ul className="office__legend" aria-label="상태 요약">
         {(Object.keys(STATUS_LABEL) as AvatarStatus[]).map((s) => (
           <li key={s}>
@@ -193,6 +201,11 @@ function OfficeReady({
                   <p className="office__detail-status">담당 프로젝트</p>
                   <ProjectBadges list={byTitle.get(member.title) ?? []} />
                 </div>
+                {onOpenLog && (
+                  <Button size="small" onClick={() => onOpenLog(member.title)}>
+                    {member.title} 로그 보기
+                  </Button>
+                )}
               </>
             ) : (
               <p className="hint">

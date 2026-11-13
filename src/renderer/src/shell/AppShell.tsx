@@ -170,7 +170,13 @@ export function AppShell({
             ) : view === 'org' ? (
               <OrgView onFirstHire={() => setHiring(true)} />
             ) : (
-              <OfficeView onFirstHire={() => setHiring(true)} />
+              <OfficeView
+                onFirstHire={() => setHiring(true)}
+                onOpenLog={() => {
+                  setTab('logs')
+                  setPanelOpen(true)
+                }}
+              />
             )}
           </Tabs>
         </main>
