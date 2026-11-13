@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { ApiResult, DomainErrorCode } from '../../shared/result'
+import { GATE_FAILURE_NOTES } from '../../shared/publisher'
 import type { PolicyState } from '../../shared/policy'
 import {
   MAX_APPROVAL_BATCH,
@@ -61,12 +62,7 @@ const UNREADABLE_MSG =
   '읽을 수 없는 발행 기록이 있어 앱에서 수정할 수 없습니다. 파일을 먼저 고쳐 주세요.'
 const NOT_FOUND = '발행 항목을 찾을 수 없습니다.'
 const PUBLISH_TIMEOUT_MS = 60_000
-const FAIL_NOTE: Record<string, string> = {
-  rejected: '발행 어댑터가 요청을 거절했습니다.',
-  network: '네트워크 오류로 발행하지 못했습니다.',
-  auth: '발행 계정 연결을 확인해야 합니다.',
-  unknown: '발행하지 못했습니다.'
-}
+const FAIL_NOTE: Record<string, string> = GATE_FAILURE_NOTES
 
 const sha = (s: string): string => createHash('sha256').update(s).digest('hex')
 const isoDay = (iso: string | null, tz: string | undefined): string | null =>

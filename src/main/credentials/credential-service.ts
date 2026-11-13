@@ -27,10 +27,13 @@ export interface CredentialServiceDeps {
 }
 
 /** 한 어댑터의 키만 다루는 보관소 창구. 다른 어댑터의 값은 읽을 수 없다. */
-function scopedVault(vault: CredentialVault, adapterId: string): AdapterVault {
+function scopedVault(vault: CredentialVault, adapterId: string, onSet: () => void): AdapterVault {
   return {
     get: (accountId) => vault.get(makeKey(adapterId, accountId)),
-    set: (accountId, value, meta) => vault.set(makeKey(adapterId, accountId), value, meta),
+    set: async (accountId, value, meta) => {
+      await vault.set(makeKey(adapterId, accountId), value, meta)
+      onSet()
+    },
     delete: (accountId) => vault.delete(makeKey(adapterId, accountId)),
     accounts: () => vault.accounts(adapterId)
   }
@@ -42,6 +45,8 @@ function scopedVault(vault: CredentialVault, adapterId: string): AdapterVault {
  */
 export class CredentialService {
   private readonly now: () => Date
+  /** 토큰 갱신 실패로 낮춘 상태 (메모리). 재연결(`vault.set`)이나 해제가 지운다. */
+  private readonly degraded = new Map<string, 'expiring' | 'error'>()
 
   constructor(private readonly deps: CredentialServiceDeps) {
     this.now = deps.now ?? (() => new Date())
@@ -49,8 +54,13 @@ export class CredentialService {
 
   contextFor(adapterId: string, signal?: AbortSignal): AdapterContext {
     return {
-      vault: scopedVault(this.deps.vault, adapterId),
+      adapterId,
+      vault: scopedVault(this.deps.vault, adapterId, () => this.degraded.delete(adapterId)),
       openExternal: this.deps.openExternal,
+      markDegraded: (state) => {
+        // `error`가 `expiring`보다 우선한다.
+        if (this.degraded.get(adapterId) !== 'error') this.degraded.set(adapterId, state)
+      },
       signal
     }
   }
@@ -77,6 +87,8 @@ export class CredentialService {
           (x) => x.expiresAt !== null && Date.parse(x.expiresAt) - t <= EXPIRING_MS
         )
         state = soon ? 'expiring' : 'connected'
+        const d = this.degraded.get(adapterId)
+        if (d === 'error' || (d === 'expiring' && state === 'connected')) state = d
         if (encryptionAvailable) {
           // 어댑터가 서버 측 폐기 등을 알면 `error`로 낮출 수 있다.
           const s = await a
@@ -108,6 +120,7 @@ export class CredentialService {
     } catch {
       revoked = false
     }
+    this.degraded.delete(adapterId)
     try {
       for (const acc of await this.deps.vault.accounts(adapterId))
         await this.deps.vault.delete(makeKey(adapterId, acc.accountId))
