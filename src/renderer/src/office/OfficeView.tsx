@@ -1,6 +1,8 @@
-import { memo, useContext, useId, useMemo, useState } from 'react'
+import { memo, useContext, useId, useMemo, useRef, useState } from 'react'
 import type { AvatarStatus, OfficeStatusMap } from '../../../shared/office'
 import type { OrgMember, OrgSnapshot } from '../../../shared/org'
+import { HireEntry } from '../employee/HireEntry'
+import { useNewHire } from '../employee/use-new-hire'
 import { HireBanners } from '../hire/HireBanners'
 import { IssueList } from '../org/IssueList'
 import { MemberDetail } from '../org/MemberDetail'
@@ -95,11 +97,17 @@ function OfficeReady({
   const member = snapshot.org.members.find((m) => m.title === selected) ?? null
   const counts = countByStatus(titles, statuses)
   const detailId = useId()
+  const belowRef = useRef<HTMLDivElement>(null)
+  const { onHired, notice } = useNewHire(snapshot, setSelected, belowRef, onChanged)
 
   return (
     <>
       <HireBanners snapshot={snapshot} onFirstHire={onFirstHire} onChanged={onChanged} />
       <IssueList issues={issues} />
+      <HireEntry snapshot={snapshot} onHired={onHired} />
+      <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
+        {notice}
+      </div>
       {!hasLiveStatusSource() && (
         <p className="office__notice hint">상태 연동 전이라 모두 대기로 보여요.</p>
       )}
@@ -118,7 +126,7 @@ function OfficeReady({
         selected={selected}
         onSelect={setSelected}
       />
-      <div className="office__below">
+      <div className="office__below" ref={belowRef}>
         <div id={detailId} className="office__detail">
           <Panel title="직원 상세" as="section">
             {member ? (

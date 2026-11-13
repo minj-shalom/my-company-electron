@@ -1,5 +1,4 @@
 import type { WindowApi } from '../../shared/api'
-import type { ApiResult } from '../../shared/result'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
@@ -9,7 +8,8 @@ import {
 } from './mock-onboarding'
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario, resetMockOrgState } from './mock-org'
-import { createMockHireApi, parseHireScenario } from './mock-hire'
+import { MOCK_TEMPLATES, createMockHireApi, parseHireScenario } from './mock-hire'
+import { createMockEmployeeApi, parseEmployeeScenario } from './mock-employee'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
@@ -44,6 +44,13 @@ const mockProjectApi = createMockProjectApi(
   typeof location === 'undefined' ? '' : location.search
 )
 
+const mockEmployeeApi = createMockEmployeeApi(
+  parseEmployeeScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 400,
+  mockHireApi.api.createEmployee,
+  MOCK_TEMPLATES
+)
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
   mockTicketApi.reset()
@@ -52,12 +59,6 @@ export function resetMockApi(): void {
   resetMockOnboarding()
   resetMockOrgState()
 }
-
-const mockNotImplemented = async (): Promise<ApiResult<never>> => ({
-  ok: false,
-  code: 'not-implemented',
-  message: '아직 지원하지 않는 기능입니다.'
-})
 
 export const mockApi: WindowApi = {
   ping: async () => 'pong (mock)',
@@ -72,11 +73,8 @@ export const mockApi: WindowApi = {
   ...mockTicketApi.api,
   // 티켓 생성·편집 화면은 T-044 2단계(ui-dev)에서 시나리오 mock으로 바꾼다.
   ...mockDecisionApi.api,
-  // 직원 변경 화면은 T-039. 그 전까지 채용 계열(템플릿 목록, hr 추가, 첫 채용)만 시나리오 mock이고 나머지 쓰기는 not-implemented다.
   ...mockHireApi.api,
-  updateEmployee: mockNotImplemented,
-  moveEmployee: mockNotImplemented,
-  retireEmployee: mockNotImplemented,
+  ...mockEmployeeApi.api,
   ...mockProjectApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
