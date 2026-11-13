@@ -37,6 +37,8 @@ export interface ProposalDeps {
   integrity: IntegrityService
 }
 
+const agentPath = (id: string): string => `.claude/agents/${id}.md`
+
 /** `proposal` 카드의 선택지 계약: A 승인, B 거절. 다른 모양은 적용 버튼을 비활성화한다. */
 const APPROVE = { key: 'A', label: '승인' }
 const REJECT = { key: 'B', label: '거절' }
@@ -171,19 +173,27 @@ export class ProposalService {
     return done(status, actions.length)
   }
 
-  /** 승인 시점의 기준값 확인. 어긋나면 아무것도 쓰지 않고 `stale`로 거부한다. */
+  /**
+   * 승인 시점의 기준값·존재 확인. 어긋나면 아무것도 쓰지 않고 `stale`로 거부해 다시 제안하게 한다.
+   * 제안 이후 직원이 생기거나 사라졌다면 제안의 전제가 달라진 것이다.
+   */
   private async preflight(actions: ProposalAction[]): Promise<ProposalFailureCode | null> {
     for (const a of actions) {
-      if (a.action !== 'update' || a.base === undefined) continue
-      const cur = await this.agentHash(a.id)
-      if (cur !== a.base) return 'stale'
+      if (a.action === 'hire') {
+        if (await this.deps.fs.exists(agentPath(a.id))) return 'stale'
+        continue
+      }
+      if (a.action !== 'update' && a.action !== 'move' && a.action !== 'retire') continue
+      if (!(await this.deps.fs.exists(agentPath(a.id)))) return 'stale'
+      if (a.action === 'update' && a.base !== undefined && (await this.agentHash(a.id)) !== a.base)
+        return 'stale'
     }
     return null
   }
 
   private async agentHash(id: string): Promise<string> {
     try {
-      return sha256(await this.deps.fs.readText(`.claude/agents/${id}.md`))
+      return sha256(await this.deps.fs.readText(agentPath(id)))
     } catch {
       return DELETED_HASH
     }
@@ -208,16 +218,16 @@ export class ProposalService {
         if ((await this.agentHash(a.id)) !== a.after) code = 'hash-mismatch'
       }
     }
-    if (code !== null) {
-      await this.rollback(before)
-      return { ok: false, code }
-    }
+    if (code !== null) return this.undo(before, code)
     // 승인 레코드는 모든 적용이 성공한 뒤에만 저장한다 (T-052가 승인 해시와 대조한다).
-    for (const ap of approvals)
-      await this.deps.integrity.approve(ap.file, ap.base, ap.after).catch(() => {
-        code = 'failed'
-      })
-    if (code !== null) return { ok: false, code }
+    for (const ap of approvals) {
+      try {
+        await this.deps.integrity.approve(ap.file, ap.base, ap.after)
+      } catch {
+        // 승인 기록을 못 남기면 적용분도 남기지 않는다 (기록 없는 변경은 미승인으로 감지된다).
+        return this.undo(before, 'failed')
+      }
+    }
     return { ok: true }
   }
 
@@ -301,21 +311,47 @@ export class ProposalService {
     }
   }
 
-  private async rollback(before: Awaited<ReturnType<typeof readProtectedFiles>>): Promise<void> {
-    const now = await readProtectedFiles(this.deps.fs)
-    await this.deps.exclusive(async () => {
-      for (const [f, s] of now) {
-        if (before.get(f)?.hash === s.hash || !isProtectedPath(f)) continue
-        const prev = before.get(f)
-        if (prev === undefined) await this.deps.fs.remove(f).catch(() => undefined)
-        else if (prev.text !== null)
-          await this.deps.fs.writeText(f, prev.text).catch(() => undefined)
+  private async undo(
+    before: Awaited<ReturnType<typeof readProtectedFiles>>,
+    code: ProposalFailureCode
+  ): Promise<{ ok: false; code: ProposalFailureCode }> {
+    return { ok: false, code: (await this.rollback(before)) ? code : 'rollback-failed' }
+  }
+
+  /**
+   * 보호 대상 파일(직원, org.md, project.md, archive, `company/policies/**`)을 시작 상태로 되돌린다.
+   * 앱 함수가 쓰는 곳은 이 범위가 전부다: policy-change도 `company/policies/**`만 쓰므로 범위 밖에 쓰지 않는다.
+   * 복구가 하나라도 실패하면 false를 돌려준다 (삼키지 않는다).
+   */
+  private async rollback(before: Awaited<ReturnType<typeof readProtectedFiles>>): Promise<boolean> {
+    let clean = true
+    const attempt = async (task: Promise<void>): Promise<void> => {
+      try {
+        await task
+      } catch {
+        clean = false
       }
-      for (const [f, s] of before) {
-        if (now.has(f) || s.text === null || !isProtectedPath(f)) continue
-        await this.deps.fs.writeText(f, s.text).catch(() => undefined)
-      }
-    })
+    }
+    try {
+      const now = await readProtectedFiles(this.deps.fs)
+      await this.deps.exclusive(async () => {
+        for (const [f, s] of now) {
+          if (before.get(f)?.hash === s.hash || !isProtectedPath(f)) continue
+          const prev = before.get(f)
+          if (prev === undefined) await attempt(this.deps.fs.remove(f))
+          else if (prev.text !== null) await attempt(this.deps.fs.writeText(f, prev.text))
+          else clean = false
+        }
+        for (const [f, s] of before) {
+          if (now.has(f) || !isProtectedPath(f)) continue
+          if (s.text === null) clean = false
+          else await attempt(this.deps.fs.writeText(f, s.text))
+        }
+      })
+    } catch {
+      clean = false
+    }
+    return clean
   }
 
   // ---- integrity-warning / revert-suggestion ----
@@ -327,8 +363,17 @@ export class ProposalService {
     if (card.status === 'done') return failed('not-actionable')
     const label = card.options.find((o) => o.key === req.choice)?.label ?? ''
     const svc = this.deps.integrity
+    const needsHash = label === '되돌리기' || label === '복원' || label === '사후 승인'
+    let stateHash = req.stateHash
+    if (needsHash) {
+      // 상태 해시는 카드 본문(앱이 쓴 영향 줄)에서 직접 읽는다. 누락되면 거부하고 요청 값이 다르면 stale이다.
+      const fromCard = await this.cardStateHash(card.id)
+      if (fromCard === null) return failed('not-actionable')
+      if (stateHash !== undefined && stateHash !== fromCard) return this.stop(card.id, 'stale')
+      stateHash = fromCard
+    }
     if (label === '되돌리기' || label === '복원') {
-      const r = await svc.restore(req.stateHash)
+      const r = await svc.restore(stateHash)
       if (!r.ok)
         return this.stop(
           card.id,
@@ -339,7 +384,7 @@ export class ProposalService {
         : this.stop(card.id, 'failed')
     }
     if (label === '사후 승인' && card.kind === 'revert-suggestion') {
-      const r = await svc.accept(req.stateHash)
+      const r = await svc.accept(stateHash)
       if (!r.ok)
         return this.stop(
           card.id,
@@ -357,6 +402,16 @@ export class ProposalService {
   }
 
   // ---- 카드 처리 ----
+
+  private async cardStateHash(id: string): Promise<string | null> {
+    const { files } = await this.deps.fs.listMarkdown(DECISION_DIRS.pending)
+    const name = files.find((f) => f.startsWith(`${id}-`) || f === `${id}.md`)
+    if (name === undefined) return null
+    const text = await this.deps.fs.readText(`${DECISION_DIRS.pending}/${name}`)
+    const all = [...text.matchAll(/상태 해시: ([0-9a-f]{64})(?![0-9a-f])/g)]
+    // 해시가 둘 이상이면 어느 것이 앱이 쓴 값인지 알 수 없으므로 거부한다.
+    return all.length === 1 ? all[0][1] : null
+  }
 
   private async resolve(id: string, choice: string, memo: string): Promise<boolean> {
     const r = await this.deps.repo.resolveDecision({ id, choice, memo })

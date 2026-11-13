@@ -75,6 +75,7 @@ export const PROPOSAL_FAILURE_CODES = [
   'rejected-by-rule', // 서비스 규칙이 거부 (중복, 순환 등)
   'hash-mismatch', // 적용 결과가 승인 해시와 다름
   'busy',
+  'rollback-failed', // 적용 실패 뒤 원상 복구도 실패: 파일 상태를 직접 확인해야 한다
   'failed'
 ] as const
 export type ProposalFailureCode = (typeof PROPOSAL_FAILURE_CODES)[number]

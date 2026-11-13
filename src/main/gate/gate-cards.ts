@@ -51,7 +51,7 @@ export function renderCard(id: string, date: string, r: GateCardRequest): string
 - **유형:** ${r.kind}${r.proposedBy ? `\n- **제안자:** ${r.proposedBy}` : ''}
 
 ## 질문
-${oneLine(r.question, 500)}${r.block !== undefined ? `\n\n\`\`\`proposal\n${r.block}\n\`\`\`` : ''}
+${oneLine(r.question, r.block !== undefined ? 1500 : 500)}${r.block !== undefined ? `\n\n\`\`\`proposal\n${r.block}\n\`\`\`` : ''}
 
 ## 선택지
 ${options}

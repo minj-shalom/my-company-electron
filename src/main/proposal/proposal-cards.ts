@@ -4,8 +4,10 @@ import { extractProposalBlocks, parseProposalBlock, renderProposalBlock } from '
 
 const MAX_CARDS_PER_RESULT = 5
 
-/** 카드 요약은 한 줄 고정 문장이다. 값은 파서를 통과한 짧은 토큰만 쓴다. */
-function describe(a: ProposalAction): string {
+const short = (v: string, n = 40): string => (v.length > n ? `${v.slice(0, n)}…` : v)
+
+/** 카드 요약은 한 줄 고정 문장이다. 권한에 영향을 주는 값(도구, 모델, 정책 값)은 CEO가 요약에서 볼 수 있게 담는다. */
+export function describe(a: ProposalAction): string {
   switch (a.action) {
     case 'assign':
       return `${a.employee}를 ${a.project} 프로젝트에 배정`
@@ -13,15 +15,29 @@ function describe(a: ProposalAction): string {
       return `${a.employee}의 ${a.project} 프로젝트 배정 해제`
     case 'hire':
       return `${a.id} 채용 (${a.department})`
-    case 'update':
-      return `${a.id} 직원 파일 수정`
+    case 'update': {
+      const parts = [
+        a.tools !== undefined ? `도구: ${short(a.tools.join(', '), 60)}` : null,
+        a.model !== undefined ? `모델: ${a.model}` : null,
+        a.description !== undefined ? '설명 수정' : null,
+        a.after !== undefined ? '재편집 해시 승인' : null
+      ].filter((x) => x !== null)
+      return `${a.id} 직원 파일 수정 (${parts.join(', ')})`
+    }
     case 'move':
       return `${a.id} 부서·보고 라인 변경`
     case 'retire':
       return `${a.id} 퇴사 처리`
     case 'policy-change':
-      return `${a.project} 프로젝트 정책 변경`
+      return `${a.project} 프로젝트 정책 변경 (값: ${short(JSON.stringify(a.values), 120)})`
   }
+}
+
+/** 앞의 5건만 나열하고 나머지는 건수로 알린다. */
+export function summarize(actions: readonly ProposalAction[]): string {
+  const lines = actions.slice(0, 5).map(describe)
+  if (actions.length > 5) lines.push(`외 ${actions.length - 5}건`)
+  return lines.join(' / ')
 }
 
 export interface ProposalCardResult {
@@ -49,13 +65,12 @@ export async function createProposalCards(
       out.rejected++
       continue
     }
-    const lines = parsed.actions.map(describe)
     out.cardIds.push(
       await cards.create({
         kind: 'proposal',
-        title: `인사 변경 승인 요청 (${lines.length}건)`,
+        title: `인사 변경 승인 요청 (${parsed.actions.length}건)`,
         ticketId: null,
-        question: lines.slice(0, 5).join(' / '),
+        question: summarize(parsed.actions),
         options: [
           {
             key: 'A',

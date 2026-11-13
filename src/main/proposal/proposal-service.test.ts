@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProposalAction, ProposalApplyResult } from '../../shared/proposal'
 import { EmployeeService } from '../employee/employee-service'
 import { createFileGateCards } from '../gate/gate-cards'
@@ -425,5 +425,117 @@ describe('integrity cards', () => {
     expect(r).toEqual({ ok: false, code: 'stale' })
     expect((await s.pendingIds()).some((f) => f.startsWith(id))).toBe(true)
     expect(await s.integrity.quarantined()).toEqual(['cto'])
+  })
+})
+
+describe('review fixes', () => {
+  const revertCard = (hash: string | null): string => `# D-091: 되돌리기
+
+- **관련 티켓:** 없음
+- **상태:** pending
+- **유형:** revert-suggestion
+
+## 질문
+무단 변경
+
+## 선택지
+1. **A. 되돌리기** — x
+2. **B. 사후 승인** — y
+
+## 영향
+- 격리 안내.${hash === null ? '' : ` 상태 해시: ${hash}`}
+`
+
+  it('restore and accept need the state hash in the card and refuse without it', async () => {
+    const s = await setup()
+    await put(s.c.dir, 'company/decisions/pending/D-091-r.md', revertCard(null))
+    for (const choice of ['A', 'B'])
+      expect(await s.apply('D-091', choice)).toEqual({ ok: false, code: 'not-actionable' })
+    // 요청의 해시로 카드의 누락을 대신할 수 없다.
+    expect(await s.apply('D-091', 'A', { stateHash: 'a'.repeat(64) })).toEqual({
+      ok: false,
+      code: 'not-actionable'
+    })
+  })
+
+  it('uses the card hash when the request omits it and is stale after later changes', async () => {
+    const s = await setup()
+    const cur = await s.read('.claude/agents/cto.md')
+    await put(s.c.dir, '.claude/agents/cto.md', cur.replace(/description: .*/, 'description: 무단'))
+    const id = (await s.integrity.reconcile()).cardIds[0]
+    // 카드를 만든 뒤 상태가 더 바뀌었다: 요청에 해시가 없어도 카드의 해시로 stale이 된다.
+    await put(
+      s.c.dir,
+      '.claude/agents/cto.md',
+      cur.replace(/description: .*/, 'description: 또 무단')
+    )
+    expect(await s.apply(id, 'A')).toEqual({ ok: false, code: 'stale' })
+    expect(await s.read('.claude/agents/cto.md')).toContain('또 무단')
+    // 요청 해시가 카드와 다르면 거부한다.
+    expect(await s.apply(id, 'B', { stateHash: 'c'.repeat(64) })).toEqual({
+      ok: false,
+      code: 'stale'
+    })
+  })
+
+  it('summary shows tools/model/policy values and collapses beyond five actions', async () => {
+    const s = await setup()
+    const acts: ProposalAction[] = [
+      { action: 'update', id: 'developer', tools: ['Read', 'Bash'], model: 'opus' },
+      { action: 'policy-change', project: 'alpha', revision: 'r', values: { flow: 'x' } },
+      ...['pm', 'ui-dev', 'devops', 'cfo', 'cto', 'hr'].map((id): ProposalAction => ({
+        action: 'retire',
+        id
+      }))
+    ]
+    const id = await s.make(acts)
+    const d = await s.c.repo.getDecision(id)
+    if (!d.ok) throw new Error('card')
+    expect(d.value.question).toContain('도구: Read, Bash')
+    expect(d.value.question).toContain('모델: opus')
+    expect(d.value.question).toContain('"flow":"x"')
+    expect(d.value.question).toContain('외 3건')
+  })
+
+  it('rolls back when the approval record cannot be saved', async () => {
+    const s = await setup()
+    const cur = await s.read('.claude/agents/cto.md')
+    const next = cur.replace(/description: .*/, 'description: 새 설명')
+    const projectBefore = await s.read('company/project.md')
+    const id = await s.make([
+      { action: 'assign', project: 'alpha', employee: 'devops' },
+      { action: 'update', id: 'cto', base: sha256(cur), after: sha256(next) }
+    ])
+    vi.spyOn(s.integrity, 'approve').mockRejectedValue(new Error('disk'))
+    expect(await s.apply(id)).toEqual({ ok: false, code: 'failed' })
+    expect(await s.read('company/project.md')).toBe(projectBefore)
+    expect((await s.pendingIds()).some((f) => f.startsWith(id))).toBe(true)
+  })
+
+  it('treats hire, move and retire against a changed company as stale', async () => {
+    const s = await setup()
+    const before = await s.read('company/org.md')
+    const hire = await s.make([{ ...HIRE, id: 'developer', template: 'developer' }])
+    expect(await s.apply(hire)).toEqual({ ok: false, code: 'stale' })
+    const gone = await s.make([{ action: 'retire', id: 'nobody' }])
+    expect(await s.apply(gone)).toEqual({ ok: false, code: 'stale' })
+    const mv = await s.make([{ action: 'move', id: 'nobody', department: '기획팀' }])
+    expect(await s.apply(mv)).toEqual({ ok: false, code: 'stale' })
+    expect(await s.read('company/org.md')).toBe(before)
+  })
+
+  it('reports rollback-failed instead of swallowing a failed restore', async () => {
+    const s = await setup()
+    const id = await s.make([
+      { action: 'assign', project: 'alpha', employee: 'devops' },
+      { ...HIRE, reportsTo: 'NoSuchTitle' }
+    ])
+    const real = s.c.fs.writeText.bind(s.c.fs)
+    let projectWrites = 0
+    vi.spyOn(s.c.fs, 'writeText').mockImplementation(async (rel, content, overwrite) => {
+      if (rel === 'company/project.md' && ++projectWrites >= 2) throw new Error('disk')
+      return real(rel, content, overwrite)
+    })
+    expect(await s.apply(id)).toEqual({ ok: false, code: 'rollback-failed' })
   })
 })
