@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
+import { DepartmentPanel } from '../department/DepartmentPanel'
 import { AssignmentIssues } from '../assign/AssignmentIssues'
 import { Badge } from '../ui/Badge'
 import { needsLeaveConfirm } from '../employee/employee-model'
@@ -140,6 +141,7 @@ function OrgReady({
       <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
         {notice}
       </div>
+      <DepartmentPanel snapshot={snapshot} onChanged={onChanged} />
       <div className="org__layout" data-selected={member ? 'true' : 'false'}>
         <div
           className="org__detail"

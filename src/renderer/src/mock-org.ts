@@ -1,4 +1,5 @@
 import type { WindowApi } from '../../shared/api'
+import { applyDepartmentEdits, resetMockDepartmentEdits } from './mock-department'
 import { applyEmployeeEdits, resetMockEmployeeEdits } from './mock-employee'
 import type { OrgAgentDetail, OrgMember, OrgSnapshot, OrgTreeNode } from '../../shared/org'
 
@@ -185,6 +186,7 @@ export function resetMockOrgState(): void {
   mockOrgState.developer = false
   mockOrgState.hr = false
   resetMockEmployeeEdits()
+  resetMockDepartmentEdits()
 }
 
 function buildTree(members: OrgMember[], parent: string | null = null): OrgTreeNode[] {
@@ -276,6 +278,6 @@ export function mockGetOrg(scenario: OrgScenario): WindowApi['getOrg'] {
       return { ok: false, code: 'internal', message: '조직도를 불러오지 못했습니다.' }
     // 로딩 화면을 오래 볼 수 있도록 사실상 응답하지 않는다.
     if (scenario === 'loading') await new Promise((r) => setTimeout(r, 600_000))
-    return { ok: true, value: applyEmployeeEdits(scenarioSnapshot(scenario)) }
+    return { ok: true, value: applyDepartmentEdits(applyEmployeeEdits(scenarioSnapshot(scenario))) }
   }
 }
