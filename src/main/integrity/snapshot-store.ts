@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { isProtectedPath, type FileMap } from './protected-files'
+import { isProtectedPath, sha256, type FileMap } from './protected-files'
 
 export const MAX_SNAPSHOTS = 20
 export const SNAPSHOT_MAX_AGE_MS = 14 * 24 * 3600 * 1000
@@ -34,6 +34,8 @@ function parseSnapshot(id: string, raw: unknown): Snapshot | null {
     files[k] = v
     const h = raw.hashes[k]
     if (typeof h !== 'string') return null
+    // 디스크 값은 신뢰하지 않는다: 내용과 해시가 맞지 않으면 변조된 스냅샷이다.
+    if (typeof v === 'string' && sha256(v) !== h) return null
     hashes[k] = h
   }
   return { id, at: raw.at, kind: raw.kind, files, hashes }

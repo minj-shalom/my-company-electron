@@ -7,9 +7,9 @@ export interface IntegrityHandlers {
   /** T-016이 읽는 조회: 격리된 직원 id 목록 (`employee:quarantined`). */
   getQuarantined: () => Promise<ApiResult<string[]>>
   /** CEO가 카드에서 "되돌리기"를 눌렀을 때. */
-  restoreIntegrity: () => Promise<ApiResult<IntegrityActionResult>>
+  restoreIntegrity: (req?: unknown) => Promise<ApiResult<IntegrityActionResult>>
   /** CEO가 카드에서 "사후 승인"을 눌렀을 때. */
-  acceptIntegrity: () => Promise<ApiResult<IntegrityActionResult>>
+  acceptIntegrity: (req?: unknown) => Promise<ApiResult<IntegrityActionResult>>
 }
 
 const fail = (code: 'no-company' | 'internal', message: string): ApiResult<never> => ({
@@ -38,9 +38,29 @@ export function createIntegrityHandlers(
       return fail('internal', '요청을 처리하지 못했습니다.')
     }
   }
+  const withHash = (
+    raw: unknown,
+    fn: (
+      svc: ReturnType<typeof integrityFor>,
+      hash: string | undefined
+    ) => Promise<IntegrityActionResult>
+  ): Promise<ApiResult<IntegrityActionResult>> => {
+    // 선택 입력: 카드에 실린 상태 해시. 있으면 형식을 검증하고, 현재 상태와 다르면 main이 거부한다.
+    const h =
+      typeof raw === 'object' && raw !== null
+        ? (raw as Record<string, unknown>).stateHash
+        : undefined
+    if (h !== undefined && (typeof h !== 'string' || !/^[0-9a-f]{64}$/.test(h)))
+      return Promise.resolve({
+        ok: false,
+        code: 'invalid-request',
+        message: '요청이 올바르지 않습니다.'
+      })
+    return call((s) => fn(s, h))
+  }
   return {
     getQuarantined: () => call((s) => s.quarantined()),
-    restoreIntegrity: () => call((s) => s.restore()),
-    acceptIntegrity: () => call((s) => s.accept())
+    restoreIntegrity: (raw) => withHash(raw, (s, h) => s.restore(h)),
+    acceptIntegrity: (raw) => withHash(raw, (s, h) => s.accept(h))
   }
 }

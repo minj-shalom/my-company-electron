@@ -39,6 +39,11 @@ export type IntegrityActionResult =
   | { ok: true; restored?: number }
   | {
       ok: false
-      code: 'not-restorable' | 'no-baseline' | 'validation-failed' | 'busy'
+      code: 'not-restorable' | 'no-baseline' | 'validation-failed' | 'busy' | 'stale'
       files: string[]
     }
+
+/** 카드에 실린 상태 해시. 있으면 main이 현재 상태와 같을 때만 동작한다. */
+export interface IntegrityActionRequest {
+  stateHash?: string
+}

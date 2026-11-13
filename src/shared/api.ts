@@ -26,7 +26,7 @@ import type {
   KillSwitchSetRequest,
   KillSwitchState
 } from './gate'
-import type { IntegrityActionResult } from './integrity'
+import type { IntegrityActionRequest, IntegrityActionResult } from './integrity'
 import type {
   PolicyGetRequest,
   PolicySaveRequest,
@@ -191,8 +191,8 @@ export interface WindowApi {
    * `restoreIntegrity`/`acceptIntegrity`: CEO가 카드에서 누를 때만 호출한다 (입력 없음, 마지막 정상 스냅샷 복원 또는 현재 상태 사후 승인).
    */
   getQuarantinedEmployees: () => Promise<ApiResult<string[]>>
-  restoreIntegrity: () => Promise<ApiResult<IntegrityActionResult>>
-  acceptIntegrity: () => Promise<ApiResult<IntegrityActionResult>>
+  restoreIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
+  acceptIntegrity: (req?: IntegrityActionRequest) => Promise<ApiResult<IntegrityActionResult>>
   /**
    * 온보딩(T-009) 계약 (T-034에서 main에 연결됨).
    * 모든 입력은 main이 다시 검증한다 (provider는 PROVIDER_CLI_IDS 허용 목록, 한도는 validateWeeklyLimitAmount).

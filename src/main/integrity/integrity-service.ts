@@ -35,13 +35,27 @@ export interface ReconcileResult {
   issues: IntegrityIssue[]
 }
 
+interface ReconcileOpts {
+  actor?: ChangeActor
+  hint?: 'hr-direct'
+  /** 앱 쓰기 창 동안 앱이 SafeFs로 쓴 파일 -> 최종 해시. 이 해시와 같은 변경만 앱 변경으로 인정한다. */
+  appWrites?: ReadonlyMap<string, string>
+  /** CEO가 사후 승인을 누른 판정: 정책 변경을 위반으로 세지 않는다. */
+  accepting?: boolean
+}
+
 interface Plan {
   changed: string[]
   actors: Map<string, ChangeActor>
+  /** 앱 쓰기 또는 승인된 제안으로 인정된 파일. */
+  appFiles: Set<string>
+  used: Array<{ file: string; before: string; hash: string }>
   issues: IntegrityIssue[]
   sensitive: SensitiveChange[]
 }
 
+/** `reported`에 넣는 표식: PM 필요 알림을 이미 냈다. */
+const PM_MARK = '#pm-needed'
 const APP_ACTORS: ReadonlySet<ChangeActor> = new Set(['ceo-ui', 'approved-proposal'])
 /** 설정 변경 성격의 위반은 되돌리기 제안(`revert-suggestion`), 그 밖은 경고(`integrity-warning`)로 알린다. */
 const REVERT_CODES: ReadonlySet<string> = new Set([
@@ -71,8 +85,15 @@ const KIND_LABEL: Record<SensitiveChange['kind'], string> = {
 export class IntegrityService {
   private chain: Promise<unknown> = Promise.resolve()
   private appDepth = 0
+  private readonly appWrites = new Map<string, string>()
 
-  constructor(private readonly deps: IntegrityDeps) {}
+  constructor(private readonly deps: IntegrityDeps) {
+    // 앱 쓰기 창 안에서 SafeFs로 쓴 보호 대상 파일의 최종 해시를 모은다.
+    deps.fs.observeWrites((rel, content) => {
+      if (this.appDepth > 0 && isProtectedPath(rel))
+        this.appWrites.set(rel, content === null ? DELETED_HASH : sha256(content))
+    })
+  }
 
   private now(): Date {
     return this.deps.now?.() ?? new Date()
@@ -92,29 +113,40 @@ export class IntegrityService {
     return this.deps.state.quarantined()
   }
 
-  /** 제안 카드(T-046)가 CEO 승인을 받으면 main 코드가 변경 후 내용의 해시를 기록한다. LLM 경로에서는 호출할 수 없다. */
-  approve(file: string, hash: string): Promise<void> {
-    if (!isProtectedPath(file) || !/^[0-9a-f]{64}$/.test(hash))
+  /**
+   * 제안 카드(T-046)가 CEO 승인을 받으면 main 코드가 (파일, 변경 전 해시 -> 변경 후 해시)를 기록한다. LLM 경로에서는 호출할 수 없다.
+   * 승인은 한 번 쓰이면 소비되고 7일 뒤 만료된다.
+   */
+  approve(file: string, beforeHash: string, hash: string): Promise<void> {
+    const hex = /^[0-9a-f]{64}$/
+    const okBefore = hex.test(beforeHash) || beforeHash === DELETED_HASH
+    if (!isProtectedPath(file) || !okBefore || !(hex.test(hash) || hash === DELETED_HASH))
       return Promise.reject(new Error('invalid-approval'))
     return this.deps.state.update((d) => {
-      d.approvals.push({ file, hash, at: this.now().toISOString() })
+      d.approvals.push({ file, before: beforeHash, hash, at: this.now().toISOString() })
       // 이미 카드를 만든 상태라도 승인 뒤에는 다시 판정해야 한다.
-      d.reported = null
+      d.reported = {}
     })
   }
 
   /**
-   * 앱 함수(T-035/T-045/T-040)가 파일을 쓰는 동안을 감싼다. 그 변경은 `actor`로 기록하고 경고 카드를 만들지 않는다.
-   * 시작 전에 앞선 외부 변경을 먼저 정리해, 외부 변경이 앱 쓰기로 오인되지 않게 한다.
+   * 앱 함수(T-035/T-045/T-040)가 파일을 쓰는 동안을 감싼다. 앱이 SafeFs로 쓴 파일의 최종 해시와 일치하는 변경만
+   * `actor`의 변경으로 인정한다. 창 안에서 앱이 쓰지 않은 파일이 바뀌었거나 앱이 쓴 뒤 다시 바뀌었으면 외부 변경으로 판정한다.
+   * 시작 전 정리가 실패하면 앱 쓰기를 거부한다 (fail-closed). 종료 정리가 실패하면 기준선을 올리지 않으므로
+   * 그 변경은 다음 감지 때 외부 변경으로 보고된다.
    */
   async withAppWrite<T>(actor: 'ceo-ui' | 'approved-proposal', fn: () => Promise<T>): Promise<T> {
-    await this.reconcile().catch(() => undefined)
+    await this.reconcile()
     this.appDepth++
     try {
       return await fn()
     } finally {
       this.appDepth--
-      await this.reconcile({ actor }).catch(() => undefined)
+      if (this.appDepth === 0) {
+        const appWrites = new Map(this.appWrites)
+        this.appWrites.clear()
+        await this.reconcile({ actor, appWrites }).catch(() => undefined)
+      }
     }
   }
 
@@ -123,31 +155,34 @@ export class IntegrityService {
     return this.reconcile()
   }
 
-  reconcile(opts: { actor?: ChangeActor; hint?: 'hr-direct' } = {}): Promise<ReconcileResult> {
+  reconcile(opts: ReconcileOpts = {}): Promise<ReconcileResult> {
     return this.locked(() => this.reconcileNow(opts))
   }
 
-  private async plan(
-    base: FileMap,
-    cur: FileMap,
-    opts: { actor?: ChangeActor; hint?: 'hr-direct' }
-  ): Promise<Plan> {
+  private async plan(base: FileMap, cur: FileMap, opts: ReconcileOpts): Promise<Plan> {
     const changed = diffMaps(base, cur)
+    const afterHash = (f: string): string => cur.get(f)?.hash ?? DELETED_HASH
     const actors = new Map<string, ChangeActor>()
-    const app = opts.actor !== undefined && APP_ACTORS.has(opts.actor)
+    const appFiles = new Set<string>()
+    const used: Array<{ file: string; before: string; hash: string }> = []
     for (const f of changed) {
-      const h = cur.get(f)?.hash ?? DELETED_HASH
-      actors.set(
-        f,
-        opts.actor ??
-          ((await this.deps.state.isApproved(f, h))
-            ? 'approved-proposal'
-            : (opts.hint ?? 'unknown'))
-      )
+      const key = { file: f, before: base.get(f)?.hash ?? DELETED_HASH, hash: afterHash(f) }
+      if (
+        opts.actor !== undefined &&
+        APP_ACTORS.has(opts.actor) &&
+        opts.appWrites?.get(f) === key.hash
+      ) {
+        actors.set(f, opts.actor)
+        appFiles.add(f)
+      } else if (await this.deps.state.isApproved(f, key.before, key.hash, this.now())) {
+        actors.set(f, 'approved-proposal')
+        appFiles.add(f)
+        used.push(key)
+      } else actors.set(f, opts.hint ?? 'unknown')
     }
     const issues = validateAll(base, cur)
     for (const f of changed)
-      if (isPolicyPath(f) && actors.get(f) !== 'approved-proposal' && !app)
+      if (isPolicyPath(f) && !appFiles.has(f) && !opts.accepting)
         issues.push({
           code: 'policy-changed',
           file: f,
@@ -169,47 +204,45 @@ export class IntegrityService {
           message: '파일이 너무 커서 복원할 수 없습니다.',
           severity: 'info'
         })
-    let sensitive: SensitiveChange[] = []
-    if (!app) {
-      for (const s of judgeSensitive(base, cur))
-        if (!(await this.deps.state.isApproved(s.file, s.hash))) sensitive.push(s)
-    }
-    sensitive = sensitive.filter(
-      (s, i) =>
-        sensitive.findIndex(
+    // 앱이 쓰지 않은 파일의 민감 변경만 승인 대상이다 (승인된 변경은 위에서 appFiles에 들어갔다).
+    const sensitive = judgeSensitive(base, cur).filter(
+      (s, i, all) =>
+        !appFiles.has(s.file) &&
+        all.findIndex(
           (x) => x.kind === s.kind && x.file === s.file && x.employeeId === s.employeeId
         ) === i
     )
-    return { changed, actors, issues, sensitive }
+    return { changed, actors, appFiles, used, issues, sensitive }
   }
 
-  private async reconcileNow(opts: {
-    actor?: ChangeActor
-    hint?: 'hr-direct'
-  }): Promise<ReconcileResult> {
+  private async reconcileNow(opts: ReconcileOpts): Promise<ReconcileResult> {
     const skipped: ReconcileResult = { status: 'skipped', cardIds: [], issues: [] }
-    // 앱 쓰기 진행 중에는 외부 변경으로 오인하지 않도록 건너뛰고, 마지막 앱 쓰기가 끝날 때 한 번에 정리한다.
+    // 앱 쓰기 진행 중에는 건너뛰고, 마지막 앱 쓰기가 끝날 때 한 번에 정리한다.
     if (this.appDepth > 0) return skipped
     const cur = await readProtectedFiles(this.deps.fs)
+    const st = await this.deps.state.get()
     const baseSnap = await this.deps.snapshots.latestBaseline()
+    const hashOf = (f: string): string => cur.get(f)?.hash ?? DELETED_HASH
     if (baseSnap === null) {
       // 첫 실행: 지금 상태를 기준으로 삼는다 (이전 이력이 없어 비교할 대상이 없다).
       const r = await this.deps.snapshots.save(cur, 'baseline')
-      return { status: r.ok ? 'initialized' : 'flagged', cardIds: [], issues: [] }
+      if (r.ok) return { status: 'initialized', cardIds: [], issues: [] }
+      const fresh = r.files.filter((f) => st.reported[f] !== hashOf(f))
+      const cardIds: string[] = []
+      if (fresh.length > 0) {
+        cardIds.push(await this.secretCard(r.files))
+        await this.deps.state.update((d) => {
+          for (const f of r.files) d.reported[f] = hashOf(f)
+        })
+      }
+      return { status: 'flagged', cardIds, issues: [] }
     }
     const base = toFileMap(baseSnap)
     const changed = diffMaps(base, cur)
-    const st = await this.deps.state.get()
     if (changed.length === 0) {
-      if (st.reported !== null) await this.deps.state.update((d) => (d.reported = null))
+      if (Object.keys(st.reported).length > 0)
+        await this.deps.state.update((d) => (d.reported = {}))
       return { status: 'unchanged', cardIds: [], issues: [] }
-    }
-    const curHash = stateHash(cur)
-    const app = opts.actor !== undefined && APP_ACTORS.has(opts.actor)
-    if (st.reported !== null) {
-      // 풀리지 않은 문제가 있는 동안의 앱 쓰기는 기준선을 올리지 않는다 (문제를 덮지 않는다).
-      if (app) await this.deps.state.update((d) => (d.reported = curHash))
-      if (app || st.reported === curHash) return { ...skipped, status: 'flagged' }
     }
 
     const plan = await this.plan(base, cur, opts)
@@ -217,6 +250,7 @@ export class IntegrityService {
     const infos = plan.issues.filter((i) => i.severity === 'info' && i.code !== 'snapshot-oversize')
     const flagged = violations.length > 0 || plan.sensitive.length > 0
     const cardIds: string[] = []
+    const stateHashNow = stateHash(cur)
 
     if (flagged) {
       const ids = [
@@ -232,33 +266,90 @@ export class IntegrityService {
               file: plan.sensitive.find((s) => s.employeeId === id)?.file ?? ''
             }
         })
-      if (!app) cardIds.push(await this.flagCard(plan, violations, ids))
-    }
-    if (infos.length > 0 && !app)
-      cardIds.push(
-        await this.deps.cards.create({
-          kind: 'decision',
-          title: 'PM 지정이 필요한 프로젝트가 생겼습니다',
-          ticketId: null,
-          question: 'PM이 없는 프로젝트가 있습니다. 담당 PM을 새로 지정해야 합니다.',
-          options: [{ key: 'A', label: '확인', description: '프로젝트에서 PM을 다시 지정합니다.' }],
-          impact: 'PM이 지정될 때까지 해당 프로젝트는 PM 필요 상태입니다.',
-          reason: '직원 배정 변경 감지(PM 줄 삭제 또는 PM 직원 퇴사)'
-        })
-      )
-
-    await this.deps.audit.append(this.auditEntries(plan, base, cur, cardIds, violations))
-
-    if (flagged) {
-      await this.deps.state.update((d) => (d.reported = curHash))
+      // 이미 보고한 상태의 파일은 카드·감사 줄을 다시 만들지 않는다.
+      const fresh = plan.changed.filter((f) => st.reported[f] !== hashOf(f))
+      if (fresh.length === 0) return { status: 'flagged', cardIds, issues: plan.issues }
+      const freshViolations = violations.filter((v) => fresh.includes(v.file))
+      const freshSensitive = plan.sensitive.filter((x) => fresh.includes(x.file))
+      // 앱 쓰기에서 나온 검증 위반도 카드로 알린다. 새로 생긴 문제가 없는 변경(앱이 쓴 정상 파일)은 카드를 만들지 않는다.
+      if (freshViolations.length + freshSensitive.length > 0)
+        cardIds.push(
+          await this.flagCard(
+            { ...plan, sensitive: freshSensitive },
+            freshViolations,
+            ids,
+            stateHashNow
+          )
+        )
+      const pmSeen = Object.hasOwn(st.reported, PM_MARK)
+      if (!pmSeen) await this.freshInfoCard(infos, plan, cardIds)
+      await this.deps.audit.append(this.auditEntries(plan, base, cur, cardIds, violations, fresh))
+      await this.deps.state.update((d) => {
+        d.reported = Object.fromEntries(plan.changed.map((f) => [f, hashOf(f)]))
+        if (infos.length > 0) d.reported[PM_MARK] = '1'
+      })
       return { status: 'flagged', cardIds, issues: plan.issues }
     }
+
+    await this.freshInfoCard(infos, plan, cardIds)
+    await this.deps.audit.append(
+      this.auditEntries(plan, base, cur, cardIds, violations, plan.changed)
+    )
     await this.deps.snapshots.save(cur, 'baseline')
-    await this.deps.state.update((d) => (d.reported = null))
+    await this.deps.state.update((d) => {
+      d.reported = {}
+      // 승인은 한 번만 쓰인다.
+      d.approvals = d.approvals.filter(
+        (a) =>
+          !plan.used.some((u) => u.file === a.file && u.before === a.before && u.hash === a.hash)
+      )
+    })
     return { status: 'clean', cardIds, issues: plan.issues }
   }
 
-  private async flagCard(plan: Plan, violations: IntegrityIssue[], ids: string[]): Promise<string> {
+  private async freshInfoCard(
+    infos: IntegrityIssue[],
+    plan: Plan,
+    cardIds: string[]
+  ): Promise<void> {
+    if (!infos.some((i) => !plan.appFiles.has(i.file))) return
+    cardIds.push(
+      await this.deps.cards.create({
+        kind: 'decision',
+        title: 'PM 지정이 필요한 프로젝트가 생겼습니다',
+        ticketId: null,
+        question: 'PM이 없는 프로젝트가 있습니다. 담당 PM을 새로 지정해야 합니다.',
+        options: [{ key: 'A', label: '확인', description: '프로젝트에서 PM을 다시 지정합니다.' }],
+        impact: 'PM이 지정될 때까지 해당 프로젝트는 PM 필요 상태입니다.',
+        reason: '직원 배정 변경 감지(PM 줄 삭제 또는 PM 직원 퇴사)'
+      })
+    )
+  }
+
+  private secretCard(files: string[]): Promise<string> {
+    return this.deps.cards.create({
+      kind: 'integrity-warning',
+      title: '비밀 값처럼 보이는 문자열이 있어 스냅샷을 만들지 못했습니다',
+      ticketId: null,
+      question: `비밀 패턴이 있는 파일: ${files.slice(0, 6).join(', ')}`,
+      options: [
+        {
+          key: 'A',
+          label: '확인',
+          description: '비밀 값을 제거하면 다음 변경 때 스냅샷이 다시 만들어집니다.'
+        }
+      ],
+      impact: '스냅샷이 없는 동안은 변경 감지의 기준선이 없습니다.',
+      reason: '보호 대상 파일에는 자격 증명 값이 있어서는 안 됩니다.'
+    })
+  }
+
+  private async flagCard(
+    plan: Plan,
+    violations: IntegrityIssue[],
+    ids: string[],
+    stateHash: string
+  ): Promise<string> {
     const revert = plan.sensitive.length > 0 || violations.some((v) => REVERT_CODES.has(v.code))
     const lines = [
       ...plan.sensitive.map((s) => `${KIND_LABEL[s.kind]}: ${s.employeeId ?? s.file}`),
@@ -297,10 +388,11 @@ export class IntegrityService {
                   : '직접 수정하겠습니다. 복원하지 않습니다.'
             }
           ],
-      impact:
+      impact: `${
         ids.length > 0
           ? `격리된 직원(${ids.join(', ')})은 해제될 때까지 실행되지 않습니다.`
-          : '자동 복원은 하지 않습니다. 확인 전까지 마지막 정상 스냅샷이 유지됩니다.',
+          : '자동 복원은 하지 않습니다. 확인 전까지 마지막 정상 스냅샷이 유지됩니다.'
+      } 상태 해시: ${stateHash}`,
       reason: '인사 변경 가드레일이 승인 기록 없는 변경을 감지했습니다.'
     })
   }
@@ -310,10 +402,11 @@ export class IntegrityService {
     base: FileMap,
     cur: FileMap,
     cardIds: string[],
-    violations: IntegrityIssue[]
+    violations: IntegrityIssue[],
+    files: string[]
   ): HrAuditEntry[] {
     const sensitiveFiles = new Set(plan.sensitive.map((s) => s.file))
-    return plan.changed.map((f) => {
+    return files.map((f) => {
       const here = plan.issues.filter((i) => i.file === f && i.code !== 'snapshot-oversize')
       const v = violations.filter((i) => i.file === f).map((i) => i.code)
       const info = here.filter((i) => i.severity === 'info').map((i) => i.code)
@@ -335,7 +428,7 @@ export class IntegrityService {
   }
 
   /** CEO가 카드에서 "되돌리기"를 눌렀을 때만 호출한다. 마지막 정상 스냅샷으로 복원하고 격리를 푼다. */
-  restore(): Promise<IntegrityActionResult> {
+  restore(expectedStateHash?: string): Promise<IntegrityActionResult> {
     return this.locked(async () => {
       if (this.appDepth > 0) return { ok: false, code: 'busy', files: [] }
       const snap = await this.deps.snapshots.latestBaseline()
@@ -348,6 +441,9 @@ export class IntegrityService {
       this.appDepth++
       try {
         const cur = await readProtectedFiles(this.deps.fs)
+        // 카드를 만든 뒤 상태가 더 바뀌었으면 CEO가 본 내용과 다르므로 복원하지 않는다.
+        if (expectedStateHash !== undefined && expectedStateHash !== stateHash(cur))
+          return { ok: false, code: 'stale', files: [] }
         // 복원 전 현재 상태도 남긴다 (비밀 패턴이 있으면 저장하지 않지만 복원은 막지 않는다).
         await this.deps.snapshots.save(cur, 'pre-restore')
         const changed = diffMaps(base, cur)
@@ -373,38 +469,35 @@ export class IntegrityService {
         )
         await this.deps.state.update((d) => {
           d.quarantine = {}
-          d.reported = null
+          d.reported = {}
         })
         return { ok: true, restored: changed.length }
       } finally {
         this.appDepth--
+        this.appWrites.clear()
       }
     })
   }
 
   /** CEO가 "사후 승인"을 눌렀을 때만 호출한다. 현재 상태를 승인해 기준선으로 삼고 격리를 푼다. 검증 위반이 있으면 거부한다. */
-  accept(): Promise<IntegrityActionResult> {
+  accept(expectedStateHash?: string): Promise<IntegrityActionResult> {
     return this.locked(async () => {
       if (this.appDepth > 0) return { ok: false, code: 'busy', files: [] }
       const snap = await this.deps.snapshots.latestBaseline()
       if (snap === null) return { ok: false, code: 'no-baseline', files: [] }
       const base = toFileMap(snap)
       const cur = await readProtectedFiles(this.deps.fs)
-      const plan = await this.plan(base, cur, { actor: 'ceo-ui' })
+      if (expectedStateHash !== undefined && expectedStateHash !== stateHash(cur))
+        return { ok: false, code: 'stale', files: [] }
+      const plan = await this.plan(base, cur, { accepting: true })
       const bad = plan.issues.filter((i) => i.severity === 'violation')
       if (bad.length > 0)
         return { ok: false, code: 'validation-failed', files: [...new Set(bad.map((i) => i.file))] }
       const saved = await this.deps.snapshots.save(cur, 'baseline')
       if (!saved.ok) return { ok: false, code: 'validation-failed', files: saved.files }
       await this.deps.state.update((d) => {
-        for (const f of plan.changed)
-          d.approvals.push({
-            file: f,
-            hash: cur.get(f)?.hash ?? DELETED_HASH,
-            at: this.now().toISOString()
-          })
         d.quarantine = {}
-        d.reported = null
+        d.reported = {}
       })
       await this.deps.audit.append(
         plan.changed.map((f) => ({

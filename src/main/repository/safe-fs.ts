@@ -19,7 +19,19 @@ export class FsGuardError extends Error {
  * 각 구간이 심볼릭 링크가 아닌지 lstat으로 확인한 뒤 접근한다 (경로 탈출, 링크 우회 차단).
  */
 export class SafeFs {
+  private readonly writeObservers = new Set<(rel: string, content: string | null) => void>()
+
   private constructor(readonly root: string) {}
+
+  /** 이 SafeFs로 성공한 쓰기·삭제를 알린다 (삭제는 content가 null). 변경 감지가 앱이 직접 쓴 파일을 구분하는 데 쓴다. */
+  observeWrites(cb: (rel: string, content: string | null) => void): () => void {
+    this.writeObservers.add(cb)
+    return () => this.writeObservers.delete(cb)
+  }
+
+  private notify(rel: string, content: string | null): void {
+    for (const cb of this.writeObservers) cb(rel, content)
+  }
 
   static async open(companyDir: string): Promise<SafeFs> {
     if (!isAbsolute(companyDir)) throw new FsGuardError('escape', '절대 경로여야 합니다.')
@@ -157,6 +169,7 @@ export class SafeFs {
           throw e
         }
       }
+      this.notify(rel, content)
     } finally {
       // rename 성공 시 tmp는 이미 없다. 그 외 모든 경로에서 잔여물을 정리한다.
       await unlink(tmp).catch(() => undefined)
@@ -167,6 +180,7 @@ export class SafeFs {
     const abs = await this.resolve(rel)
     if (!(await lstat(abs)).isFile()) throw new FsGuardError('not-file', '일반 파일이 아닙니다.')
     await unlink(abs)
+    this.notify(rel, null)
   }
 }
 

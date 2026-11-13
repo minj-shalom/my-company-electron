@@ -5,9 +5,13 @@ const MAX_APPROVALS = 200
 
 export interface Approval {
   file: string
+  /** 변경 전 해시 (삭제 승인은 변경 후가 `deleted`). 이 (전 -> 후) 쌍에만 유효하다. */
+  before: string
   hash: string
   at: string
 }
+
+export const APPROVAL_TTL_MS = 7 * 24 * 3600 * 1000
 
 export interface QuarantineEntry {
   since: string
@@ -19,20 +23,30 @@ export interface QuarantineEntry {
 export interface IntegrityStateData {
   approvals: Approval[]
   quarantine: Record<string, QuarantineEntry>
-  /** 이미 카드를 만든 변경 상태의 해시. 같은 상태에서 카드를 또 만들지 않는다. */
-  reported: string | null
+  /** 이미 카드·감사 기록을 남긴 파일의 변경 후 해시. 같은 상태에서 카드와 감사 줄을 또 만들지 않는다. */
+  reported: Record<string, string>
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
-const EMPTY = (): IntegrityStateData => ({ approvals: [], quarantine: {}, reported: null })
+const EMPTY = (): IntegrityStateData => ({ approvals: [], quarantine: {}, reported: {} })
 
 function parse(raw: unknown): IntegrityStateData {
   const out = EMPTY()
   if (!isRecord(raw)) return out
   if (Array.isArray(raw.approvals))
     for (const a of raw.approvals)
-      if (isRecord(a) && typeof a.file === 'string' && typeof a.hash === 'string')
-        out.approvals.push({ file: a.file, hash: a.hash, at: typeof a.at === 'string' ? a.at : '' })
+      if (
+        isRecord(a) &&
+        typeof a.file === 'string' &&
+        typeof a.hash === 'string' &&
+        typeof a.before === 'string'
+      )
+        out.approvals.push({
+          file: a.file,
+          before: a.before,
+          hash: a.hash,
+          at: typeof a.at === 'string' ? a.at : ''
+        })
   if (isRecord(raw.quarantine))
     for (const [id, e] of Object.entries(raw.quarantine))
       if (
@@ -46,7 +60,9 @@ function parse(raw: unknown): IntegrityStateData {
           reason: e.reason,
           since: typeof e.since === 'string' ? e.since : ''
         }
-  if (typeof raw.reported === 'string') out.reported = raw.reported
+  if (isRecord(raw.reported))
+    for (const [f, h] of Object.entries(raw.reported))
+      if (typeof h === 'string' && f !== '__proto__') out.reported[f] = h
   return out
 }
 
@@ -73,8 +89,11 @@ export class IntegrityStateStore {
     }
   }
 
-  get(): Promise<IntegrityStateData> {
-    return this.load()
+  /** 상태를 읽을 수 없으면 던진다 (호출자는 안전한 쪽으로 멈춘다). */
+  async get(): Promise<IntegrityStateData> {
+    const d = await this.load()
+    if (this.failed) throw new Error('state-unreadable')
+    return d
   }
 
   /** 읽기-수정-쓰기를 한 줄로 세운다. 저장이 실패하면 메모리 상태는 되돌린다. */
@@ -92,8 +111,16 @@ export class IntegrityStateStore {
     return run
   }
 
-  async isApproved(file: string, hash: string): Promise<boolean> {
-    return (await this.load()).approvals.some((a) => a.file === file && a.hash === hash)
+  /** (파일, 변경 전 -> 변경 후) 쌍의 승인이 있고 만료되지 않았는지. */
+  async isApproved(file: string, before: string, hash: string, now: Date): Promise<boolean> {
+    const d = await this.get()
+    return d.approvals.some(
+      (a) =>
+        a.file === file &&
+        a.before === before &&
+        a.hash === hash &&
+        now.getTime() - Date.parse(a.at) < APPROVAL_TTL_MS
+    )
   }
 
   /** T-016 같은 실행 경로가 쓰는 조회. 상태를 읽을 수 없으면 true. */

@@ -1,10 +1,11 @@
-import { mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CompanyWatcher } from '../cache/company-watcher'
 import { createFileGateCards } from '../gate/gate-cards'
 import { createMemoryStateStore, type StateStore } from '../gate/state-store'
+import { appWrite } from '../domain-ipc'
 import { createIntegrityHandlers } from './integrity-ipc'
 import { HR_AUDIT_FILE, HrAudit } from './hr-audit'
 import { IntegrityStateStore } from './integrity-state'
@@ -28,6 +29,8 @@ interface Setup {
   state: IntegrityStateStore
   read: (rel: string) => Promise<string>
   write: (rel: string, text: string) => Promise<void>
+  /** 앱 함수처럼 SafeFs로 쓴다 (변경 감지가 앱 쓰기로 인정하는 경로). */
+  appWrite: (rel: string, text: string) => Promise<void>
   cards: () => Promise<Array<{ kind: string; text: string }>>
   audit: () => Promise<string[]>
   snapDir: string
@@ -62,7 +65,8 @@ async function setup(stateStore: StateStore = createMemoryStateStore()): Promise
   }
   const audit = async (): Promise<string[]> =>
     (await c.fs.readText(HR_AUDIT_FILE)).split('\n').filter((l) => l.startsWith('| 20'))
-  return { c, svc, snapshots, state, read, write, cards, audit, snapDir }
+  const appWrite = (rel: string, text: string): Promise<void> => c.fs.writeText(rel, text)
+  return { c, svc, appWrite, snapshots, state, read, write, cards, audit, snapDir }
 }
 
 const addBash = (t: string): string => t.replace(/tools: .*\n/, (m) => `${m.trimEnd()}, Bash\n`)
@@ -140,11 +144,13 @@ describe('sensitive change detection', () => {
   it('treats a matching approval hash as approved-proposal and a mismatch as unapproved', async () => {
     const t = await setup()
     const text = addBash(await t.read('.claude/agents/reviewer-qa.md'))
-    await t.svc.approve('.claude/agents/reviewer-qa.md', sha256(`${text}nope`))
+    const f = '.claude/agents/reviewer-qa.md'
+    const before = sha256(await t.read(f))
+    await t.svc.approve(f, before, sha256(`${text}nope`))
     await t.write('.claude/agents/reviewer-qa.md', text)
     expect((await t.svc.reconcile()).status).toBe('flagged')
     // 승인이 뒤늦게 도착하면 다시 판정한다.
-    await t.svc.approve('.claude/agents/reviewer-qa.md', sha256(text))
+    await t.svc.approve(f, before, sha256(text))
     const r = await t.svc.reconcile()
     expect(r.status).toBe('clean')
     expect((await t.audit()).at(-1)).toContain('| approved-proposal | ok |')
@@ -258,7 +264,7 @@ describe('project.md, policies, PM state', () => {
     expect((await t.svc.reconcile()).status).toBe('flagged')
     expect((await t.cards())[0].kind).toBe('revert-suggestion')
     await t.svc.restore()
-    await t.svc.withAppWrite('ceo-ui', () => t.write('company/policies/alpha.md', '# 정책 v2\n'))
+    await t.svc.withAppWrite('ceo-ui', () => t.appWrite('company/policies/alpha.md', '# 정책 v2\n'))
     expect(await t.cards()).toHaveLength(1)
     expect((await t.audit()).at(-1)).toContain('| ceo-ui | ok |')
   })
@@ -287,14 +293,14 @@ describe('project.md, policies, PM state', () => {
 })
 
 describe('app writes are ignored', () => {
-  it('does not warn or quarantine for sensitive changes made inside withAppWrite', async () => {
+  it('does not warn or quarantine for sensitive changes the app itself wrote', async () => {
     const t = await setup()
     await t.svc.withAppWrite('ceo-ui', async () => {
-      await t.write(
+      await t.appWrite(
         '.claude/agents/reviewer-qa.md',
         addBash(await t.read('.claude/agents/reviewer-qa.md'))
       )
-      await t.write('.claude/agents/cto.md', `${await t.read('.claude/agents/cto.md')}\nok\n`)
+      await t.appWrite('.claude/agents/cto.md', `${await t.read('.claude/agents/cto.md')}\nok\n`)
     })
     expect(await t.cards()).toEqual([])
     expect(await t.svc.quarantined()).toEqual([])
@@ -308,13 +314,193 @@ describe('app writes are ignored', () => {
     const t = await setup()
     await t.write('.claude/agents/cto.md', `${await t.read('.claude/agents/cto.md')}\nsneaky\n`)
     await t.svc.withAppWrite('ceo-ui', async () => {
-      await t.write('.claude/agents/pm.md', `${await t.read('.claude/agents/pm.md')}\n보충\n`)
+      await t.appWrite('.claude/agents/pm.md', `${await t.read('.claude/agents/pm.md')}\n보충\n`)
     })
     expect((await t.cards()).map((x) => x.kind)).toEqual(['revert-suggestion'])
     expect(await t.svc.isQuarantined('cto')).toBe(true)
-    // 풀리지 않은 문제가 있으면 앱 쓰기가 기준선을 올려 문제를 덮지 않는다.
     expect((await t.svc.restore()).ok).toBe(true)
     expect(await t.read('.claude/agents/cto.md')).not.toContain('sneaky')
+  })
+
+  it('treats an external change made during the window as unknown, not as the app', async () => {
+    const t = await setup()
+    await t.svc.withAppWrite('ceo-ui', async () => {
+      await t.appWrite('.claude/agents/pm.md', `${await t.read('.claude/agents/pm.md')}\n보충\n`)
+      // 창 안에서 앱이 쓰지 않은 파일(외부)과, 앱이 쓴 뒤 다시 바뀐 파일.
+      await t.write(
+        '.claude/agents/reviewer-qa.md',
+        addBash(await t.read('.claude/agents/reviewer-qa.md'))
+      )
+      await t.write('.claude/agents/pm.md', `${await t.read('.claude/agents/pm.md')}\nexternal\n`)
+    })
+    expect((await t.cards()).map((x) => x.kind)).toEqual(['revert-suggestion'])
+    expect(await t.svc.isQuarantined('reviewer-qa')).toBe(true)
+    const lines = await t.audit()
+    expect(lines.every((l) => l.includes('| unknown |'))).toBe(true)
+  })
+
+  it('still raises a card when an app write produces a validation violation', async () => {
+    const t = await setup()
+    await t.svc.withAppWrite('ceo-ui', () =>
+      t.appWrite('company/project.md', 'x\n## 프로젝트: Alpha\n- id: alpha\n- 경로: ../z\n')
+    )
+    expect((await t.cards()).map((x) => x.kind)).toEqual(['revert-suggestion'])
+    expect((await t.audit())[0]).toContain('| ceo-ui | violation:')
+  })
+
+  it('does not let a later app write hide a new sensitive change while an issue is pending', async () => {
+    const t = await setup()
+    await t.write('.claude/agents/cto.md', `${await t.read('.claude/agents/cto.md')}\nA\n`)
+    await t.svc.reconcile()
+    await t.write(
+      '.claude/agents/reviewer-qa.md',
+      addBash(await t.read('.claude/agents/reviewer-qa.md'))
+    )
+    await t.svc.withAppWrite('ceo-ui', async () =>
+      t.appWrite('.claude/agents/pm.md', `${await t.read('.claude/agents/pm.md')}\nx\n`)
+    )
+    expect(await t.svc.isQuarantined('reviewer-qa')).toBe(true)
+    expect((await t.cards()).length).toBe(2)
+  })
+
+  it('fails closed: refuses the app write when state cannot be read', async () => {
+    const bad: StateStore = {
+      load: async () => {
+        throw new Error('corrupt')
+      },
+      save: async () => undefined
+    }
+    const t = await setup()
+    const svc = new IntegrityService({
+      fs: t.c.fs,
+      exclusive: (x) => x(),
+      snapshots: t.snapshots,
+      state: new IntegrityStateStore(bad),
+      audit: new HrAudit({ fs: t.c.fs, exclusive: (x) => x() }),
+      cards: createFileGateCards({ fs: t.c.fs, exclusive: (x) => x() })
+    })
+    let ran = false
+    await expect(
+      svc.withAppWrite('ceo-ui', async () => {
+        ran = true
+      })
+    ).rejects.toThrow()
+    expect(ran).toBe(false)
+    expect(await svc.isQuarantined('pm')).toBe(true)
+  })
+})
+
+describe('guarded actions and approvals', () => {
+  it('refuses restore/accept when the state changed after the card was made', async () => {
+    const t = await setup()
+    await t.write(
+      '.claude/agents/reviewer-qa.md',
+      addBash(await t.read('.claude/agents/reviewer-qa.md'))
+    )
+    await t.svc.reconcile()
+    const hash = /상태 해시: ([0-9a-f]{64})/.exec((await t.cards())[0].text)![1]
+    await t.write('.claude/agents/cto.md', `${await t.read('.claude/agents/cto.md')}\nlate\n`)
+    expect(await t.svc.accept(hash)).toEqual({ ok: false, code: 'stale', files: [] })
+    expect(await t.svc.restore(hash)).toEqual({ ok: false, code: 'stale', files: [] })
+    expect(await t.svc.isQuarantined('reviewer-qa')).toBe(true)
+    await t.svc.reconcile()
+    const h2 = /상태 해시: ([0-9a-f]{64})/.exec((await t.cards()).at(-1)!.text)![1]
+    expect((await t.svc.restore(h2)).ok).toBe(true)
+  })
+
+  it('consumes an approval after one use and ties it to before -> after', async () => {
+    const t = await setup()
+    const f = '.claude/agents/reviewer-qa.md'
+    const orig = await t.read(f)
+    const bashed = addBash(orig)
+    await t.svc.approve(f, sha256(orig), sha256(bashed))
+    await t.write(f, bashed)
+    expect((await t.svc.reconcile()).status).toBe('clean')
+    await t.write(f, orig)
+    expect((await t.svc.reconcile()).status).toBe('clean')
+    // 같은 해시로 다시 바꿔도 승인은 이미 쓰였다.
+    await t.write(f, bashed)
+    expect((await t.svc.reconcile()).status).toBe('flagged')
+  })
+
+  it('expires approvals after 7 days', async () => {
+    const t = await setup()
+    const f = '.claude/agents/reviewer-qa.md'
+    const orig = await t.read(f)
+    const bashed = addBash(orig)
+    await t.svc.approve(f, sha256(orig), sha256(bashed))
+    await t.state.update((d) => {
+      d.approvals[0].at = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString()
+    })
+    await t.write(f, bashed)
+    expect((await t.svc.reconcile()).status).toBe('flagged')
+  })
+
+  it('does not repeat the PM card or audit lines while the state is unchanged', async () => {
+    const t = await setup()
+    await t.write(
+      'company/project.md',
+      (await t.read('company/project.md')).replace('- PM: pm\n', '')
+    )
+    await t.write(
+      '.claude/agents/reviewer-qa.md',
+      addBash(await t.read('.claude/agents/reviewer-qa.md'))
+    )
+    await t.svc.reconcile()
+    const n = (await t.cards()).length
+    const lines = (await t.audit()).length
+    await t.svc.reconcile()
+    await t.svc.reconcile()
+    expect((await t.cards()).length).toBe(n)
+    expect((await t.audit()).length).toBe(lines)
+  })
+
+  it('raises a card for a secret pattern present at first run', async () => {
+    const c = await company()
+    await put(
+      c.dir,
+      '.claude/agents/pm.md',
+      `${await readFile(join(c.dir, '.claude/agents/pm.md'), 'utf8')}\nghp_${'c'.repeat(30)}\n`
+    )
+    const snapDir = await mkdtemp(join(tmpdir(), 'mc-isnap-'))
+    tmp.push(snapDir)
+    const ex = <T>(x: () => Promise<T>): Promise<T> => c.repo.runExclusive(x)
+    const svc = new IntegrityService({
+      fs: c.fs,
+      exclusive: ex,
+      snapshots: new SnapshotStore(snapDir, () => new Date(), filesWithSecrets),
+      state: new IntegrityStateStore(createMemoryStateStore()),
+      audit: new HrAudit({ fs: c.fs, exclusive: ex }),
+      cards: createFileGateCards({ fs: c.fs, exclusive: ex })
+    })
+    expect((await svc.reconcile()).status).toBe('flagged')
+    expect((await svc.reconcile()).cardIds).toEqual([])
+    const files = await readdir(join(c.dir, 'company/decisions/pending'))
+    expect(files.filter((x) => x.includes('integrity-warning'))).toHaveLength(1)
+  })
+
+  it('rejects a snapshot whose contents do not match its hashes', async () => {
+    const t = await setup()
+    const [f] = (await readdir(t.snapDir)).filter((x) => x.endsWith('.json'))
+    const p = join(t.snapDir, f)
+    const j = JSON.parse(await readFile(p, 'utf8'))
+    j.files['company/org.md'] = 'tampered'
+    await writeFile(p, JSON.stringify(j))
+    expect(await t.snapshots.latestBaseline()).toBeNull()
+  })
+
+  it('catches project.md CRLF conversion and reordered lines as violations', async () => {
+    const t = await setup()
+    const md = await t.read('company/project.md')
+    await t.write('company/project.md', md.replace('- PM: pm\n', '- PM: pm\r\n'))
+    const r1 = await t.svc.reconcile()
+    expect(['clean', 'flagged']).toContain(r1.status)
+    await t.svc.restore()
+    await t.write(
+      'company/project.md',
+      md.replace('- id: alpha\n- 유형: development\n', '- 유형: development\n- id: alpha\n')
+    )
+    expect((await t.svc.reconcile()).status).toBe('flagged')
   })
 })
 
@@ -369,7 +555,41 @@ describe('ipc handlers', () => {
   })
 })
 
+describe('appWrite wrapper', () => {
+  it('runs the function unguarded when no userData directory is configured (tests, unconfigured)', async () => {
+    const run = appWrite({ context: {} as never, userDataDir: undefined }, async (a) => ({
+      ok: true as const,
+      value: a
+    }))
+    expect(await run(7)).toEqual({ ok: true, value: 7 })
+  })
+})
+
 describe('watcher hook', () => {
+  it('wires onProtectedChange to reconcile with a real CompanyWatcher', async () => {
+    const t = await setup()
+    const w = new CompanyWatcher({
+      root: await realpath(t.c.dir),
+      debounceMs: 50,
+      onChange: async () => undefined,
+      onProtectedChange: async () => void (await t.svc.reconcile())
+    })
+    await w.start()
+    try {
+      await new Promise((r) => setTimeout(r, 500))
+      await t.write(
+        '.claude/agents/reviewer-qa.md',
+        addBash(await t.read('.claude/agents/reviewer-qa.md'))
+      )
+      for (let i = 0; i < 50 && (await t.svc.quarantined()).length === 0; i++)
+        await new Promise((r) => setTimeout(r, 100))
+      expect(await t.svc.quarantined()).toEqual(['reviewer-qa'])
+      expect((await t.cards()).map((x) => x.kind)).toEqual(['revert-suggestion'])
+    } finally {
+      await w.stop()
+    }
+  })
+
   it('calls onProtectedChange for project.md, archive and policies, not for tickets', async () => {
     const t = await setup()
     const calls: number[] = []

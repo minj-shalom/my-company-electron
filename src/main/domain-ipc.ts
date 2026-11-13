@@ -222,11 +222,14 @@ export function trustedHandler<E, R>(
   }
 }
 
-/** 가드레일을 쓸 수 없는 환경(userData 없음, 회사 없음)에서도 앱 함수는 그대로 동작한다. 가드레일 오류가 쓰기 결과를 바꾸지 않는다. */
-export function appWrite<R>(
+/**
+ * 앱 함수를 가드레일 창으로 감싼다. userData가 없는 환경(테스트, 가드레일 미구성)에서는 그대로 실행한다.
+ * 가드레일이 앞 정리를 못 하면(상태 읽기 실패 등) 쓰기를 거부한다 (fail-closed).
+ */
+export function appWrite(
   deps: Pick<DomainDeps, 'context' | 'userDataDir'>,
-  fn: (arg: unknown) => Promise<R>
-): (arg: unknown) => Promise<R> {
+  fn: (arg: unknown) => Promise<ApiResult<unknown>>
+): (arg: unknown) => Promise<ApiResult<unknown>> {
   return async (arg) => {
     if (deps.userDataDir === undefined) return fn(arg)
     let svc
@@ -235,7 +238,11 @@ export function appWrite<R>(
     } catch {
       return fn(arg)
     }
-    return svc.withAppWrite('ceo-ui', () => fn(arg))
+    try {
+      return await svc.withAppWrite('ceo-ui', () => fn(arg))
+    } catch {
+      return fail('internal', '인사 변경 검증을 마치지 못해 지금은 변경할 수 없습니다.')
+    }
   }
 }
 
@@ -290,8 +297,8 @@ export function registerDomainHandlers(deps: DomainDeps): void {
   handle(IPC_CHANNELS.gateKillSwitchSet, write(h.setKillSwitch))
   handle(IPC_CHANNELS.auditSummary, h.getAuditSummary)
   handle(IPC_CHANNELS.employeeQuarantined, () => h.getQuarantined())
-  handle(IPC_CHANNELS.integrityRestore, () => h.restoreIntegrity())
-  handle(IPC_CHANNELS.integrityAccept, () => h.acceptIntegrity())
+  handle(IPC_CHANNELS.integrityRestore, h.restoreIntegrity)
+  handle(IPC_CHANNELS.integrityAccept, h.acceptIntegrity)
   // 다이얼로그는 main에서만 연다. renderer는 입력 없이 호출하고, 고른 경로 문자열만 받는다 (입력은 무시한다).
   ipcMain.handle(IPC_CHANNELS.projectSelectFolder, (event) => {
     if (!isTrustedSender(event)) throw new Error('Untrusted sender')
