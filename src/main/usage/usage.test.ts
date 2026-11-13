@@ -17,6 +17,7 @@ import { createUsageAlertLog } from './usage-alerts'
 import { buildUsageRecord, parseUsageFile, parseUsageLine } from './usage-record'
 import { UsageService } from './usage-service'
 import { createUsageStore, USAGE_DIR } from './usage-store'
+import { inWindow } from './usage-aggregate'
 import { weekWindow } from './usage-window'
 
 const usage = (o: Partial<ProviderUsage> = {}): ProviderUsage => ({
@@ -77,6 +78,18 @@ describe('week window', () => {
     // 초기화 요일 당일이라도 초기화 시각 전이면 지난 구간이다.
     const early = weekWindow(new Date('2026-01-12T03:00:00'), { resetWeekday: 1, resetHour: 9 })
     expect(early.start.getDate()).toBe(5)
+  })
+})
+
+describe('window boundaries', () => {
+  it('includes exactly start and excludes exactly end', () => {
+    const w = weekWindow(at('2026-01-07'), USAGE_SETTINGS_DEFAULT)
+    const r = (t: number): ReturnType<typeof buildUsageRecord> =>
+      buildUsageRecord('claude', usage(), {}, new Date(t))
+    expect(inWindow(r(w.start.getTime()), w)).toBe(true)
+    expect(inWindow(r(w.start.getTime() - 1), w)).toBe(false)
+    expect(inWindow(r(w.end.getTime() - 1), w)).toBe(true)
+    expect(inWindow(r(w.end.getTime()), w)).toBe(false)
   })
 })
 
@@ -211,11 +224,14 @@ describe('store, alerts, service', () => {
     expect(await cards()).toHaveLength(1)
     await svc.record('claude', usage({ costUsd: 3 }), {}) // 115%
     expect(await cards()).toHaveLength(2)
-    expect((await svc.checkLimit()).ok).toBe(false)
+    expect(await svc.checkLimit(['claude'])).toMatchObject({ ok: false, cardHandled: true })
+    // 다른 제공자 실행은 막지 않는다.
+    expect((await svc.checkLimit(['codex'])).ok).toBe(true)
+    expect(await cards()).toHaveLength(2)
     // 한도 초기화 후: 집계가 0에서 다시 시작하고 경고도 새로 가능하다.
     nowMs = at('2026-01-14').getTime()
     expect((await svc.widget()).total.requests).toBe(0)
-    expect((await svc.checkLimit()).ok).toBe(true)
+    expect((await svc.checkLimit(['claude'])).ok).toBe(true)
     await svc.record('claude', usage({ costUsd: 9 }), {})
     expect(await cards()).toHaveLength(3)
   })
@@ -225,6 +241,6 @@ describe('store, alerts, service', () => {
     const svc = mk()
     await svc.record('claude', usage({ costUsd: 100 }), {})
     expect(await cards()).toHaveLength(0)
-    expect((await svc.checkLimit()).ok).toBe(true)
+    expect((await svc.checkLimit(['claude'])).ok).toBe(true)
   })
 })

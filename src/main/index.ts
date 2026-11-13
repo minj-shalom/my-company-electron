@@ -94,7 +94,15 @@ app
         const deps = tickDepsFor({
           context: companyContext,
           userDataDir: app.getPath('userData'),
-          checkLimit: () => usageServiceFor(usageDeps).checkLimit(),
+          checkLimit: (employeeIds) =>
+            usageServiceFor(usageDeps).checkLimit([
+              ...new Set(
+                (employeeIds.length > 0 ? employeeIds : [undefined]).map((id) => {
+                  const r = selection.resolve(id)
+                  return r.ok ? r.provider : 'claude'
+                })
+              )
+            ]),
           // 쓸 수 있는 제공자가 없으면 claude 어댑터가 시작 때 cli-not-found로 거부한다 (안내 문구는 기존 실패 경로).
           createAdapter: (cwd, employeeId, run) => {
             const r = selection.resolve(employeeId)

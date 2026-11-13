@@ -91,7 +91,7 @@ export function createTickRunner(
   }
 
   /** 한도 점검 주입이 없거나 실패하면 실행하지 않는다. 초과 위험이면 결정 카드를 하루 한 번만 남긴다. */
-  async function limitGate(sel: Selected | null, r: Report): Promise<boolean> {
+  async function limitGate(sel: Selected | null, hrPending: boolean, r: Report): Promise<boolean> {
     if (!deps.checkLimit) {
       r.outcome = 'blocked'
       r.failure = '한도 점검이 연결되지 않아 실행하지 않았어요.'
@@ -99,7 +99,7 @@ export function createTickRunner(
     }
     let check
     try {
-      check = await deps.checkLimit()
+      check = await deps.checkLimit([...(sel ? [sel.assignee] : []), ...(hrPending ? ['hr'] : [])])
     } catch {
       r.outcome = 'blocked'
       r.failure = '한도 점검에 실패해 실행하지 않았어요.'
@@ -109,7 +109,7 @@ export function createTickRunner(
     r.outcome = 'blocked'
     r.failure = `한도 초과 위험: ${check.reason}`
     const now = deps.now().getTime()
-    if (now - shared.lastLimitCardAt >= CARD_COOLDOWN_MS) {
+    if (!check.cardHandled && now - shared.lastLimitCardAt >= CARD_COOLDOWN_MS) {
       try {
         const id = await deps.createCard({
           title: '사용량 한도 위험으로 틱을 실행하지 않았어요',
@@ -249,7 +249,7 @@ export function createTickRunner(
       if (sel === null && !hrPending) {
         // 실행할 것이 없으면 한도 점검도 필요 없다.
       } else if (ctx.signal.aborted) r.outcome = 'cancelled'
-      else if (await limitGate(sel, r)) {
+      else if (await limitGate(sel, hrPending, r)) {
         // hr 전용 실행도 LLM 실행이므로 한도 점검을 통과한 뒤에만 한다.
         if (hrPending) await runHr(ctx.signal, r)
         if (sel !== null) {

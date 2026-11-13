@@ -52,6 +52,8 @@ export interface TickRunInfo {
 export interface LimitCheck {
   /** false면 실행하지 않는다. */
   ok: boolean
+  /** true면 점검 쪽이 이미 결정 카드를 관리하므로(중복 방지 포함) 틱이 한도 카드를 따로 만들지 않는다. */
+  cardHandled?: boolean
   /** 브리핑과 카드에 쓰는 한국어 사유. */
   reason: string
 }
@@ -88,7 +90,8 @@ export interface TickDeps {
    * CFO 한도 점검(T-019). 주입이 없거나 던지면 실행하지 않는다 (가장 보수적).
    * 반복 업무로 생긴 티켓(T-049)도 같은 점검을 통과해야 한다.
    */
-  checkLimit?: () => Promise<LimitCheck>
+  /** 이번 틱에서 실제로 실행할 직원 id들(티켓 담당, hr 실행)을 받아 그 직원의 제공자 기준으로만 점검한다. */
+  checkLimit?: (employeeIds: readonly string[]) => Promise<LimitCheck>
   /** T-052 도구 브리지 연결(T-053 게이트). 없거나 실패하면 모든 동작은 `매번 컨펌`이고 푸시·머지·발행 도구는 없다. */
   prepareToolRun?: (
     req: GateRunRequest,
