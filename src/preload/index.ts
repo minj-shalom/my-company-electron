@@ -65,6 +65,9 @@ const api: WindowApi = {
   saveProviderSelection: (req) => ipcRenderer.invoke(IPC_CHANNELS.providerSelectionSave, req),
   getWeeklyLimits: () => ipcRenderer.invoke(IPC_CHANNELS.settingsWeeklyLimitsGet),
   saveWeeklyLimits: (req) => ipcRenderer.invoke(IPC_CHANNELS.settingsWeeklyLimitsSave, req),
+  getUsageWidget: () => ipcRenderer.invoke(IPC_CHANNELS.usageWidget),
+  getUsageSettings: () => ipcRenderer.invoke(IPC_CHANNELS.usageSettingsGet),
+  saveUsageSettings: (req) => ipcRenderer.invoke(IPC_CHANNELS.usageSettingsSave, req),
   onRunEvent: (listener) => {
     // IpcRendererEvent를 renderer에 넘기지 않고 payload만 전달한다.
     const handler = (_: IpcRendererEvent, event: Parameters<typeof listener>[0]): void =>

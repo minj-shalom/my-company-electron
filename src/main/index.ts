@@ -10,6 +10,8 @@ import { registerDomainHandlers } from './domain-ipc'
 import { ProviderService } from './providers/provider-service'
 import { createWeeklyLimitsStore } from './settings/weekly-limits-store'
 import { registerRunHandlers } from './run-ipc'
+import { registerUsageHandlers } from './usage/usage-ipc'
+import { usageRecorder, usageServiceFor } from './usage/usage-runtime'
 import { ClaudeAdapter } from './providers/claude/claude-adapter'
 import { createProviderAdapter, providerSelectionFor } from './providers/provider-selection-ipc'
 import type { ProviderAdapter } from './providers/types'
@@ -52,6 +54,7 @@ app
       store: createLastCompanyStore(app.getPath('userData'))
     })
     registerCompanyHandlers(new CompanyService({ context: companyContext }))
+    const usageDeps = { context: companyContext, userDataDir: app.getPath('userData') }
     const providerService = new ProviderService()
     providers = providerService
     registerDomainHandlers({
@@ -68,10 +71,15 @@ app
       new Promise<void>((resolve) => setTimeout(resolve, RESTORE_TIMEOUT_MS).unref())
     ])
     // 회사 폴더 설정은 후속 티켓에서 도입한다. 그 전까지는 앱 실행 디렉터리를 cwd로 쓴다.
-    runner = new ClaudeAdapter({ cwd: process.cwd() })
+    // run:start는 직원·티켓을 알 수 없으므로 귀속은 미분류/회사 공통이다.
+    runner = new ClaudeAdapter({
+      cwd: process.cwd(),
+      onUsage: usageRecorder(usageDeps, 'claude', {})
+    })
     registerRunHandlers(runner)
+    registerUsageHandlers(usageDeps)
     // 스케줄러는 열린 회사 1개만 다룬다. 틱은 회사에 묶인 입력으로 틱마다 새로 만들고, 한도 카드 쿨다운만 공유한다.
-    // 한도 점검(T-019)이 연결되기 전에는 틱이 COO를 실행하지 않고 브리핑만 남긴다 (가장 보수적).
+    // 한도 점검은 CFO 사용량 집계(T-019)에 연결되어 있고, 점검이 실패하면 틱은 실행하지 않는다 (가장 보수적).
     const tickShared: TickShared = { lastLimitCardAt: 0 }
     const sched = new Scheduler({
       ...companyBoundDeps(companyContext, app.getPath('userData')),
@@ -86,10 +94,21 @@ app
         const deps = tickDepsFor({
           context: companyContext,
           userDataDir: app.getPath('userData'),
+          checkLimit: () => usageServiceFor(usageDeps).checkLimit(),
           // 쓸 수 있는 제공자가 없으면 claude 어댑터가 시작 때 cli-not-found로 거부한다 (안내 문구는 기존 실패 경로).
-          createAdapter: (cwd, employeeId) => {
+          createAdapter: (cwd, employeeId, run) => {
             const r = selection.resolve(employeeId)
-            return createProviderAdapter(r.ok ? r.provider : 'claude', cwd)
+            const provider = r.ok ? r.provider : 'claude'
+            return createProviderAdapter(
+              provider,
+              cwd,
+              // 직원 귀속은 이 실행을 맡긴 직원이다. 모르면 null(미분류)로 둔다.
+              usageRecorder(usageDeps, provider, {
+                employee: employeeId ?? null,
+                ticket: run?.ticketId ?? null,
+                project: run?.projectId ?? null
+              })
+            )
           }
         })
         await createTickRunner(deps, tickShared)(ctx)

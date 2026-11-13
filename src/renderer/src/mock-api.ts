@@ -1,4 +1,5 @@
 import type { WindowApi } from '../../shared/api'
+import { USAGE_SETTINGS_DEFAULT } from '../../shared/usage'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
@@ -137,5 +138,27 @@ export const mockApi: WindowApi = {
   }),
   saveProviderSelection: async (req) => ({ ok: true, value: req }),
   getWeeklyLimits: mockGetWeeklyLimits,
-  saveWeeklyLimits: mockSaveWeeklyLimits
+  saveWeeklyLimits: mockSaveWeeklyLimits,
+  // 사용량 위젯 화면은 T-038(ui-dev)에서 시나리오 mock으로 바꾼다. 그 전까지는 빈 집계만 돌려준다.
+  getUsageWidget: async () => ({
+    ok: true,
+    value: {
+      windowStart: '2026-01-05T00:00:00.000Z',
+      windowEnd: '2026-01-12T00:00:00.000Z',
+      settings: { ...USAGE_SETTINGS_DEFAULT },
+      providers: [],
+      byProject: [],
+      byEmployee: [],
+      total: {
+        requests: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: null
+      }
+    }
+  }),
+  getUsageSettings: async () => ({ ok: true, value: { ...USAGE_SETTINGS_DEFAULT } }),
+  saveUsageSettings: async (req) => ({ ok: true, value: req })
 }

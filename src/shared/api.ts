@@ -57,6 +57,7 @@ import type {
 } from './provider'
 import type { ProviderSelection } from './provider-selection'
 import type { ApiResult } from './result'
+import type { UsageSettings, UsageWidgetData } from './usage'
 import type {
   Ticket,
   TicketCreateRequest,
@@ -215,6 +216,15 @@ export interface WindowApi {
   /** 주간 한도 전체를 교체 저장한다. 목록에 없는 제공자는 한도 없음. 토큰/인증 정보는 이 계약에 없다. */
   saveWeeklyLimits: (req: WeeklyLimitsSaveRequest) => Promise<ApiResult<WeeklyLimit[]>>
   /**
+   * CFO 사용량 위젯 데이터(T-019, 화면은 T-038). 열린 회사의 이번 주간 구간 집계(회사 단위 합계, 제공자·프로젝트·직원별)다.
+   * 인증·토큰 값은 없다. 입력 없음.
+   */
+  getUsageWidget: () => Promise<ApiResult<UsageWidgetData>>
+  /** 경고 기준(%), 환율, 한도 초기화 요일·시각. 저장된 값이 없으면 기본값. */
+  getUsageSettings: () => Promise<ApiResult<UsageSettings>>
+  /** 전체 교체 저장. 범위 밖 값이 있으면 `invalid-request`로 거부한다 (validateUsageSettings). */
+  saveUsageSettings: (req: UsageSettings) => Promise<ApiResult<UsageSettings>>
+  /**
    * 오토파일럿 스케줄러(T-015). 설정(간격·활동 시간·켜기/끄기)은 `company/schedule.md`가 원본이고 이 API로는 쓰지 않는다.
    * `runSchedulerNow`는 설정과 무관하게 한 번 실행을 시작한다(틱 완료를 기다리지 않음). 이미 실행 중이면 `{ started: false, reason: 'busy' }`.
    */
@@ -281,5 +291,8 @@ export const IPC_CHANNELS = {
   providerSelectionGet: 'provider:selection-get',
   providerSelectionSave: 'provider:selection-save',
   settingsWeeklyLimitsGet: 'settings:weekly-limits-get',
-  settingsWeeklyLimitsSave: 'settings:weekly-limits-save'
+  settingsWeeklyLimitsSave: 'settings:weekly-limits-save',
+  usageWidget: 'usage:widget',
+  usageSettingsGet: 'usage:settings-get',
+  usageSettingsSave: 'usage:settings-save'
 } as const

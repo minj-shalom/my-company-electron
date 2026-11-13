@@ -42,6 +42,13 @@ export interface TickRequests {
   proposeAssignment(input: AssignmentProposalInput): Promise<void>
 }
 
+/** 어댑터를 만들 때 함께 넘기는 실행 귀속 정보. 사용량 기록(T-019)이 프로젝트·티켓을 남기는 데 쓴다. */
+export interface TickRunInfo {
+  ticketId: string
+  /** 회사 공통 티켓이면 null. */
+  projectId: string | null
+}
+
 export interface LimitCheck {
   /** false면 실행하지 않는다. */
   ok: boolean
@@ -71,7 +78,7 @@ export interface TickDeps {
    */
   resolveProjectDir: (projectId: string) => Promise<string | null>
   /** cwd마다 어댑터를 만든다 (어댑터의 cwd는 생성 시 고정). 실행은 spawn + 인자 배열이다. */
-  createAdapter: (cwd: string, employeeId?: string) => ProviderAdapter
+  createAdapter: (cwd: string, employeeId?: string, run?: TickRunInfo) => ProviderAdapter
   /** `company/reports/<id>.md`에 쓴다 (SafeFs, 덮어쓰기 없음). 같은 id가 있으면 false. */
   writeReport: (id: string, markdown: string) => Promise<'written' | 'exists'>
   createCard: (input: DecisionCardInput) => Promise<string>
