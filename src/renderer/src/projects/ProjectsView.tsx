@@ -16,13 +16,13 @@ import { AddProjectDialog, ConfirmDialog, PmDialog, RenameDialog } from './Proje
 import { ProjectCard, type ProjectAction } from './ProjectCard'
 import {
   LEGACY_NOTE,
-  SCRIPT_KEY_NOTE,
   addProjectFlow,
   archiveProject,
   assignPm,
   clearPm,
   pickFolder,
   rankPms,
+  unreadableLabel,
   renameProject,
   restoreProject,
   type ActionResult,
@@ -154,7 +154,6 @@ export function ProjectsView({
       {load.kind === 'ready' && (
         <UnassignedSection org={orgSnapshot} failed={org.status.kind === 'error'} />
       )}
-      <p className="hint projects__script-note">{SCRIPT_KEY_NOTE}</p>
 
       {dialog?.kind === 'add' && load.kind === 'ready' && (
         <AddProjectDialog
@@ -176,6 +175,7 @@ export function ProjectsView({
         <PolicyDialog
           projectId={dialog.project.id}
           projectName={dialog.project.name}
+          projectType={dialog.project.type}
           onClose={close}
           onSaved={policies.reload}
         />
@@ -298,7 +298,7 @@ function ProjectsBody({
       )}
       <UnreadableNotice
         items={list.unreadable.map((u) => ({
-          path: `project.md ${u.line}번째 줄`,
+          path: unreadableLabel(u.line),
           reason: u.reason
         }))}
         summary={(n) => `읽지 못한 프로젝트 블록 ${n}건`}

@@ -48,10 +48,13 @@ describe('ProjectsView states', () => {
   it('empty', () => {
     expect(view(ready([], 'empty'))).toContain('아직 등록한 프로젝트가 없어요')
   })
-  it('always shows the script key note, legacy note when legacy', () => {
-    expect(view(ready([p()]))).toContain('스크립트용 키')
-    expect(view(ready([p()]))).not.toContain('기존 단일 형식')
-    expect(view(ready([p()], 'legacy'))).toContain('기존 단일 형식')
+  it('shows no script or file jargon; legacy note only when legacy', () => {
+    const jargon = /스크립트|project\.md|scripts\/|dev_command|project_dir|dev 명령|기본 브랜치/
+    expect(view(ready([p()]))).not.toMatch(jargon)
+    expect(view(ready([p()]))).not.toContain('이전 형식')
+    const legacy = view(ready([p()], 'legacy'))
+    expect(legacy).toContain('이전 형식')
+    expect(legacy).not.toMatch(jargon)
   })
   it('hides archived behind a toggle and unreadable shows a notice', () => {
     const html = view({
@@ -65,6 +68,8 @@ describe('ProjectsView states', () => {
     })
     expect(html).toContain('보관된 프로젝트 1건 보기')
     expect(html).toContain('읽지 못한 프로젝트 블록 1건')
+    expect(html).toContain('프로젝트 설정 3번째 항목')
+    expect(html).not.toContain('project.md')
   })
 })
 
