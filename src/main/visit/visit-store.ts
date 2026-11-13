@@ -16,6 +16,11 @@ export interface CompanyVisitState {
 export interface VisitStore {
   load(companyTag: string): Promise<CompanyVisitState>
   save(companyTag: string, state: CompanyVisitState): Promise<void>
+  /** 직렬화 큐 안에서 현재 값을 읽어 fn으로 바꾸고 저장한다. 동시 갱신이 서로의 필드를 덮어쓰지 않는다. */
+  updateCompany(
+    companyTag: string,
+    fn: (current: CompanyVisitState) => CompanyVisitState
+  ): Promise<void>
   loadNotifyEnabled(): Promise<boolean>
   saveNotifyEnabled(enabled: boolean): Promise<void>
 }
@@ -99,6 +104,14 @@ export function createVisitStore(userDataDir: string): VisitStore {
         const keys = Object.keys(raw.companies)
         for (const k of keys.slice(0, Math.max(0, keys.length - MAX_COMPANIES)))
           delete raw.companies[k]
+      }),
+    updateCompany: (tag, fn) =>
+      update((raw) => {
+        const next = fn(raw.companies[tag] ?? { lastVisitAt: null, notified: [] })
+        raw.companies[tag] = {
+          lastVisitAt: next.lastVisitAt,
+          notified: next.notified.slice(-MAX_NOTIFIED)
+        }
       }),
     async loadNotifyEnabled() {
       await queue

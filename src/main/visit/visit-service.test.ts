@@ -177,3 +177,39 @@ describe('decision notifier', () => {
     expect(await svc.takeUnnotified()).toHaveLength(0)
   })
 })
+
+describe('visit service robustness', () => {
+  it('takeUnnotified does not overwrite a concurrent markSeen', async () => {
+    const { root, store, fs } = await setup()
+    await store.save('c1', { lastVisitAt: T0.getTime(), notified: [] })
+    await put(
+      root,
+      'company/decisions/pending/D-002-b.md',
+      '# D-002: x\n',
+      new Date(T0.getTime() + 1000)
+    )
+    const later = new Date('2026-11-14T13:00:00Z')
+    const svc = new VisitService({ fs, companyTag: 'c1', store, now: () => later })
+    const [taken] = await Promise.all([svc.takeUnnotified(), svc.markSeen()])
+    expect(taken).toHaveLength(1)
+    const st = await store.load('c1')
+    expect(st.lastVisitAt).toBe(later.getTime())
+    expect(st.notified).toEqual(['D-002'])
+  })
+
+  it('falls back to null audit when the audit source fails', async () => {
+    const { store, fs } = await setup()
+    await store.save('c1', { lastVisitAt: T0.getTime(), notified: [] })
+    const svc = new VisitService({
+      fs,
+      companyTag: 'c1',
+      store,
+      now: () => NOW,
+      audit: () => Promise.reject(new Error('boom')),
+      killSwitch: () => Promise.reject(new Error('boom'))
+    })
+    const s = await svc.summary()
+    expect(s.audit).toBeNull()
+    expect(s.killSwitch).toBeNull()
+  })
+})

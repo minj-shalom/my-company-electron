@@ -177,33 +177,36 @@ export class VisitService {
   /** 요약을 확인했을 때 호출한다. 시각은 서버(main) 시계로만 기록하고 입력을 받지 않는다. */
   async markSeen(): Promise<Date> {
     const at = this.now()
-    const state = await this.deps.store.load(this.deps.companyTag)
-    await this.deps.store.save(this.deps.companyTag, { ...state, lastVisitAt: at.getTime() })
+    await this.deps.store.updateCompany(this.deps.companyTag, (cur) => ({
+      ...cur,
+      lastVisitAt: at.getTime()
+    }))
     return at
   }
 
   /**
    * 알림 대상 점검. 마지막 방문 이후 새로 생겼고 아직 알리지 않은 카드만 돌려주고 알림 기록에 남긴다.
    * 방문 기록이 없으면 지금을 기준으로 삼고 알리지 않는다 (기존 카드 폭주 방지).
+   * 저장은 notified만 병합한다: 스캔 중 markSeen이 갱신한 lastVisitAt을 옛 값으로 되돌리지 않는다.
    */
   async takeUnnotified(): Promise<VisitItem[]> {
-    const state = await this.deps.store.load(this.deps.companyTag)
+    const tag = this.deps.companyTag
+    const state = await this.deps.store.load(tag)
     if (state.lastVisitAt === null) {
-      await this.deps.store.save(this.deps.companyTag, {
-        notified: [],
-        lastVisitAt: this.now().getTime()
-      })
+      await this.deps.store.updateCompany(tag, (cur) =>
+        cur.lastVisitAt === null ? { notified: [], lastVisitAt: this.now().getTime() } : cur
+      )
       return []
     }
-    const fresh = (await this.newPendingDecisions(state.lastVisitAt)).filter(
-      (d) => !state.notified.includes(d.id)
-    )
-    if (fresh.length > 0)
-      await this.deps.store.save(this.deps.companyTag, {
-        ...state,
-        notified: [...state.notified, ...fresh.map((d) => d.id)]
-      })
-    return fresh
+    const candidates = await this.newPendingDecisions(state.lastVisitAt)
+    let taken: VisitItem[] = []
+    await this.deps.store.updateCompany(tag, (cur) => {
+      taken = candidates.filter((d) => !cur.notified.includes(d.id))
+      return taken.length === 0
+        ? cur
+        : { ...cur, notified: [...cur.notified, ...taken.map((d) => d.id)] }
+    })
+    return taken
   }
 }
 
