@@ -41,6 +41,24 @@ export function createTickRunner(
   deps: TickDeps,
   shared: TickShared = { lastLimitCardAt: 0 }
 ): (ctx: TickContext) => Promise<void> {
+  async function pendingHr(r: Report): Promise<boolean> {
+    if (!deps.hr) return false
+    try {
+      return (await deps.hr.pending()) > 0
+    } catch {
+      r.notes.push('hr 전용 실행에 실패했어요.')
+      return false
+    }
+  }
+
+  async function runHr(signal: AbortSignal, r: Report): Promise<void> {
+    try {
+      await deps.hr?.run(signal)
+    } catch {
+      r.notes.push('hr 전용 실행에 실패했어요.')
+    }
+  }
+
   async function applyEffects(effects: SideEffect[], r: Report): Promise<void> {
     for (const e of effects) {
       const label =
@@ -73,7 +91,7 @@ export function createTickRunner(
   }
 
   /** 한도 점검 주입이 없거나 실패하면 실행하지 않는다. 초과 위험이면 결정 카드를 하루 한 번만 남긴다. */
-  async function limitGate(sel: Selected, r: Report): Promise<boolean> {
+  async function limitGate(sel: Selected | null, r: Report): Promise<boolean> {
     if (!deps.checkLimit) {
       r.outcome = 'blocked'
       r.failure = '한도 점검이 연결되지 않아 실행하지 않았어요.'
@@ -95,8 +113,8 @@ export function createTickRunner(
       try {
         const id = await deps.createCard({
           title: '사용량 한도 위험으로 틱을 실행하지 않았어요',
-          ticketId: sel.ticket.id,
-          question: `한도 초과 위험으로 ${sel.ticket.id} 실행을 보류했습니다. 계속할까요?`,
+          ticketId: sel?.ticket.id ?? null,
+          question: `한도 초과 위험으로 ${sel?.ticket.id ?? '인사 요청 처리'} 실행을 보류했습니다. 계속할까요?`,
           impact: check.reason
         })
         shared.lastLimitCardAt = now
@@ -216,22 +234,22 @@ export function createTickRunner(
       plan: null
     }
     try {
-      if (deps.hr) {
-        try {
-          if ((await deps.hr.pending()) > 0) await deps.hr.run(ctx.signal)
-        } catch {
-          r.notes.push('hr 전용 실행에 실패했어요.')
-        }
-      }
       const snapshot = await deps.loadSnapshot()
       r.plan = planTick(snapshot, ctx.allowedProjectIds)
       await applyEffects(r.plan.effects, r)
       const sel = r.plan.selected
       if (sel === null) r.outcome = r.plan.skipped.length > 0 ? 'blocked' : 'idle'
-      else {
-        r.ticketId = sel.ticket.id
-        if (ctx.signal.aborted) r.outcome = 'cancelled'
-        else if (await limitGate(sel, r)) await execute(sel, ctx, r)
+      const hrPending = await pendingHr(r)
+      if (sel === null && !hrPending) {
+        // 실행할 것이 없으면 한도 점검도 필요 없다.
+      } else if (ctx.signal.aborted) r.outcome = 'cancelled'
+      else if (await limitGate(sel, r)) {
+        // hr 전용 실행도 LLM 실행이므로 한도 점검을 통과한 뒤에만 한다.
+        if (hrPending) await runHr(ctx.signal, r)
+        if (sel !== null) {
+          r.ticketId = sel.ticket.id
+          await execute(sel, ctx, r)
+        }
       }
     } catch {
       r.outcome = 'failed'

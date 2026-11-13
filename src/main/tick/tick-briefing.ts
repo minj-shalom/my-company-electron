@@ -1,3 +1,4 @@
+import { fenceFor } from './tick-fence'
 import type { Skip } from './tick-plan'
 
 export type TickOutcome = 'ok' | 'failed' | 'timeout' | 'cancelled' | 'idle' | 'blocked'
@@ -56,8 +57,11 @@ export function renderBriefing(i: BriefingInput): string {
       : '- 실행한 작업 없음'
   )
   out.push('', '## 결과')
-  if (i.resultText) out.push('````text', clean(i.resultText).slice(0, MAX_RESULT_CHARS), '````')
-  else out.push(`- ${OUTCOME_LABEL[i.outcome]}`)
+  if (i.resultText) {
+    const text = clean(i.resultText).slice(0, MAX_RESULT_CHARS)
+    const fence = fenceFor(text)
+    out.push(`${fence}text`, text, fence)
+  } else out.push(`- ${OUTCOME_LABEL[i.outcome]}`)
   out.push('', '## 막힌 점')
   const blocked = [
     ...(i.failure ? [i.failure] : []),

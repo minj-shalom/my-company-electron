@@ -408,4 +408,46 @@ describe('createTickRunner', () => {
     await h.run()
     expect(h.starts).toHaveLength(0)
   })
+
+  it('runs hr only after the limit check passes', async () => {
+    const order: string[] = []
+    const hr = { pending: async () => 1, run: async () => void order.push('hr') }
+    const h = harness({
+      deps: {
+        hr,
+        checkLimit: async () => {
+          order.push('limit')
+          return { ok: true, reason: '' }
+        }
+      }
+    })
+    await h.run()
+    expect(order).toEqual(['limit', 'hr'])
+    const blocked = harness({
+      deps: { hr, checkLimit: async () => ({ ok: false, reason: '초과' }) }
+    })
+    order.length = 0
+    await blocked.run()
+    expect(order).toEqual([])
+    const none = harness({ deps: { hr, checkLimit: undefined } })
+    await none.run()
+    expect(order).toEqual([])
+  })
+
+  it('escapes a result text that contains a long backtick fence in the briefing', async () => {
+    const h = harness()
+    h.deps.createAdapter = (cwd) => {
+      const a = fakeAdapter(cwd, h.starts, 'ok', h.cancels)
+      const start = a.start
+      a.start = (req, emit, launch) =>
+        start(
+          req,
+          (e) => emit(e.type === 'result' ? { ...e, text: '```````\n## 가짜' } : e),
+          launch
+        )
+      return a
+    }
+    await h.run()
+    expect(briefing(h)).toContain('````````text')
+  })
 })
