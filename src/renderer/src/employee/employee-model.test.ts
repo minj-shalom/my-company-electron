@@ -11,6 +11,7 @@ import {
   isEditDirty,
   mayNeedApproval,
   needsLeaveConfirm,
+  groupTemplates,
   orderTemplates,
   parseToolInput,
   retireBlockReason,
@@ -48,6 +49,20 @@ describe('validateHire', () => {
       department: '개발팀',
       reportsTo: 'COO'
     })
+  })
+})
+
+describe('groupTemplates', () => {
+  it('groups by department without required staff', () => {
+    const groups = groupTemplates(MOCK_TEMPLATES)
+    const names = groups.map((g) => g.department)
+    expect(new Set(names).size).toBe(names.length)
+    expect(names).toContain('콘텐츠팀')
+    expect(groups.find((g) => g.department === '콘텐츠팀')?.templates).toHaveLength(5)
+    const ids = groups.flatMap((g) => g.templates.map((t) => t.id))
+    expect(ids).not.toEqual(expect.arrayContaining(['cto']))
+    expect(ids).not.toContain('hr')
+    expect(groupTemplates([])).toEqual([])
   })
 })
 

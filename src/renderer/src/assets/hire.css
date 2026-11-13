@@ -224,3 +224,14 @@
   border: 0;
   cursor: pointer;
 }
+.hire-group {
+  margin-top: var(--space-3);
+}
+.hire-group__title {
+  margin: 0;
+  padding-bottom: var(--space-1);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-3);
+  color: var(--text-muted);
+  border-bottom: var(--bw) solid var(--border);
+}
