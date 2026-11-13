@@ -2,6 +2,7 @@ import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { BreakdownSection } from './BreakdownSection'
 import { CompanyProfileSection } from './CompanyProfileSection'
+import { ExternalConnectionsSection } from './ExternalConnectionsSection'
 import { LimitsSection } from './LimitsSection'
 import { PrefsSection } from './PrefsSection'
 import { ProvidersSection } from './ProvidersSection'
@@ -67,6 +68,7 @@ export function SettingsView({
             onRecheck={recheck}
             onSaved={reload}
           />
+          <ExternalConnectionsSection />
           <ThemeSection />
         </div>
       )}

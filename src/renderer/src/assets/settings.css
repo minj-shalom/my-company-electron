@@ -171,3 +171,30 @@
 .profile-dirty {
   align-self: center;
 }
+
+.connection-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.connection-item {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.connection-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.connection-item p {
+  margin: var(--space-1) 0;
+}
+.connection-item__accounts,
+.connection-item__scopes {
+  margin: var(--space-1) 0;
+  padding-left: var(--space-4);
+}
