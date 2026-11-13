@@ -11,72 +11,7 @@ export interface AllowRule {
 }
 
 const MAX_COMMAND = 300
-const MAX_RULE = 400
 const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
-
-/** 규칙 문법을 깨거나 여러 명령을 이어 붙이는 문자. 와일드카드는 사람이 직접 쓰기 전에는 만들지 않는다. */
-// 제어문자 검사가 목적이므로 no-control-regex를 끈다.
-// eslint-disable-next-line no-control-regex
-const COMMAND_FORBIDDEN = /[\0-\x1f\x7f*()[\]{}`$;&|<>\\!]/
-/** 자격 증명이 들어 있을 수 있는 명령은 카드(파일)에 남기지 않는다. */
-const SECRET_HINT = /(token|secret|passw|authorization|bearer|api[_-]?key|credential)/i
-const DANGEROUS_FIRST_TOKEN = new Set([
-  'sudo',
-  'su',
-  'rm',
-  'dd',
-  'chmod',
-  'chown',
-  'curl',
-  'wget',
-  'ssh',
-  'scp',
-  'eval',
-  'sh',
-  'bash',
-  'zsh',
-  'env',
-  'xargs',
-  'nc',
-  'open',
-  'osascript',
-  'perl',
-  'ruby',
-  'php',
-  'python',
-  'python2',
-  'python3',
-  'node',
-  'deno',
-  'bun',
-  'find'
-])
-/** 앞에 붙어 뒤 명령을 그대로 실행하는 래퍼. 건너뛰고 실제 명령을 본다. */
-const WRAPPERS = new Set(['command', 'nice', 'nohup', 'time', 'exec', 'builtin', 'env'])
-const ENV_ASSIGN = /^[A-Za-z_][A-Za-z0-9_]*=/
-/** 인터프리터의 인라인 코드 실행 옵션(-e, -c, -pe, --eval 등)과 find의 실행·삭제 옵션. */
-const INLINE_CODE_FLAG =
-  /^(-[A-Za-z]*[ecEpr][A-Za-z]*|--eval|--exec|--command|-exec|-execdir|-ok|-okdir|-delete)$/
-
-/** 환경변수 할당과 래퍼를 건너뛴 실제 명령의 이름(경로 제거, 소문자)과 그 뒤 인자. */
-function effectiveCommand(cmd: string): { name: string; args: string[] } {
-  const tokens = cmd.split(/\s+/).filter((t) => t !== '')
-  let i = 0
-  for (;;) {
-    const t = tokens[i]
-    if (t === undefined) return { name: '', args: [] }
-    const base = (t.split('/').pop() ?? '').toLowerCase()
-    if (ENV_ASSIGN.test(t)) i++
-    else if (WRAPPERS.has(base)) {
-      i++
-      // 래퍼의 옵션(`nice -n 5`의 `-n 5`)도 건너뛴다.
-      while (tokens[i] !== undefined && /^(-\S*|\d+)$/.test(tokens[i])) i++
-    } else return { name: base, args: tokens.slice(i + 1) }
-  }
-}
-/** D-012: 푸시·머지·발행·히스토리 재작성은 게이트 밖에서 허용 규칙으로 열 수 없다 (`DENY_RULES`와 같은 범위). */
-const GATED_COMMAND =
-  /\bgit\b.*\b(push|reset|rebase|filter-branch|clean)\b|\bgh\b\s+(pr\s+merge|api|auth|release)\b/i
 /** 에이전트가 쓰지 못해야 하는 경로 조각과 제공자 인증 파일 위치. */
 const PROTECTED_FRAGMENT =
   /(\.claude|\.ssh|\.env|\.git\/|company\/policies|company\/audit|~\/|\.aws|\.npmrc|id_rsa)/i
@@ -89,15 +24,30 @@ const PROTECTED_COMPANY_DIRS = ['company/publishing/', 'company/archive/']
 // eslint-disable-next-line no-control-regex
 const PATH_FORBIDDEN = /[\0-\x1f\x7f*?[\]{}\\!]/
 
+/**
+ * Bash는 허용 목록 방식이다: 아래 명령과 글자 그대로 일치할 때만 규칙 후보가 된다.
+ * 차단 목록은 따옴표 분할, 래퍼, 실행기 변형으로 계속 우회되므로 쓰지 않는다.
+ * 따옴표, 백슬래시, `$`, 환경변수 할당, 래퍼, 추가 인자는 목록에 없으므로 자동으로 거부된다.
+ * 푸시·머지·발행과 파괴적 명령은 목록에 없으며 게이트(D-012)로만 실행된다.
+ */
+const SAFE_COMMANDS: ReadonlySet<string> = new Set([
+  'npm test',
+  'npm run test',
+  'npm run lint',
+  'npm run typecheck',
+  'npm run build',
+  'git status',
+  'git diff',
+  'git diff --stat',
+  'git log',
+  'git log --oneline',
+  'git add -A',
+  'git add .'
+])
+
 export function commandRule(command: string): AllowRule | null {
-  const cmd = command.trim()
-  if (cmd.length === 0 || cmd.length > MAX_COMMAND || COMMAND_FORBIDDEN.test(cmd)) return null
-  if (SECRET_HINT.test(cmd) || GATED_COMMAND.test(cmd) || PROTECTED_FRAGMENT.test(cmd)) return null
-  const eff = effectiveCommand(cmd)
-  if (eff.name === '' || DANGEROUS_FIRST_TOKEN.has(eff.name)) return null
-  if (eff.args.some((a) => INLINE_CODE_FLAG.test(a))) return null
-  const rule = `Bash(${cmd})`
-  return rule.length <= MAX_RULE ? { rule, summary: `명령 실행: ${cmd}` } : null
+  if (!SAFE_COMMANDS.has(command)) return null
+  return { rule: `Bash(${command})`, summary: `명령 실행: ${command}` }
 }
 
 function isProtectedRel(raw: string): boolean {

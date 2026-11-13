@@ -48,6 +48,21 @@ describe('deriveAllowRule', () => {
     'npm *',
     'export TOKEN=abc',
     'x'.repeat(301),
+    '"rm" x',
+    "r''m x",
+    'env -u FOO rm x',
+    'python3.12 -c 1',
+    'timeout 5 rm x',
+    'npx x',
+    'npm test ',
+    'npm  test',
+    'npm test x',
+    'npm run lint --fix',
+    'git add src',
+    'git commit -m x',
+    'echo hi',
+    'ls',
+    'NPM test',
     '/bin/rm -rf docs',
     './rm x',
     'RM -rf docs',
@@ -122,9 +137,16 @@ describe('deriveAllowRule', () => {
     expect(await deriveAllowRule(file('docs/c/x.md'), root)).toBeNull()
   })
 
-  it('allows harmless wrapped commands but not interpreters', async () => {
-    expect(await deriveAllowRule(bash('nice npm test'), root)).not.toBeNull()
-    expect(await deriveAllowRule(bash('python3 script.py'), root)).toBeNull()
+  it.each([
+    'npm test',
+    'npm run lint',
+    'npm run typecheck',
+    'npm run build',
+    'git status',
+    'git diff',
+    'git log'
+  ])('allows the exact safe command %s', async (c) => {
+    expect(await deriveAllowRule(bash(c), root)).toMatchObject({ rule: `Bash(${c})` })
   })
 
   it('refuses paths that escape through a symlink', async () => {

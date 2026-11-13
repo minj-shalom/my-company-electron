@@ -72,7 +72,7 @@ describe('PermissionService.raise', () => {
   it('caps the number of cards per run', async () => {
     const r = await svc.raise(
       'T-050',
-      ['a', 'b', 'c', 'd', 'e'].map((x) => denial(`echo ${x}`))
+      ['npm test', 'npm run lint', 'npm run build', 'git status', 'git diff'].map(denial)
     )
     expect(r.cardIds).toHaveLength(3)
   })
