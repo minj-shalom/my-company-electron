@@ -1,0 +1,121 @@
+/* 작업 흐름 정책 (T-047) */
+.modal:has(.policy) {
+  width: min(680px, calc(100vw - var(--space-4) * 2));
+}
+.policy h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-3);
+}
+.policy ul,
+.policy ol {
+  margin: 0;
+  padding-left: var(--space-4);
+  list-style: disc;
+}
+.policy__rules {
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+  border-left: 4px solid var(--ok);
+}
+.policy__rules p {
+  margin: var(--space-2) 0 0;
+}
+.policy__warnings ul {
+  margin-top: var(--space-1);
+}
+.policy__lead {
+  margin: var(--space-2) 0;
+  color: var(--text-muted);
+}
+.policy-mode,
+.policy__group {
+  min-width: 0;
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  border: var(--bw) solid var(--border);
+}
+.policy-mode[data-mode='auto'] {
+  border-color: var(--bad);
+  border-width: 2px;
+}
+.policy-mode legend,
+.policy__group legend {
+  padding: 0 var(--space-2);
+  font-family: var(--font-pixel);
+}
+.policy-mode__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+.policy-mode__option,
+.policy__check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  cursor: pointer;
+}
+.policy-mode__option input,
+.policy__check input {
+  width: 20px;
+  height: 20px;
+}
+.policy-mode__option--auto span {
+  color: var(--bad);
+}
+.policy-mode__hint {
+  margin: var(--space-1) 0 0;
+}
+.policy-mode__hint--danger {
+  margin: var(--space-1) 0 0;
+  color: var(--bad);
+  font-weight: 600;
+}
+.policy-auto {
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--bad);
+}
+.policy-auto__num {
+  max-width: 120px;
+}
+.policy-protected {
+  padding: var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--bad);
+}
+.policy__memo {
+  width: 100%;
+  resize: vertical;
+}
+.policy__history {
+  margin: var(--space-4) 0 0;
+}
+.policy__history li {
+  margin: var(--space-1) 0;
+  font-size: var(--fs-2);
+}
+.policy__summary {
+  margin-left: var(--space-2);
+  overflow-wrap: anywhere;
+}
+.policy__feedback {
+  margin-top: var(--space-3);
+}
+.policy__feedback p {
+  margin: 0 0 var(--space-2);
+}
+.policy__danger-title {
+  color: var(--bad);
+}
+.policy__danger-list {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-4);
+}
+.policy__danger-list li {
+  margin: var(--space-1) 0;
+  overflow-wrap: anywhere;
+}

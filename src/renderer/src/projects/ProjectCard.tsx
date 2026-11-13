@@ -1,28 +1,34 @@
 import type { OrgSnapshot } from '../../../shared/org'
+import type { PolicySummary } from '../../../shared/policy'
 import type { ProjectInfo } from '../../../shared/project'
 import { ProjectPeople } from '../assign/ProjectPeople'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { policyBadge } from '../policy/policy-model'
 import { TYPE_LABELS, gitView, stateBadge } from './project-model'
 
-export type ProjectAction = 'rename' | 'archive' | 'restore' | 'assign-pm' | 'clear-pm'
+export type ProjectAction = 'rename' | 'archive' | 'restore' | 'assign-pm' | 'clear-pm' | 'policy'
 
 /** 프로젝트 한 건. 이름·경로·PM은 모두 React 텍스트로만 렌더링한다. */
 export function ProjectCard({
   project,
   current,
   onAction,
-  people
+  people,
+  policy
 }: {
   project: ProjectInfo
   current: boolean
   onAction: (action: ProjectAction, project: ProjectInfo) => void
   /** 주어지면 "함께 일하는 직원"을 보인다 (조직 조회 상태와 변경 후 새로고침). */
   people?: { org: OrgSnapshot | null; onChanged: () => void }
+  /** 작업 흐름 요약. 자동 모드가 켜진 프로젝트는 배지로 눈에 띄게 한다. */
+  policy?: PolicySummary
 }): React.JSX.Element {
   const state = stateBadge(project)
   const git = gitView(project)
   const archived = project.status === 'archived'
+  const autoBadge = policyBadge(policy)
   const label = (verb: string): string => `${project.name} ${verb}`
   return (
     <li className="project-card" data-state={project.state}>
@@ -31,6 +37,10 @@ export function ProjectCard({
         <Badge tone={state.tone}>{state.label}</Badge>
         <Badge tone="neutral">{TYPE_LABELS[project.type]}</Badge>
         {current ? <Badge tone="info">보는 중</Badge> : null}
+        {autoBadge && <Badge tone={autoBadge.tone}>{autoBadge.label}</Badge>}
+        {policy && policy.warningCount > 0 && (
+          <Badge tone="warn">정책 경고 {policy.warningCount}건</Badge>
+        )}
       </div>
       <dl className="project-card__meta">
         <dt>경로</dt>
@@ -83,6 +93,15 @@ export function ProjectCard({
             onClick={() => onAction('clear-pm', project)}
           >
             PM 해제
+          </Button>
+        )}
+        {!archived && (
+          <Button
+            size="small"
+            aria-label={label('작업 흐름 편집')}
+            onClick={() => onAction('policy', project)}
+          >
+            작업 흐름
           </Button>
         )}
         <Button

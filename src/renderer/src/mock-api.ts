@@ -14,6 +14,7 @@ import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
+import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -44,6 +45,15 @@ const mockProjectApi = createMockProjectApi(
   typeof location === 'undefined' ? '' : location.search
 )
 
+const mockPolicyApi = createMockPolicyApi(
+  parsePolicyScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 300,
+  async () => {
+    const r = await mockProjectApi.api.listProjects()
+    return r.ok ? r.value.items.map((p) => ({ id: p.id, name: p.name })) : []
+  }
+)
+
 const mockEmployeeApi = createMockEmployeeApi(
   parseEmployeeScenario(typeof location === 'undefined' ? '' : location.search),
   typeof location === 'undefined' ? 0 : 400,
@@ -56,6 +66,7 @@ export function resetMockApi(): void {
   mockTicketApi.reset()
   mockDecisionApi.reset()
   mockProjectApi.reset()
+  mockPolicyApi.reset()
   resetMockOnboarding()
   resetMockOrgState()
 }
@@ -91,14 +102,7 @@ export const mockApi: WindowApi = {
   ...mockHireApi.api,
   ...mockEmployeeApi.api,
   ...mockProjectApi.api,
-  // 작업 흐름 편집 화면은 T-047 2단계(ui-dev)에서 시나리오 mock으로 바꾼다.
-  getPolicy: async () => ({ ok: false, code: 'not-implemented', message: '아직 지원하지 않아요.' }),
-  savePolicy: async () => ({
-    ok: false,
-    code: 'not-implemented',
-    message: '아직 지원하지 않아요.'
-  }),
-  listPolicySummaries: async () => ({ ok: true, value: [] }),
+  ...mockPolicyApi.api,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
   getWeeklyLimits: mockGetWeeklyLimits,
