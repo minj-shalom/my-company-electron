@@ -128,6 +128,7 @@ function seed(s: PolicyScenario): Map<string, Stored> {
   v.dailyLimits.push = 20
   v.autoPushPrefixes = ['feature/']
   v.memo = '개발 프로젝트 기본 정책'
+  v.dailyOutputGoal = 2
   map.set('my-company', {
     values: v,
     activated: true,

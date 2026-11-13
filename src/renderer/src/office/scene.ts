@@ -221,6 +221,12 @@ export class OfficeScene {
     this.userMovedCamera = true
   }
 
+  /** 키보드 이동. 화면 좌표 기준 px만큼 옮긴다. */
+  pan(dx: number, dy: number): void {
+    this.userMovedCamera = true
+    this.setCamera(panBy(this.camera, dx, dy))
+  }
+
   fit(): void {
     this.userMovedCamera = false
     this.setCamera(fitCamera(this.layout, sizeOf(this.host)))

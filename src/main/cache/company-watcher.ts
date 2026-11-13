@@ -28,9 +28,17 @@ function shouldIgnore(root: string, abs: string): boolean {
   if (parts.length === 1) return false
   if (parts[0] === '.claude') return parts[1] !== 'agents' || parts.length > 3
   if (
-    !['org.md', 'project.md', 'tickets', 'decisions', 'reports', 'archive', 'policies'].includes(
-      parts[1]
-    )
+    ![
+      'org.md',
+      'project.md',
+      'tickets',
+      'decisions',
+      'reports',
+      'archive',
+      'policies',
+      'recurring.md',
+      'publishing'
+    ].includes(parts[1])
   )
     return true
   return parts.length > 4

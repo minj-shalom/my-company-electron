@@ -3,6 +3,7 @@ import { splitFrontmatter, asString } from '../repository/markdown'
 import { AGENTS_DIR } from '../repository/parse-org'
 import type { SafeFs } from '../repository/safe-fs'
 import { readProjectItems, validateAssignments } from '../project/assignments-store'
+import { findEmptyDepartments } from './org-chart-department'
 import { loadOrg } from './org-store'
 
 /** frontmatter `tools`는 콤마 문자열이거나 YAML 목록일 수 있다. */
@@ -80,6 +81,7 @@ export async function buildOrgSnapshot(fs: SafeFs): Promise<OrgSnapshot> {
     org,
     agents,
     missingBaseRoles: findMissingBaseRoles(org),
+    emptyDepartments: findEmptyDepartments(org),
     ...(issues.length > 0 ? { assignmentIssues: issues } : {})
   }
 }

@@ -1,0 +1,200 @@
+/* 설정·예산 화면. 색은 토큰만 쓰고, 상태는 글씨와 함께 표시해 색에만 의존하지 않는다. */
+
+.settings {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.settings__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (min-width: 1000px) {
+  .settings__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .settings__grid > :nth-child(1),
+  .settings__grid > :nth-child(2) {
+    grid-column: 1 / -1;
+  }
+}
+
+.usage-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.usage-item {
+  padding: var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.usage-item[data-tone='warn'] {
+  border-color: var(--warn);
+}
+.usage-item[data-tone='bad'] {
+  border-color: var(--bad);
+}
+.usage-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.usage-item__percent {
+  margin-left: auto;
+  font-family: var(--font-pixel);
+}
+.usage-bar {
+  position: relative;
+  height: 14px;
+  margin: var(--space-2) 0;
+  background: var(--bg-app);
+  border: var(--bw) solid var(--border-strong);
+}
+.usage-bar--empty {
+  border-style: dashed;
+  border-color: var(--border);
+}
+.usage-bar__fill {
+  height: 100%;
+  background: var(--ok);
+}
+.usage-item[data-tone='warn'] .usage-bar__fill {
+  background: var(--warn);
+}
+.usage-item[data-tone='bad'] .usage-bar__fill {
+  background: var(--bad);
+}
+.usage-bar__mark {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--text);
+}
+.usage-metrics {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-2);
+}
+.usage-metrics dt {
+  color: var(--text-muted);
+}
+.usage-metrics dd {
+  margin: 0;
+}
+
+.usage-table {
+  margin-top: var(--space-4);
+}
+.usage-table__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-3);
+}
+.usage-table__scroll {
+  overflow-x: auto;
+}
+.usage-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-2);
+}
+.usage-table th,
+.usage-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.usage-table thead th {
+  color: var(--text-muted);
+  border-bottom: var(--bw) solid var(--border-strong);
+}
+
+.settings-fieldset {
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--bw) solid var(--border);
+}
+.settings-fieldset legend {
+  padding: 0 var(--space-2);
+  font-family: var(--font-pixel);
+}
+
+.provider-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+.provider-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.provider-item__choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 160px;
+  cursor: pointer;
+}
+.provider-item__note:empty {
+  display: none;
+}
+.provider-item__note {
+  flex-basis: 100%;
+  margin: 0;
+}
+.employee-provider {
+  margin-top: var(--space-4);
+}
+
+.settings__profile {
+  margin-bottom: var(--space-4);
+}
+.profile-textarea {
+  width: 100%;
+  resize: vertical;
+  line-height: 1.5;
+}
+.profile-dirty {
+  align-self: center;
+}
+
+.connection-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.connection-item {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-inset);
+  border: var(--bw) solid var(--border);
+}
+.connection-item__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.connection-item p {
+  margin: var(--space-1) 0;
+}
+.connection-item__accounts,
+.connection-item__scopes {
+  margin: var(--space-1) 0;
+  padding-left: var(--space-4);
+}

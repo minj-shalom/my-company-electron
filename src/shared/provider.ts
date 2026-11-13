@@ -28,8 +28,14 @@ export interface ConnectionTestResult {
   message: string
 }
 
-/** 주간 한도 단위. 지금은 달러 예산만 쓴다. 단위를 늘릴 때 이 유니온과 검증을 함께 갱신한다. */
-export type WeeklyLimitUnit = 'usd'
+/**
+ * 주간 한도 단위 (D-016). 요금제 종류는 앱이 인증 정보를 읽지 못하므로 사용자가 고르며, 그 선택이 이 단위다.
+ * - `usd`: 종량제(API). amount는 달러 예산이고 한화는 사용자 입력 환율로 환산해 함께 보여 준다.
+ * - `subscription-percent`: 구독제. 구독 한도는 앱이 알 수 없으므로 amount는 사용자가 입력한 기준값(달러 환산 금액)이고,
+ *   사용률(%)은 그 기준값 대비 추정치다. 요청 수·토큰 수는 단위와 무관한 별도 지표다.
+ */
+export const WEEKLY_LIMIT_UNITS = ['usd', 'subscription-percent'] as const
+export type WeeklyLimitUnit = (typeof WEEKLY_LIMIT_UNITS)[number]
 
 export const WEEKLY_LIMIT_MAX = 100_000
 

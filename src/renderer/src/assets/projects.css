@@ -288,3 +288,162 @@
   font-size: 0.85em;
   color: var(--text-muted);
 }
+
+/* 템플릿 선택과 추천 직원 확인 (T-048) */
+.template-step {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.template-step legend {
+  padding: 0;
+  font-family: var(--font-pixel);
+}
+.template-cards,
+.staff-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.template-card__list {
+  margin: 0 0 var(--space-1);
+  padding-left: var(--space-4);
+}
+.staff-row .pm-fields__option {
+  flex-wrap: wrap;
+}
+.staff-step .notice {
+  margin-top: var(--space-3);
+}
+
+.recurring {
+  margin-top: var(--space-6);
+}
+.recurring h2:focus {
+  outline: none;
+}
+.recurring__group {
+  margin: var(--space-4) 0;
+}
+.recurring__project {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-3);
+}
+.recurring__list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recurring__item {
+  padding: var(--space-3);
+  border: var(--bw) solid var(--border);
+  background: var(--bg-panel, transparent);
+}
+.recurring__item[data-status='paused'] {
+  opacity: 0.8;
+}
+.rform {
+  max-width: 100%;
+}
+.rform__wide {
+  width: 100%;
+  box-sizing: border-box;
+}
+.rform__area {
+  height: auto;
+  resize: vertical;
+  font: inherit;
+}
+.rform__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.rform__row label {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.publication {
+  margin-top: var(--space-6);
+}
+.pub__select {
+  max-width: 24rem;
+  margin-bottom: var(--space-3);
+}
+.pub__progress {
+  margin: var(--space-2) 0;
+  font-weight: 700;
+}
+.pub__bulk {
+  margin: var(--space-3) 0;
+}
+.pub-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pub {
+  padding: var(--space-3);
+  border: var(--bw) solid var(--border);
+  background: var(--bg-panel, transparent);
+  min-width: 0;
+}
+.pub__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pub__title {
+  overflow-wrap: anywhere;
+}
+.pub__meta,
+.pub__note,
+.pub__msg {
+  margin: var(--space-2) 0;
+  overflow-wrap: anywhere;
+}
+.pub__meta {
+  color: var(--text-muted);
+}
+.pub__link {
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.pub__actions,
+.pub__mark {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.pub__mark .field {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.draft {
+  margin-top: var(--space-2);
+}
+.draft__text {
+  max-height: 20rem;
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  overflow: auto;
+  border: var(--bw) solid var(--border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.dcard__drafts {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}

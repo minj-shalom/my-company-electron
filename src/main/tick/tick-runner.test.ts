@@ -125,6 +125,16 @@ describe('createTickRunner', () => {
     expect([...h.reports.keys()][0]).toBe('briefing-20261113100000')
   })
 
+  it('puts pre-tick recurring notes in the briefing once', async () => {
+    const pending = ['blog: 프로젝트 alpha에 담당 PM이 필요해 정기 티켓을 만들지 않았어요.']
+    const h = harness({ deps: { takeNotes: () => pending.splice(0) } })
+    await h.run()
+    expect(briefing(h)).toContain('정기 티켓을 만들지 않았어요')
+    const second = harness({ deps: { takeNotes: () => pending.splice(0) } })
+    await second.run()
+    expect(briefing(second)).not.toContain('정기 티켓')
+  })
+
   it('runs company-wide tickets in the company folder as COO', async () => {
     const h = harness({ snap: { tickets: [ticket('T-009')], projects: [] } })
     await h.run()

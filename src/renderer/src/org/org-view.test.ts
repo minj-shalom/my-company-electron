@@ -3,6 +3,7 @@ import type { OrgSnapshot } from '../../../shared/org'
 import { mockGetOrg, parseOrgScenario } from '../mock-org'
 import {
   describeIssue,
+  deptToneFor,
   groupByDepartment,
   loadOrgStatus,
   memberDetail,
@@ -71,6 +72,15 @@ describe('toOrgStatus / loadOrgStatus', () => {
   })
 })
 
+describe('deptToneFor', () => {
+  it('keeps fixed colors for known departments and is stable for others', () => {
+    expect(deptToneFor('경영')).toBe('exec')
+    expect(deptToneFor('재무')).toBe('fin')
+    expect(deptToneFor('마케팅')).toBe(deptToneFor('마케팅'))
+    expect(['exec', 'rnd', 'fin', 'plan']).toContain(deptToneFor('constructor'))
+  })
+})
+
 describe('groupByDepartment', () => {
   it('keeps department order, gives each a tone and collects leftovers', async () => {
     const snap = await normal()
@@ -93,7 +103,7 @@ describe('groupByDepartment', () => {
       NO_DEPARTMENT
     ])
     expect(groups[0].tone).toBe('exec')
-    expect(groups[4].tone).toBe('exec') // 4색을 돌려 쓴다
+    expect(groups[4].tone).toBe('rnd') // 부서 이름으로 색이 고정된다
     expect(groups[4].members.map((m) => m.title)).toContain('UI 개발자')
   })
   it('does not list a member twice or invent unknown titles', async () => {

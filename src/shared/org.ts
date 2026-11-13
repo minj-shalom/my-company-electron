@@ -133,6 +133,11 @@ export interface OrgSnapshot {
    * 조직표를 읽지 못한 경우(직원 0명)는 판단할 수 없어 빈 배열이다.
    */
   missingBaseRoles: BaseRoleId[]
+  /**
+   * 조직도 블록에만 있고 직원 표에는 없는 부서 이름 (T-040). `removeDepartment`로 지울 수 있다.
+   * 필드가 없는 응답은 빈 배열로 읽는다 (하위 호환). 블록을 읽지 못하면 빈 배열이다.
+   */
+  emptyDepartments?: string[]
   /** `project.md`의 `직원:`·`PM:` 줄에서 찾은 경고 (알 수 없는 직원 등). 없으면 생략. */
   assignmentIssues?: AssignmentIssue[]
 }

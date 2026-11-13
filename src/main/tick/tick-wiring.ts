@@ -14,17 +14,18 @@ import type { ProviderAdapter } from '../providers/types'
 import { EMPLOYEE_ID } from '../repository/ids'
 import { splitFrontmatter } from '../repository/markdown'
 import { sharedRepository } from '../repository/shared-repository'
-import type { TickDeps } from './tick-types'
+import type { TickDeps, TickRunInfo } from './tick-types'
 
 export interface TickWiringOptions {
   context: CompanyContext
   userDataDir: string
   /** cwd마다 제공자 어댑터를 만든다. */
-  createAdapter: (cwd: string, employeeId?: string) => ProviderAdapter
+  createAdapter: (cwd: string, employeeId?: string, run?: TickRunInfo) => ProviderAdapter
   /** 후속 티켓(T-019 한도 점검, T-046/T-052 요청 경로, T-052 hr 전용 실행)이 채우는 연결점. */
   checkLimit?: TickDeps['checkLimit']
   requests?: TickDeps['requests']
   hr?: TickDeps['hr']
+  takeNotes?: TickDeps['takeNotes']
   now?: () => Date
 }
 
@@ -122,6 +123,7 @@ export function tickDepsFor(o: TickWiringOptions): TickDeps {
         provider
       ),
     checkLimit: o.checkLimit,
+    takeNotes: o.takeNotes,
     requests: o.requests,
     // hr 전용 실행(T-059): 요청 파일이 있을 때만 돌고, 제공자가 경로 제한을 지원하지 않으면 실행하지 않는다.
     hr:

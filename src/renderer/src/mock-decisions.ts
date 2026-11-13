@@ -123,7 +123,7 @@ const SAMPLES: Decision[] = [
     4,
     'content-approval',
     '블로그 초안 발행 승인',
-    '"AI 직원 회사 시작하기" 초안을 발행할까요?\n<b>이 태그는 글자 그대로 보입니다</b>',
+    'blog 프로젝트의 초안 2건을 승인할까요? post-1.md@aaaaaaa, post-3.md@bbbbbbb',
     { ticketId: 'T-050' }
   ),
   card(

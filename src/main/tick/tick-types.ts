@@ -42,9 +42,18 @@ export interface TickRequests {
   proposeAssignment(input: AssignmentProposalInput): Promise<void>
 }
 
+/** 어댑터를 만들 때 함께 넘기는 실행 귀속 정보. 사용량 기록(T-019)이 프로젝트·티켓을 남기는 데 쓴다. */
+export interface TickRunInfo {
+  ticketId: string
+  /** 회사 공통 티켓이면 null. */
+  projectId: string | null
+}
+
 export interface LimitCheck {
   /** false면 실행하지 않는다. */
   ok: boolean
+  /** true면 점검 쪽이 이미 결정 카드를 관리하므로(중복 방지 포함) 틱이 한도 카드를 따로 만들지 않는다. */
+  cardHandled?: boolean
   /** 브리핑과 카드에 쓰는 한국어 사유. */
   reason: string
 }
@@ -71,7 +80,7 @@ export interface TickDeps {
    */
   resolveProjectDir: (projectId: string) => Promise<string | null>
   /** cwd마다 어댑터를 만든다 (어댑터의 cwd는 생성 시 고정). 실행은 spawn + 인자 배열이다. */
-  createAdapter: (cwd: string, employeeId?: string) => ProviderAdapter
+  createAdapter: (cwd: string, employeeId?: string, run?: TickRunInfo) => ProviderAdapter
   /** `company/reports/<id>.md`에 쓴다 (SafeFs, 덮어쓰기 없음). 같은 id가 있으면 false. */
   writeReport: (id: string, markdown: string) => Promise<'written' | 'exists'>
   createCard: (input: DecisionCardInput) => Promise<string>
@@ -81,7 +90,8 @@ export interface TickDeps {
    * CFO 한도 점검(T-019). 주입이 없거나 던지면 실행하지 않는다 (가장 보수적).
    * 반복 업무로 생긴 티켓(T-049)도 같은 점검을 통과해야 한다.
    */
-  checkLimit?: () => Promise<LimitCheck>
+  /** 이번 틱에서 실제로 실행할 직원 id들(티켓 담당, hr 실행)을 받아 그 직원의 제공자 기준으로만 점검한다. */
+  checkLimit?: (employeeIds: readonly string[]) => Promise<LimitCheck>
   /** T-052 도구 브리지 연결(T-053 게이트). 없거나 실패하면 모든 동작은 `매번 컨펌`이고 푸시·머지·발행 도구는 없다. */
   prepareToolRun?: (
     req: GateRunRequest,
@@ -90,6 +100,8 @@ export interface TickDeps {
   requests?: TickRequests
   /** hr 전용 실행(T-052) 연결점. 대기 중인 요청이 있을 때만 run을 부른다. COO 세션에서 hr을 부르지 않는다. */
   hr?: { pending: () => Promise<number>; run: (signal: AbortSignal) => Promise<void> }
+  /** 틱 직전 정기 티켓 생성(T-049)이 남긴 막힌 점·경고. 한 번 읽으면 비워지고 브리핑 "막힌 점"에 실린다. */
+  takeNotes?: () => string[]
   /** 실행 한 번의 시간 상한(ms). */
   timeoutMs?: number
 }

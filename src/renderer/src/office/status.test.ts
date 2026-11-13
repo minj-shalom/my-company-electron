@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { OfficeStatusMap } from '../../../shared/office'
 import { MOCK_TICK_MS, mockOfficeStatus, mockStatusAt } from './mock-status'
-import { countByStatus, isAnimated, sameStatuses, statusOf } from './status'
+import {
+  DEBOUNCE_MS,
+  REFRESH_MS,
+  countByStatus,
+  createLiveStatusSource,
+  deriveStatuses,
+  isAnimated,
+  sameStatuses,
+  statusOf
+} from './status'
 import { vi } from 'vitest'
 
 describe('status helpers', () => {
@@ -58,15 +67,94 @@ describe('mock status provider', () => {
   })
 })
 
-describe('live source notice', () => {
-  it('reports no live source until one is registered', async () => {
-    const { hasLiveStatusSource, setOfficeStatusSource, getOfficeStatusSource } =
-      await import('./status')
-    const original = getOfficeStatusSource()
-    expect(hasLiveStatusSource()).toBe(false)
-    setOfficeStatusSource({ subscribe: () => () => {} })
-    expect(hasLiveStatusSource()).toBe(true)
-    setOfficeStatusSource(original)
-    expect(hasLiveStatusSource()).toBe(false)
+describe('deriveStatuses', () => {
+  const ids = { CTO: 'cto', PM: 'pm', 인턴: null, COO: null }
+  const titles = ['CTO', 'PM', '인턴', 'COO']
+  it('marks in-progress assignees as working', () => {
+    const r = deriveStatuses(
+      titles,
+      ids,
+      [{ id: 'T-1', status: 'in-progress', assignee: 'cto' }],
+      []
+    )
+    expect(r).toEqual({ CTO: 'working', PM: 'idle', 인턴: 'idle', COO: 'idle' })
+  })
+  it('prefers awaiting-approval and ignores backlog, done and unassigned tickets', () => {
+    const r = deriveStatuses(
+      titles,
+      ids,
+      [
+        { id: 'T-1', status: 'in-progress', assignee: 'cto' },
+        { id: 'T-2', status: 'backlog', assignee: 'pm' },
+        { id: 'T-3', status: 'in-progress', assignee: null }
+      ],
+      [{ ticketId: 'T-1' }, { ticketId: null }]
+    )
+    expect(r.CTO).toBe('awaiting-approval')
+    expect(r.PM).toBe('idle')
+  })
+})
+
+describe('live source', () => {
+  const ok = <T>(value: T): { ok: true; value: T } => ({ ok: true, value })
+  const tickets = (items: object[]): never => ok({ items, unreadable: [] }) as never
+  function setup(
+    items: object[],
+    decisions: object[] = []
+  ): {
+    api: Parameters<typeof createLiveStatusSource>[0] extends () => infer A ? A : never
+    emit: (e: { type: string; runId: string }) => void
+    unsub: ReturnType<typeof vi.fn>
+  } {
+    let listener: ((e: never) => void) | null = null
+    const unsub = vi.fn()
+    const api = {
+      listTickets: vi.fn(async () => tickets(items)),
+      listDecisions: vi.fn(async () => ok({ items: decisions, unreadable: [] }) as never),
+      onRunEvent: vi.fn((l: (e: never) => void) => {
+        listener = l
+        return unsub
+      })
+    }
+    return { api: api as never, emit: (e) => listener?.(e as never), unsub }
+  }
+
+  it('sends the current state, reloads on run events and stops after unsubscribe', async () => {
+    vi.useFakeTimers()
+    try {
+      const items = [{ id: 'T-1', status: 'in-progress', assignee: 'cto' }]
+      const { api, emit, unsub } = setup(items)
+      const calls: OfficeStatusMap[] = []
+      const stop = createLiveStatusSource(() => api).subscribe(['CTO'], (m) => calls.push(m), {
+        CTO: 'cto'
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls).toEqual([{ CTO: 'working' }])
+      items[0].status = 'done'
+      emit({ type: 'exit', runId: 'r' })
+      emit({ type: 'log', runId: 'r' })
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 10)
+      expect(calls.at(-1)).toEqual({ CTO: 'idle' })
+      expect(calls).toHaveLength(2)
+      stop()
+      expect(unsub).toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(REFRESH_MS * 2)
+      expect(calls).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the previous state when reading fails', async () => {
+    const { api } = setup([])
+    api.listTickets = vi.fn(async () => {
+      throw new Error('x')
+    }) as never
+    const onChange = vi.fn()
+    const stop = createLiveStatusSource(() => api).subscribe(['CTO'], onChange, { CTO: 'cto' })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(onChange).not.toHaveBeenCalled()
+    stop()
   })
 })

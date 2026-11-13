@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  KEY_PAN_STEP,
   MAX_FIT_SCALE,
   MAX_SCALE,
   MIN_FIT_SCALE,
   MIN_SCALE,
   clampCamera,
   fitCamera,
+  mapKeyAction,
   panBy,
   screenToWorld,
   wheelFactor,
@@ -97,5 +99,20 @@ describe('non-finite and degenerate input', () => {
       y: 0,
       scale: 1
     })
+  })
+})
+
+describe('mapKeyAction', () => {
+  it('maps arrows to pans that move the view in the key direction', () => {
+    expect(mapKeyAction('ArrowRight')).toEqual({ kind: 'pan', dx: -KEY_PAN_STEP, dy: 0 })
+    expect(mapKeyAction('ArrowUp')).toEqual({ kind: 'pan', dx: 0, dy: KEY_PAN_STEP })
+  })
+  it('maps zoom and fit keys and ignores others and modified keys', () => {
+    expect(mapKeyAction('+')).toEqual({ kind: 'zoom', direction: 1 })
+    expect(mapKeyAction('-')).toEqual({ kind: 'zoom', direction: -1 })
+    expect(mapKeyAction('0')).toEqual({ kind: 'fit' })
+    expect(mapKeyAction('a')).toBeNull()
+    expect(mapKeyAction('-', { ctrl: true })).toBeNull()
+    expect(mapKeyAction('Tab')).toBeNull()
   })
 })

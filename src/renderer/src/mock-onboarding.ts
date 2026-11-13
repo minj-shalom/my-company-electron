@@ -1,5 +1,6 @@
 import {
   PROVIDER_CLI_IDS,
+  WEEKLY_LIMIT_UNITS,
   validateWeeklyLimitAmount,
   type ConnectionTestResult,
   type DetectState,
@@ -28,6 +29,11 @@ const DETECT_MESSAGES: Record<DetectState, string> = {
 
 let detectCalls = 0
 let limits: WeeklyLimit[] = []
+
+/** 사용량 mock 시나리오가 한도를 미리 채울 때 쓴다 (개발 전용). */
+export function seedMockLimits(next: WeeklyLimit[]): void {
+  limits = next
+}
 
 export function resetMockOnboarding(): void {
   detectCalls = 0
@@ -82,7 +88,7 @@ export async function mockSaveWeeklyLimits(req: {
     if (
       !PROVIDER_CLI_IDS.includes(l.provider) ||
       seen.has(l.provider) ||
-      l.unit !== 'usd' ||
+      !WEEKLY_LIMIT_UNITS.includes(l.unit) ||
       !validateWeeklyLimitAmount(l.amount)
     ) {
       return { ok: false, code: 'invalid-request', message: '한도 값이 올바르지 않습니다.' }

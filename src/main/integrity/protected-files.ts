@@ -4,6 +4,10 @@ import { FsGuardError, type SafeFs } from '../repository/safe-fs'
 export const AGENTS = '.claude/agents'
 export const ORG = 'company/org.md'
 export const PROJECT = 'company/project.md'
+/** 반복 업무 정의(T-049). 앱(CEO UI)만 쓴다: LLM이 정의를 바꿔 티켓을 대량 생성하지 못하게 정책 파일처럼 감지한다. */
+export const RECURRING = 'company/recurring.md'
+/** 발행 기록(T-050). 승인 상태가 발행 허가의 근거라 앱만 쓴다: LLM이 `approved`로 바꾸지 못하게 감지한다. */
+const PUBLISHING = 'company/publishing'
 const ARCHIVE = 'company/archive'
 const POLICIES = 'company/policies'
 const MAX_DEPTH = 3
@@ -15,14 +19,19 @@ const MAX_FILES = 400
  */
 export function isProtectedPath(rel: string): boolean {
   if (rel.includes('\\') || rel.includes('\0') || rel.split('/').includes('..')) return false
-  if (rel === ORG || rel === PROJECT) return true
+  if (rel === ORG || rel === PROJECT || rel === RECURRING) return true
   if (!rel.endsWith('.md')) return false
   const depth = rel.split('/').length
   if (rel.startsWith(`${AGENTS}/`)) return depth === 3
+  if (rel.startsWith(`${PUBLISHING}/`)) return depth === 3
   return (rel.startsWith(`${ARCHIVE}/`) || rel.startsWith(`${POLICIES}/`)) && depth <= MAX_DEPTH + 3
 }
 
 export const isPolicyPath = (rel: string): boolean => rel.startsWith(`${POLICIES}/`)
+/** 앱 밖에서 바뀌면 되돌리기 카드를 만드는 파일 (정책, 반복 업무 정의, 발행 기록). */
+export const isPublishingPath = (rel: string): boolean => rel.startsWith(`${PUBLISHING}/`)
+export const isAppOnlyPath = (rel: string): boolean =>
+  isPolicyPath(rel) || rel === RECURRING || isPublishingPath(rel)
 export const isAgentPath = (rel: string): boolean =>
   rel.startsWith(`${AGENTS}/`) && rel.endsWith('.md')
 export const agentIdOf = (rel: string): string => rel.slice(AGENTS.length + 1, -3)
@@ -47,10 +56,11 @@ async function walk(fs: SafeFs, dir: string, depth: number, out: string[]): Prom
 
 /** 보호 대상 파일을 모두 읽는다. 없는 파일은 맵에 없다. */
 export async function readProtectedFiles(fs: SafeFs): Promise<FileMap> {
-  const rels: string[] = [ORG, PROJECT]
+  const rels: string[] = [ORG, PROJECT, RECURRING]
   await walk(fs, AGENTS, MAX_DEPTH, rels)
   await walk(fs, ARCHIVE, 0, rels)
   await walk(fs, POLICIES, 0, rels)
+  await walk(fs, PUBLISHING, 0, rels)
   const map: FileMap = new Map()
   for (const rel of rels) {
     if (!isProtectedPath(rel)) continue

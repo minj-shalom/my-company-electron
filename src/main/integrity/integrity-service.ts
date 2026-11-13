@@ -7,7 +7,9 @@ import {
   DELETED_HASH,
   diffMaps,
   filesWithSecrets,
+  isAppOnlyPath,
   isPolicyPath,
+  isPublishingPath,
   isProtectedPath,
   readProtectedFiles,
   sha256,
@@ -201,11 +203,15 @@ export class IntegrityService {
     }
     const issues = validateAll(base, cur)
     for (const f of changed)
-      if (isPolicyPath(f) && !appFiles.has(f) && !opts.accepting)
+      if (isAppOnlyPath(f) && !appFiles.has(f) && !opts.accepting)
         issues.push({
           code: 'policy-changed',
           file: f,
-          message: '정책 파일이 앱 밖에서 바뀌었습니다.',
+          message: isPolicyPath(f)
+            ? '정책 파일이 앱 밖에서 바뀌었습니다.'
+            : isPublishingPath(f)
+              ? '발행 기록이 앱 밖에서 바뀌었습니다.'
+              : '반복 업무 정의가 앱 밖에서 바뀌었습니다.',
           severity: 'violation'
         })
     for (const f of filesWithSecrets(cur))

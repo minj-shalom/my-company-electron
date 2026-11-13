@@ -7,7 +7,7 @@ import { CodexAdapter } from './codex/codex-adapter'
 import { GeminiAdapter } from './gemini/gemini-adapter'
 import type { ProviderService } from './provider-service'
 import { ProviderSelectionService, createSelectionStore } from './provider-selection'
-import type { ProviderAdapter } from './types'
+import type { ProviderAdapter, ProviderUsage } from './types'
 
 export interface ProviderSelectionDeps {
   context: CompanyContext
@@ -15,10 +15,14 @@ export interface ProviderSelectionDeps {
 }
 
 /** 환경변수 허용 목록(CODEX_HOME, OPENAI_*, GEMINI_*)은 넘기지 않는다: 기본값(미전달)을 그대로 쓴다. */
-export function createProviderAdapter(provider: ProviderCliId, cwd: string): ProviderAdapter {
-  if (provider === 'codex') return new CodexAdapter({ cwd })
-  if (provider === 'gemini') return new GeminiAdapter({ cwd })
-  return new ClaudeAdapter({ cwd })
+export function createProviderAdapter(
+  provider: ProviderCliId,
+  cwd: string,
+  onUsage?: (runId: string, usage: ProviderUsage) => void
+): ProviderAdapter {
+  if (provider === 'codex') return new CodexAdapter({ cwd, onUsage })
+  if (provider === 'gemini') return new GeminiAdapter({ cwd, onUsage })
+  return new ClaudeAdapter({ cwd, onUsage })
 }
 
 /** 열린 회사의 설정 파일을 쓰는 서비스. 회사가 바뀌면 다음 호출부터 새 회사를 본다. */

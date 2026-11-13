@@ -80,3 +80,39 @@ export function wheelFactor(deltaY: number): number {
   if (!Number.isFinite(deltaY)) return 1
   return Math.exp(-clamp(deltaY, -120, 120) * 0.0015)
 }
+
+export const KEY_PAN_STEP = 64
+
+export type MapKeyAction =
+  { kind: 'pan'; dx: number; dy: number } | { kind: 'zoom'; direction: 1 | -1 } | { kind: 'fit' }
+
+/**
+ * 지도에 포커스가 있을 때의 키 동작. 방향키는 화면을 키 방향으로 보여 주도록 움직이고(콘텐츠는 반대로 이동),
+ * +/-는 확대/축소, 0은 전체 보기. 수정키가 눌려 있으면 브라우저/OS 단축키이므로 무시한다.
+ */
+export function mapKeyAction(
+  key: string,
+  mods: { ctrl?: boolean; meta?: boolean; alt?: boolean } = {}
+): MapKeyAction | null {
+  if (mods.ctrl || mods.meta || mods.alt) return null
+  switch (key) {
+    case 'ArrowLeft':
+      return { kind: 'pan', dx: KEY_PAN_STEP, dy: 0 }
+    case 'ArrowRight':
+      return { kind: 'pan', dx: -KEY_PAN_STEP, dy: 0 }
+    case 'ArrowUp':
+      return { kind: 'pan', dx: 0, dy: KEY_PAN_STEP }
+    case 'ArrowDown':
+      return { kind: 'pan', dx: 0, dy: -KEY_PAN_STEP }
+    case '+':
+    case '=':
+      return { kind: 'zoom', direction: 1 }
+    case '-':
+    case '_':
+      return { kind: 'zoom', direction: -1 }
+    case '0':
+      return { kind: 'fit' }
+    default:
+      return null
+  }
+}

@@ -6,13 +6,17 @@ import { PolicyDialog } from '../policy/PolicyDialog'
 import { usePolicySummaries } from '../policy/use-policy'
 import { UnassignedSection } from '../assign/UnassignedSection'
 import { useOrg } from '../org/use-org'
+import { PublicationSection } from '../publication/PublicationSection'
+import { RecurringSection } from '../recurring/RecurringSection'
+import { useRecurring } from '../recurring/use-recurring'
 import { AutoRunLog } from '../gate/AutoRunLog'
 import type { AuditLoad } from '../gate/use-audit-summary'
 import type { UseKillSwitch } from '../gate/use-kill-switch'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
 import { UnreadableNotice } from '../ui/UnreadableNotice'
-import { AddProjectDialog, ConfirmDialog, PmDialog, RenameDialog } from './ProjectDialogs'
+import { AddProjectDialog } from './AddProjectDialog'
+import { ConfirmDialog, PmDialog, RenameDialog } from './ProjectDialogs'
 import { ProjectCard, type ProjectAction } from './ProjectCard'
 import {
   LEGACY_NOTE,
@@ -29,6 +33,19 @@ import {
   type PmChoice
 } from './project-model'
 import type { UseProjects } from './use-projects'
+
+function employeeChoices(snapshot: OrgSnapshot | null): { id: string; name: string }[] {
+  if (!snapshot) return []
+  const out: { id: string; name: string }[] = []
+  for (const m of snapshot.org.members) {
+    if (m.kind !== 'agent' || !m.fileExists || m.agentId === null) continue
+    out.push({
+      id: m.agentId,
+      name: snapshot.agents.find((a) => a.id === m.agentId)?.name.trim() || m.title
+    })
+  }
+  return out
+}
 
 type Dialog = { kind: 'add' } | { kind: ProjectAction; project: ProjectInfo } | null
 
@@ -57,8 +74,10 @@ export function ProjectsView({
   const headingRef = useRef<HTMLHeadingElement>(null)
   const org = useOrg()
   const policies = usePolicySummaries()
+  const recurring = useRecurring()
   const orgSnapshot = org.status.kind === 'ready' ? org.status.snapshot : null
-  const people = {
+  const people = employeeChoices(orgSnapshot)
+  const peopleProps = {
     org: orgSnapshot,
     onChanged: () => {
       org.refresh()
@@ -143,7 +162,7 @@ export function ProjectsView({
         archived={archived}
         currentId={currentId}
         onAction={onAction}
-        people={people}
+        people={peopleProps}
         policies={policies.byId}
         onRetry={reload}
         onAdd={() => setDialog({ kind: 'add' })}
@@ -155,10 +174,23 @@ export function ProjectsView({
         <UnassignedSection org={orgSnapshot} failed={org.status.kind === 'error'} />
       )}
 
+      {load.kind === 'ready' && (
+        <RecurringSection {...recurring} projects={items} people={people} />
+      )}
+      {load.kind === 'ready' && <PublicationSection projects={items} />}
+
       {dialog?.kind === 'add' && load.kind === 'ready' && (
         <AddProjectDialog
           pms={pms}
+          snapshot={orgSnapshot}
+          api={window.api}
           onCancel={close}
+          onFinished={(message) => {
+            setNotice(message)
+            org.refresh()
+            reload()
+            close()
+          }}
           onPickFolder={() => pickFolder(window.api)}
           onSubmit={async (input) => {
             const outcome = await addProjectFlow(window.api, input)

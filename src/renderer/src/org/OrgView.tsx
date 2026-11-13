@@ -1,11 +1,13 @@
 import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import type { OrgMember, OrgSnapshot, OrgTreeNode } from '../../../shared/org'
+import { DepartmentPanel } from '../department/DepartmentPanel'
 import { AssignmentIssues } from '../assign/AssignmentIssues'
 import { Badge } from '../ui/Badge'
 import { needsLeaveConfirm } from '../employee/employee-model'
 import { HireEntry } from '../employee/HireEntry'
 import { LeaveDialog, MemberManager } from '../employee/MemberManager'
 import { useNewHire } from '../employee/use-new-hire'
+import { EmployeeProviderField } from '../settings/EmployeeProviderField'
 import { HireBanners } from '../hire/HireBanners'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
@@ -139,6 +141,7 @@ function OrgReady({
       <div role="status" aria-live="polite" className={notice ? 'hire-notice' : 'visually-hidden'}>
         {notice}
       </div>
+      <DepartmentPanel snapshot={snapshot} onChanged={onChanged} />
       <div className="org__layout" data-selected={member ? 'true' : 'false'}>
         <div
           className="org__detail"
@@ -154,6 +157,9 @@ function OrgReady({
                   detail={memberDetail(member, snapshot.agents)}
                   tone={tones.get(member.title) ?? null}
                 />
+                {member.agentId !== null && member.kind === 'agent' && (
+                  <EmployeeProviderField key={member.agentId} employeeId={member.agentId} />
+                )}
                 <MemberManager
                   key={member.title}
                   member={member}

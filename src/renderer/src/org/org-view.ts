@@ -104,9 +104,22 @@ export interface DepartmentGroup {
 export type DeptTone = 'exec' | 'rnd' | 'fin' | 'plan'
 const TONES: readonly DeptTone[] = ['exec', 'rnd', 'fin', 'plan']
 
-/** 부서 순서대로 토큰을 돌려 쓴다. 이름과 함께 표시되므로 색만으로 구분하지 않는다. */
-export function deptTone(index: number): DeptTone {
-  return TONES[((index % TONES.length) + TONES.length) % TONES.length]
+/** 기본 조직의 부서는 색을 고정한다. 순서가 바뀌거나 부서가 늘어도 같은 부서는 같은 색이다. */
+const FIXED_TONES: Readonly<Record<string, DeptTone>> = {
+  경영: 'exec',
+  'R&D': 'rnd',
+  개발팀: 'rnd',
+  재무: 'fin',
+  인사팀: 'plan',
+  기획팀: 'plan'
+}
+
+/** 이름이 같으면 항상 같은 색. 목록에 없는 부서는 이름 해시로 고른다. 이름과 함께 표시되므로 색만으로 구분하지 않는다. */
+export function deptToneFor(name: string): DeptTone {
+  if (Object.hasOwn(FIXED_TONES, name)) return FIXED_TONES[name]
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0
+  return TONES[h % TONES.length]
 }
 
 export const NO_DEPARTMENT = '소속 없음'
@@ -115,18 +128,18 @@ export const NO_DEPARTMENT = '소속 없음'
 export function groupByDepartment(snapshot: OrgSnapshot): DepartmentGroup[] {
   const byTitle = new Map(snapshot.org.members.map((m) => [m.title, m]))
   const placed = new Set<string>()
-  const groups: DepartmentGroup[] = snapshot.org.departments.map((d, i) => {
+  const groups: DepartmentGroup[] = snapshot.org.departments.map((d) => {
     const members = d.members.flatMap((t) => {
       const m = byTitle.get(t)
       if (!m || placed.has(t)) return []
       placed.add(t)
       return [m]
     })
-    return { name: d.name, tone: deptTone(i), members }
+    return { name: d.name, tone: deptToneFor(d.name), members }
   })
   const rest = snapshot.org.members.filter((m) => !placed.has(m.title))
   if (rest.length > 0)
-    groups.push({ name: NO_DEPARTMENT, tone: deptTone(groups.length), members: rest })
+    groups.push({ name: NO_DEPARTMENT, tone: deptToneFor(NO_DEPARTMENT), members: rest })
   return groups.filter((g) => g.members.length > 0)
 }
 

@@ -6,10 +6,14 @@ import {
   type ProjectList,
   type ProjectSelectFolderResult
 } from '../../shared/project'
+import type { ProjectApplyTemplateResult, ProjectTemplateInfo } from '../../shared/project-template'
 import { NoCompanyError, type CompanyContext } from '../company/company-context'
 import { metaValue } from '../repository/markdown'
 import { sharedRepository } from '../repository/shared-repository'
 import type { SafeFs } from '../repository/safe-fs'
+import { policyServiceFor } from '../policy/policy-ipc'
+import { readProjectItems } from './assignments-store'
+import { applyProjectTemplate, listProjectTemplates } from './project-templates'
 import { ProjectService, type InProgressSource } from './project-service'
 
 export interface ProjectIpcDeps {
@@ -33,6 +37,8 @@ export interface ProjectHandlers {
   assignEmployee: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
   unassignEmployee: (req: unknown) => Promise<ApiResult<ProjectChangeResult>>
   employeeProjects: (req: unknown) => Promise<ApiResult<EmployeeProjectsResult>>
+  listProjectTemplates: () => Promise<ApiResult<ProjectTemplateInfo[]>>
+  applyProjectTemplate: (req: unknown) => Promise<ApiResult<ProjectApplyTemplateResult>>
 }
 
 /** 진행 중 티켓의 프로젝트 소속. 본문의 `- **프로젝트:** id` 줄만 읽는다 (T-042 전의 임시 규칙, 없으면 소속 불명). */
@@ -98,6 +104,21 @@ export function createProjectHandlers(deps: ProjectIpcDeps): ProjectHandlers {
     clearPm: call((s, r: unknown) => s.clearPm(r)),
     assignEmployee: call((s, r: unknown) => s.assignEmployee(r)),
     unassignEmployee: call((s, r: unknown) => s.unassignEmployee(r)),
-    employeeProjects: call((s, r: unknown) => s.employeeProjects(r))
+    employeeProjects: call((s, r: unknown) => s.employeeProjects(r)),
+    // 템플릿 목록은 상수라 열린 회사가 필요 없다.
+    listProjectTemplates: async () => ({ ok: true as const, value: listProjectTemplates() }),
+    applyProjectTemplate: async (r: unknown) => {
+      try {
+        const fs = deps.context.requireOpenCompany().fs
+        return await applyProjectTemplate(
+          { policy: policyServiceFor(deps), readProjects: () => readProjectItems(fs) },
+          r
+        )
+      } catch (e) {
+        if (e instanceof NoCompanyError)
+          return { ok: false, code: 'no-company', message: '열린 회사가 없습니다.' }
+        return { ok: false, code: 'internal', message: '요청을 처리하지 못했습니다.' }
+      }
+    }
   }
 }

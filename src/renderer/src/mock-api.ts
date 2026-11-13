@@ -1,21 +1,30 @@
+import type { CompanyProfile } from '../../shared/company-profile'
 import type { WindowApi } from '../../shared/api'
+import type { ThemePreference } from '../../shared/theme'
+import { createMockCredentialApi, parseCredentialScenario } from './mock-credentials'
 import {
   mockDetectProviders,
   mockGetWeeklyLimits,
   mockSaveWeeklyLimits,
   mockTestConnection,
-  resetMockOnboarding
+  resetMockOnboarding,
+  seedMockLimits
 } from './mock-onboarding'
 import { createMockCompanyApi, parseCompanyScenario } from './mock-company'
 import { mockGetOrg, parseOrgScenario, resetMockOrgState } from './mock-org'
 import { MOCK_TEMPLATES, createMockHireApi, parseHireScenario } from './mock-hire'
+import { createMockDepartmentApi, parseDepartmentScenario } from './mock-department'
 import { createMockEmployeeApi, parseEmployeeScenario } from './mock-employee'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
+import { createMockRecurringApi, parseRecurringScenario } from './mock-recurring'
+import { createMockPublicationApi } from './mock-publication'
 import { createMockPolicyApi, parsePolicyScenario } from './mock-policy'
+import { mockProjectTemplateApi } from './mock-project-templates'
+import { createMockUsageApi, parseUsageScenario } from './mock-usage'
 import { createMockDecisionApi, parseDecisionScenario } from './mock-decisions'
 
 /** 브라우저 개발 모드 전용 mock. 동적 import로만 쓰이고 프로덕션에서는 dead code로 제거된다. */
@@ -55,6 +64,12 @@ const mockPolicyApi = createMockPolicyApi(
   }
 )
 
+const mockRecurringApi = createMockRecurringApi(
+  parseRecurringScenario(typeof location === 'undefined' ? '' : location.search)
+)
+
+const mockPublicationApi = createMockPublicationApi()
+
 const mockEmployeeApi = createMockEmployeeApi(
   parseEmployeeScenario(typeof location === 'undefined' ? '' : location.search),
   typeof location === 'undefined' ? 0 : 400,
@@ -62,14 +77,46 @@ const mockEmployeeApi = createMockEmployeeApi(
   MOCK_TEMPLATES
 )
 
+const mockUsageApi = createMockUsageApi(
+  parseUsageScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 300,
+  {
+    get: async () => {
+      const r = await mockGetWeeklyLimits()
+      return r.ok ? r : { ok: false }
+    },
+    seed: seedMockLimits
+  }
+)
+
+const mockCredentialApi = createMockCredentialApi(
+  parseCredentialScenario(typeof location === 'undefined' ? '' : location.search),
+  typeof location === 'undefined' ? 0 : 300
+)
+let mockTheme: ThemePreference = 'system'
+const MOCK_PROFILE: CompanyProfile = {
+  name: 'My Company',
+  vision: 'AI 직원이 함께 일하는 회사를 만든다.',
+  mission: '사람이 방향을 정하고 AI 직원이 실행한다.',
+  principles: '- 마크다운이 원본이다.',
+  revision: 'r1'
+}
+let mockProfile: CompanyProfile = { ...MOCK_PROFILE }
+
 /** 테스트용: 변경된 mock 상태를 초기값으로 되돌린다. */
 export function resetMockApi(): void {
+  mockTheme = 'system'
+  mockProfile = { ...MOCK_PROFILE }
   mockTicketApi.reset()
   mockDecisionApi.reset()
   mockProjectApi.reset()
   mockPolicyApi.reset()
+  mockRecurringApi.reset()
+  mockPublicationApi.reset()
   mockGateApi.reset()
   resetMockOnboarding()
+  mockUsageApi.reset()
+  mockCredentialApi.reset()
   resetMockOrgState()
 }
 
@@ -126,16 +173,39 @@ export const mockApi: WindowApi = {
   ...mockDecisionApi.api,
   ...mockHireApi.api,
   ...mockEmployeeApi.api,
+  ...createMockDepartmentApi(
+    parseDepartmentScenario(typeof location === 'undefined' ? '' : location.search),
+    typeof location === 'undefined' ? 0 : 400,
+    async () => {
+      const r = await mockApi.getOrg()
+      return r.ok ? r.value : null
+    }
+  ),
   ...mockProjectApi.api,
   ...mockPolicyApi.api,
+  ...mockRecurringApi.api,
+  ...mockPublicationApi.api,
+  ...mockProjectTemplateApi,
   detectProviders: mockDetectProviders,
   testProviderConnection: mockTestConnection,
-  // 2단계(T-038 설정 화면)에서 UI와 함께 시나리오를 확장한다. 그 전까지는 저장 없이 기본값만 돌려준다.
-  getProviderSelection: async () => ({
-    ok: true,
-    value: { defaultProvider: 'claude', overrides: {} }
-  }),
-  saveProviderSelection: async (req) => ({ ok: true, value: req }),
+  ...mockUsageApi.api,
   getWeeklyLimits: mockGetWeeklyLimits,
-  saveWeeklyLimits: mockSaveWeeklyLimits
+  saveWeeklyLimits: mockSaveWeeklyLimits,
+  getCompanyProfile: async () => ({ ok: true, value: mockProfile }),
+  saveCompanyProfile: async (req) => {
+    if (req.revision !== mockProfile.revision)
+      return {
+        ok: false,
+        code: 'conflict',
+        message: '다른 곳에서 회사 정보가 바뀌었습니다. 새로 불러오세요.'
+      }
+    mockProfile = { ...req, revision: `r${Number(mockProfile.revision.slice(1)) + 1}` }
+    return { ok: true, value: mockProfile }
+  },
+  ...mockCredentialApi.api,
+  getTheme: async () => ({ ok: true, value: mockTheme }),
+  saveTheme: async (theme) => {
+    mockTheme = theme
+    return { ok: true, value: theme }
+  }
 }
