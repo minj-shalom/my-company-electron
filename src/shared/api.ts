@@ -104,6 +104,17 @@ import type {
   TicketUpdateRequest
 } from './ticket'
 import type { RunEvent, RunStartRequest, RunStartResult } from './run'
+import type {
+  ChatHistory,
+  ChatHrRequestRequest,
+  ChatHrRequestResult,
+  ChatHrStatusList,
+  ChatReferences,
+  ChatSendRequest,
+  ChatSendResult,
+  ChatState,
+  ChatEvent
+} from './chat'
 import type { SchedulerRunNowResult, SchedulerStatus } from './scheduler'
 
 /** main/preload/renderer 공용 `window.api` 계약. 채널을 추가하면 여기와 preload를 함께 갱신한다. */
@@ -338,6 +349,23 @@ export interface WindowApi {
    */
   getSchedulerStatus: () => Promise<ApiResult<SchedulerStatus>>
   runSchedulerNow: () => Promise<ApiResult<SchedulerRunNowResult>>
+  /**
+   * CEO와 COO 대화(T-018). 대화는 회사의 COO 하나와 한다. 기록은 앱 userData에 있고 세션 id는 renderer에 주지 않는다.
+   * `sendChat`: 응답은 `onChatEvent`로 흐른다. 자동 실행 중이면 `{ started: false, reason: 'tick-running' }`으로 보내지 않는다(끝난 뒤 다시 보낸다).
+   * 길이 제한은 shared/chat.ts의 상수. 잘못된 입력은 `invalid-request`.
+   * `requestHrInstruction`: 인사 지시를 요청 파일(지시자 `ceo-via-coo`)로 접수한다. 처리 상태는 `getHrInstructionStatuses`로 조회한다.
+   */
+  sendChat: (req: ChatSendRequest) => Promise<ApiResult<ChatSendResult>>
+  cancelChat: () => Promise<ApiResult<{ cancelled: boolean }>>
+  getChatHistory: () => Promise<ApiResult<ChatHistory>>
+  getChatState: () => Promise<ApiResult<ChatState>>
+  /** 대화 기록과 이어갈 세션을 지운다 (새 대화). 응답 중에는 `conflict`. */
+  resetChat: () => Promise<ApiResult<{ cleared: true }>>
+  /** 대기 중인 결정 카드(최대 20)와 최근 브리핑(최대 5). 항목 선택 시 결재함/보고서 화면으로 이동한다. */
+  getChatReferences: () => Promise<ApiResult<ChatReferences>>
+  requestHrInstruction: (req: ChatHrRequestRequest) => Promise<ApiResult<ChatHrRequestResult>>
+  getHrInstructionStatuses: () => Promise<ApiResult<ChatHrStatusList>>
+  onChatEvent: (listener: (event: ChatEvent) => void) => () => void
   /** run 이벤트 구독. 반환된 함수로 해제한다. */
   onRunEvent: (listener: (event: RunEvent) => void) => () => void
 }
@@ -348,6 +376,15 @@ export const IPC_CHANNELS = {
   runStart: 'run:start',
   runCancel: 'run:cancel',
   runEvent: 'run:event',
+  chatSend: 'chat:send',
+  chatCancel: 'chat:cancel',
+  chatHistory: 'chat:history',
+  chatState: 'chat:state',
+  chatReset: 'chat:reset',
+  chatReferences: 'chat:references',
+  chatHrRequest: 'chat:hr-request',
+  chatHrStatus: 'chat:hr-status',
+  chatEvent: 'chat:event',
   companyCreate: 'company:create',
   companySelectFolder: 'company:select-folder',
   companyOpen: 'company:open',

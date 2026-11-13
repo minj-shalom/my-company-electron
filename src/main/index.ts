@@ -25,6 +25,9 @@ import { companyBoundDeps } from './scheduler/scheduler-wiring'
 import { registerSchedulerHandlers } from './scheduler/scheduler-ipc'
 import { createTickRunner, type TickShared } from './tick/tick-runner'
 import { tickDepsFor } from './tick/tick-wiring'
+import type { ProviderCliId } from '../shared/provider'
+import { createChatService } from './chat/chat-runtime'
+import { broadcastChatEvent, registerChatHandlers } from './chat/chat-ipc'
 import { createAppTray, shouldQuitWhenAllWindowsClosed } from './scheduler/tray'
 
 const RESTORE_TIMEOUT_MS = 5000
@@ -91,7 +94,35 @@ app
     const tickShared: TickShared = { lastLimitCardAt: 0 }
     // 틱 직전 정기 티켓 생성(T-049)의 막힌 점은 이어지는 틱의 브리핑에 한 번 실린다.
     let recurringNotes: string[] = []
+    // CEO 대화(T-018). 응답을 만드는 동안 틱은 시작하지 않고, 틱이 도는 중에는 대화가 잠금 안내를 돌려준다.
+    // COO는 틱의 회사 공통 티켓 실행과 같은 제공자 선택(직원 id `coo`)과 한도 점검을 쓴다.
+    const chatProviderFor = async (): Promise<{ provider: ProviderCliId }> => {
+      const selection = await providerSelectionFor({
+        context: companyContext,
+        providers: providerService
+      }).snapshot()
+      const r = selection.resolve('coo')
+      return { provider: r.ok ? r.provider : 'claude' }
+    }
+    const chat = createChatService({
+      context: companyContext,
+      userDataDir: app.getPath('userData'),
+      isTickRunning: () => scheduler?.getStatus().state === 'running',
+      broadcast: broadcastChatEvent,
+      checkLimit: async () =>
+        usageServiceFor(usageDeps).checkLimit([(await chatProviderFor()).provider]),
+      createAdapter: async (cwd) => {
+        const { provider } = await chatProviderFor()
+        return createProviderAdapter(
+          provider,
+          cwd,
+          usageRecorder(usageDeps, provider, { employee: 'coo' })
+        )
+      }
+    })
+    registerChatHandlers(chat)
     const sched = new Scheduler({
+      isBlocked: () => chat.isBusy(),
       ...companyBoundDeps(companyContext, app.getPath('userData')),
       lastRuns: createLastRunStore(app.getPath('userData')),
       tick: async (ctx) => {

@@ -30,6 +30,8 @@ export interface RunLaunchOptions {
   tools?: RunToolOptions
   /** `tools`와 함께 쓸 수 없다. 경로 제한을 지원하지 않는 제공자(`capabilities.pathScopedWrites`가 false)는 이 옵션으로 시작하지 않는다. */
   hr?: RunHrOptions
+  /** 이전 대화 세션 재개(T-018). main 코드가 보관한 세션 id만 넘긴다. Claude 어댑터만 지원하고 다른 제공자는 무시한다. */
+  resumeSessionId?: string
   /** 실행이 어떤 경로로 끝나든(정상, 취소, 시간 초과, 시작 실패, 요청 검증 실패) 한 번 호출한다. 임시 서버와 파일 정리용. */
   onFinish?: () => void | Promise<void>
 }

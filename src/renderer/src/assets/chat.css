@@ -1,0 +1,26 @@
+/* COO 대화 화면. 색은 tokens.css 변수만 쓴다. */
+.chat { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; height: 100%; }
+.chat__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.chat__hint, .chat__empty, .chat-ref-note { color: var(--text-muted); font-size: var(--fs-2); margin: 0; }
+.chat__lock { margin: 0; padding: var(--space-2) var(--space-3); border: var(--bw) solid var(--warn); background: var(--bg-inset); }
+.chat__log { flex: 1; min-height: 160px; overflow-y: auto; background: var(--bg-inset); border: var(--bw) solid var(--border); padding: var(--space-3); }
+.chat__list, .chat-refs, .chat__hr ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.chat-msg { max-width: 85%; padding: var(--space-2) var(--space-3); background: var(--bg-panel-raised); border: var(--bw) solid var(--border); overflow-wrap: anywhere; }
+.chat-msg[data-role='ceo'] { justify-self: end; border-color: var(--accent); }
+.chat-msg[data-status='failed'] { border-color: var(--bad); }
+.chat-msg__head { display: flex; gap: var(--space-2); align-items: center; font-size: var(--fs-1); color: var(--text-muted); }
+.chat-plain { white-space: pre-wrap; margin: var(--space-1) 0 0; }
+.chat-md p, .chat-md ul { margin: var(--space-1) 0; white-space: pre-wrap; }
+.chat-md ul { padding-left: var(--space-4); list-style: disc; }
+.chat-md pre { overflow-x: auto; background: var(--bg-inset); padding: var(--space-2); font-family: var(--font-code); }
+.chat-md code { font-family: var(--font-code); }
+.chat__hr h3 { margin: 0 0 var(--space-2); font-size: var(--fs-2); }
+.chat__form { display: grid; gap: var(--space-2); }
+.chat__form textarea { width: 100%; resize: vertical; font: inherit; color: var(--text); background: var(--bg-panel); border: var(--bw) solid var(--border-strong); padding: var(--space-2); }
+.chat__form textarea:focus-visible, .chat__log:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.chat__modes { display: flex; gap: var(--space-4); }
+.chat__actions { display: flex; gap: var(--space-2); }
+.chat__form [data-tone='warn'] { color: var(--warn); margin: 0; }
+.chat__form [data-tone='bad'], .chat__form [role='alert'] { color: var(--bad); margin: 0; }
+.chat__form [data-tone='ok'] { color: var(--ok); margin: 0; }
+.chat__modebadge { margin: 0; color: var(--text-muted); font-size: var(--fs-2); }

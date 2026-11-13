@@ -17,6 +17,7 @@ import { createMockDepartmentApi, parseDepartmentScenario } from './mock-departm
 import { createMockEmployeeApi, parseEmployeeScenario } from './mock-employee'
 import { mockCompany, mockOrg } from './mock-data'
 import { createMockTicketApi, parseTicketScenario } from './mock-tickets'
+import { createMockChatApi, parseChatScenario } from './mock-chat'
 import { createMockRunApi, parseRunScenario } from './mock-run'
 import { createMockProjectApi, parseProjectScenario } from './mock-projects'
 import { createMockGateApi, parseGateScenario } from './mock-gate'
@@ -146,6 +147,7 @@ export const mockApi: WindowApi = {
   restoreIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
   acceptIntegrity: async () => ({ ok: true, value: { ok: true, restored: 0 } }),
   ...mockRunApi,
+  ...createMockChatApi(parseChatScenario(typeof location === 'undefined' ? '' : location.search)),
   ...createMockCompanyApi(
     parseCompanyScenario(typeof location === 'undefined' ? '' : location.search)
   ),
