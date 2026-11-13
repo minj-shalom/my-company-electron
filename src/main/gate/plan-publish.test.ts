@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { GateResult } from '../../shared/gate'
 import { fsDraftReader, checkDraftPath, type DraftReader } from './draft-reader'
 import { makeKit, policyState, type Kit } from './gate-test-kit'
 import { createPlanPublish } from './plan-publish'
@@ -32,7 +33,8 @@ async function publishKit(
   k.policy.value = policy
   return k
 }
-const pub = (k: Kit, draft: unknown = 'post.md') => k.svc.call(k.ctx, 'gate_publish', { draft })
+const pub = (k: Kit, draft: unknown = 'post.md'): Promise<GateResult> =>
+  k.svc.call(k.ctx, 'gate_publish', { draft })
 
 describe('gate_publish', () => {
   it('auto publishes through the injected adapter once and audits it', async () => {
