@@ -7,6 +7,7 @@ import { LimitsSection } from './LimitsSection'
 import { PrefsSection } from './PrefsSection'
 import { ProvidersSection } from './ProvidersSection'
 import { ThemeSection } from './ThemeSection'
+import { VisitNotifySection } from './VisitNotifySection'
 import { UsageSection } from './UsageSection'
 import { useSettings } from './use-settings'
 
@@ -69,6 +70,7 @@ export function SettingsView({
             onSaved={reload}
           />
           <ExternalConnectionsSection />
+          <VisitNotifySection />
           <ThemeSection />
         </div>
       )}
