@@ -38,7 +38,14 @@ import type {
   WeeklyLimitsSaveRequest
 } from './provider'
 import type { ApiResult } from './result'
-import type { Ticket, TicketList, TicketMoveRequest, TicketStatus } from './ticket'
+import type {
+  Ticket,
+  TicketCreateRequest,
+  TicketList,
+  TicketMoveRequest,
+  TicketStatus,
+  TicketUpdateRequest
+} from './ticket'
 import type { RunEvent, RunStartRequest, RunStartResult } from './run'
 
 /** main/preload/renderer 공용 `window.api` 계약. 채널을 추가하면 여기와 preload를 함께 갱신한다. */
@@ -74,6 +81,13 @@ export interface WindowApi {
   getTicket: (id: string) => Promise<ApiResult<Ticket>>
   /** 티켓을 다른 상태로 옮긴다 (마크다운 파일 이동 + 상태 줄 갱신). 이미 그 상태면 변경 없이 ok, 대상에 다른 파일이 있으면 `conflict`. */
   moveTicket: (req: TicketMoveRequest) => Promise<ApiResult<Ticket>>
+  /**
+   * 티켓 생성·편집 (T-044, 화면은 2단계). 쓰기는 회사 폴더 `company/tickets/backlog/`에만, 직렬화 큐로 한다.
+   * 검증 규칙은 `TicketCreateRequest`/`TicketUpdateRequest` 주석 참고. 실패 코드: 입력 오류 `invalid-request`, 티켓 없음 `not-found`,
+   * in-progress/done 편집 `forbidden`, 외부 수정·파일명 충돌 `conflict`. 오류 문구는 고정 문구이며 경로를 담지 않는다.
+   */
+  createTicket: (req: TicketCreateRequest) => Promise<ApiResult<Ticket>>
+  updateTicket: (req: TicketUpdateRequest) => Promise<ApiResult<Ticket>>
   /** 읽지 못한 카드(손상, 너무 큼, 중복 id)는 `unreadable`로 알린다. 같은 id가 pending과 done에 있으면 done만 `items`에 둔다. */
   listDecisions: (status?: Decision['status']) => Promise<ApiResult<DecisionList>>
   /**
@@ -155,6 +169,8 @@ export const IPC_CHANNELS = {
   ticketList: 'ticket:list',
   ticketGet: 'ticket:get',
   ticketMove: 'ticket:move',
+  ticketCreate: 'ticket:create',
+  ticketUpdate: 'ticket:update',
   decisionList: 'decision:list',
   decisionResolve: 'decision:resolve',
   employeeListTemplates: 'employee:list-templates',

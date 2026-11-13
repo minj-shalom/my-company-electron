@@ -70,6 +70,9 @@ export const mockApi: WindowApi = {
   getOrg: (...args) =>
     mockGetOrg(parseOrgScenario(typeof location === 'undefined' ? '' : location.search))(...args),
   ...mockTicketApi.api,
+  // 티켓 생성·편집 화면은 T-044 2단계(ui-dev)에서 시나리오 mock으로 바꾼다.
+  createTicket: mockNotImplemented,
+  updateTicket: mockNotImplemented,
   ...mockDecisionApi.api,
   // 직원 변경 화면은 T-039. 그 전까지 채용 계열(템플릿 목록, hr 추가, 첫 채용)만 시나리오 mock이고 나머지 쓰기는 not-implemented다.
   ...mockHireApi.api,

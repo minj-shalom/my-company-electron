@@ -49,23 +49,25 @@ function inProgressSource(fs: SafeFs): InProgressSource {
 
 const services = new WeakMap<SafeFs, ProjectService>()
 
-export function createProjectHandlers(deps: ProjectIpcDeps): ProjectHandlers {
-  // 폴더 선택 승인 목록을 호출 사이에 유지하려고 열린 회사(SafeFs)마다 서비스 하나를 쓴다.
-  const serviceFor = (): ProjectService => {
-    const fs = deps.context.requireOpenCompany().fs
-    let svc = services.get(fs)
-    if (!svc) {
-      const repo = sharedRepository(fs)
-      svc = new ProjectService({
-        fs,
-        exclusive: (task) => repo.runExclusive(task),
-        inProgress: inProgressSource(fs),
-        homeDir: deps.homeDir
-      })
-      services.set(fs, svc)
-    }
-    return svc
+/** 폴더 선택 승인 목록을 호출 사이에 유지하려고 열린 회사(SafeFs)마다 서비스 하나를 쓴다. 티켓 생성(T-044)도 같은 서비스로 프로젝트를 조회한다. */
+export function projectServiceFor(deps: ProjectIpcDeps): ProjectService {
+  const fs = deps.context.requireOpenCompany().fs
+  let svc = services.get(fs)
+  if (!svc) {
+    const repo = sharedRepository(fs)
+    svc = new ProjectService({
+      fs,
+      exclusive: (task) => repo.runExclusive(task),
+      inProgress: inProgressSource(fs),
+      homeDir: deps.homeDir
+    })
+    services.set(fs, svc)
   }
+  return svc
+}
+
+export function createProjectHandlers(deps: ProjectIpcDeps): ProjectHandlers {
+  const serviceFor = (): ProjectService => projectServiceFor(deps)
   const call =
     <A extends unknown[], T>(fn: (svc: ProjectService, ...args: A) => Promise<ApiResult<T>>) =>
     async (...args: A): Promise<ApiResult<T>> => {

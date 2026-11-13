@@ -51,3 +51,53 @@ export interface TicketMoveRequest {
   id: string
   to: TicketStatus
 }
+
+export const MAX_TICKET_TITLE = 100
+export const MAX_TICKET_GOAL = 2000
+export const MAX_TICKET_CRITERIA = 20
+export const MAX_TICKET_CRITERION = 300
+export const MAX_TICKET_DEPARTMENT = 50
+
+/**
+ * `ticket:create` 요청. main이 검증하고 번호는 main이 부여한다 (요청에 id가 있으면 거부).
+ * - title 1~100자(한 줄), goal 최대 2000자(여러 줄 허용, `#`·코드 펜스로 시작하는 줄은 거부), criteria 1~20개·항목당 300자(한 줄)
+ * - 제어 문자·줄 구분자·방향 제어 문자는 제거한 뒤 길이를 잰다
+ * - assignee: 현재 조직의 직원 id, null은 "담당 없음"(정상). 생략하면 프로젝트의 담당 PM(`ready`일 때)이 기본값이고 없으면 담당 없음
+ * - projectId: 보관되지 않은 프로젝트의 id, null/생략은 "회사 공통"
+ * 결과: 만들어진 티켓(`backlog`). 번호 충돌은 main이 1회 재시도한 뒤에도 실패하면 `conflict`.
+ */
+export interface TicketCreateRequest {
+  title: string
+  goal: string
+  criteria: string[]
+  assignee?: string | null
+  department?: string | null
+  projectId?: string | null
+}
+
+/**
+ * `ticket:update` 요청. backlog 티켓만 편집한다 (그 외는 `forbidden`).
+ * - expectedBody: 편집을 시작할 때 받은 `Ticket.body`. 지금 파일과 다르면 `conflict` (외부 수정 보호). 잘린 본문(`bodyTruncated`)은 편집 불가.
+ * - 담당·부서·프로젝트는 생략하지 않고 현재 값을 그대로 보낸다 (null = 없음/회사 공통). 보관된 프로젝트는 기존 값 유지만 허용.
+ * - 제목, 담당, 부서, 프로젝트, `## 목표`, `## 완료 조건`만 바꾸고 나머지 본문(의존, 메모 등)은 보존한다.
+ */
+export interface TicketUpdateRequest {
+  id: string
+  expectedBody: string
+  title: string
+  goal: string
+  criteria: string[]
+  assignee: string | null
+  department: string | null
+  projectId: string | null
+}
+
+/**
+ * 프로젝트를 고를 때 담당 칸에 채울 기본값 (CEO 확정: 그 프로젝트의 담당 PM). `ready`가 아니면 null.
+ * 화면과 main(정기 티켓 T-049 포함)이 같은 규칙을 쓰도록 shared에 둔다.
+ */
+export function defaultTicketAssignee(
+  project: { state: 'ready' | 'pm-required' | 'archived'; pmId: string | null } | null
+): string | null {
+  return project !== null && project.state === 'ready' ? project.pmId : null
+}
