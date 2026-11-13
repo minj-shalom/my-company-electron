@@ -16,6 +16,8 @@ import { Scheduler } from './scheduler/scheduler'
 import { createLastRunStore } from './scheduler/last-run-store'
 import { companyBoundDeps } from './scheduler/scheduler-wiring'
 import { registerSchedulerHandlers } from './scheduler/scheduler-ipc'
+import { createTickRunner, type TickShared } from './tick/tick-runner'
+import { tickDepsFor } from './tick/tick-wiring'
 import { createAppTray, shouldQuitWhenAllWindowsClosed } from './scheduler/tray'
 
 const RESTORE_TIMEOUT_MS = 5000
@@ -66,12 +68,21 @@ app
     // 회사 폴더 설정은 후속 티켓에서 도입한다. 그 전까지는 앱 실행 디렉터리를 cwd로 쓴다.
     runner = new ClaudeAdapter({ cwd: process.cwd() })
     registerRunHandlers(runner)
-    // 스케줄러는 열린 회사 1개만 다룬다. 실제 틱 내용(COO 틱)은 T-016이 tick을 채운다.
-    // 그 전까지는 아무것도 하지 않는 틱이라 푸시·머지·발행 경로가 연결되지 않는다.
+    // 스케줄러는 열린 회사 1개만 다룬다. 틱은 회사에 묶인 입력으로 틱마다 새로 만들고, 한도 카드 쿨다운만 공유한다.
+    // 한도 점검(T-019)이 연결되기 전에는 틱이 COO를 실행하지 않고 브리핑만 남긴다 (가장 보수적).
+    const tickShared: TickShared = { lastLimitCardAt: 0 }
     const sched = new Scheduler({
       ...companyBoundDeps(companyContext, app.getPath('userData')),
       lastRuns: createLastRunStore(app.getPath('userData')),
-      tick: async () => undefined
+      tick: async (ctx) => {
+        if (companyContext.getOpenCompany() === null) return
+        const deps = tickDepsFor({
+          context: companyContext,
+          userDataDir: app.getPath('userData'),
+          createAdapter: (cwd) => new ClaudeAdapter({ cwd })
+        })
+        await createTickRunner(deps, tickShared)(ctx)
+      }
     })
     scheduler = sched
     registerSchedulerHandlers(sched)
