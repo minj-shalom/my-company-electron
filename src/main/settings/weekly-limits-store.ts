@@ -3,6 +3,8 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
   PROVIDER_CLI_IDS,
+  WEEKLY_LIMIT_UNITS,
+  type WeeklyLimitUnit,
   validateWeeklyLimitAmount,
   type ProviderCliId,
   type WeeklyLimit
@@ -22,9 +24,14 @@ export function parseWeeklyLimits(input: unknown): WeeklyLimit[] | null {
     const { provider, amount, unit } = item as Record<string, unknown>
     if (!PROVIDER_CLI_IDS.includes(provider as ProviderCliId)) return null
     const id = provider as ProviderCliId
-    if (seen.has(id) || unit !== 'usd' || !validateWeeklyLimitAmount(amount)) return null
+    if (
+      seen.has(id) ||
+      !WEEKLY_LIMIT_UNITS.includes(unit as WeeklyLimitUnit) ||
+      !validateWeeklyLimitAmount(amount)
+    )
+      return null
     seen.add(id)
-    out.push({ provider: id, amount, unit })
+    out.push({ provider: id, amount, unit: unit as WeeklyLimitUnit })
   }
   return out
 }
