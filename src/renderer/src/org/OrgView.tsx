@@ -6,6 +6,7 @@ import { needsLeaveConfirm } from '../employee/employee-model'
 import { HireEntry } from '../employee/HireEntry'
 import { LeaveDialog, MemberManager } from '../employee/MemberManager'
 import { useNewHire } from '../employee/use-new-hire'
+import { EmployeeProviderField } from '../settings/EmployeeProviderField'
 import { HireBanners } from '../hire/HireBanners'
 import { Button } from '../ui/Button'
 import { Panel } from '../ui/Panel'
@@ -154,6 +155,9 @@ function OrgReady({
                   detail={memberDetail(member, snapshot.agents)}
                   tone={tones.get(member.title) ?? null}
                 />
+                {member.agentId !== null && member.kind === 'agent' && (
+                  <EmployeeProviderField key={member.agentId} employeeId={member.agentId} />
+                )}
                 <MemberManager
                   key={member.title}
                   member={member}
