@@ -110,6 +110,25 @@ export class SafeFs {
     return { files, skipped }
   }
 
+  /** 하위 디렉터리 이름만 돌려준다 (심볼릭 링크 제외). 없으면 빈 목록. */
+  async listDirs(relDir: string): Promise<string[]> {
+    const abs = await this.resolve(relDir)
+    try {
+      const entries = await readdir(abs, { withFileTypes: true })
+      return entries
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort()
+    } catch (e) {
+      if (
+        (e as NodeJS.ErrnoException).code === 'ENOENT' ||
+        (e as NodeJS.ErrnoException).code === 'ENOTDIR'
+      )
+        return []
+      throw e
+    }
+  }
+
   /**
    * 임시 파일에 쓴 뒤 교체한다 (쓰다 만 파일을 남기지 않는다).
    * `overwrite: false`는 hard link(EEXIST)로 원자적 no-clobber를 보장한다 (CLI 에이전트와 동시 쓰기 대비).
