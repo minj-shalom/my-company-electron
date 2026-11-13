@@ -85,7 +85,7 @@ export function AppShell({
   const decisions = useDecisions()
   const tickets = useTickets()
   const runLog = useRunLog()
-  const chat = useChat()
+  const chat = useChat(view === 'chat')
   const projects = useProjects()
   const ks = useKillSwitch()
   const audit = useAuditSummary()

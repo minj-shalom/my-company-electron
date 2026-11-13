@@ -10,7 +10,7 @@ import {
   parseMarkdown,
   validateDraft
 } from './chat-model'
-import type { UseChat } from './use-chat'
+import { loadChatSnapshot, type UseChat } from './use-chat'
 
 const msg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
   id: 'm1',
@@ -120,5 +120,37 @@ describe('chat model', () => {
   it('parses markdown without html', () => {
     const b = parseMarkdown('문단 `코드`\n\n- 하나\n- 둘\n\n```\n<b>x</b>\n```')
     expect(b.map((x) => x.kind)).toEqual(['p', 'ul', 'pre'])
+  })
+})
+
+describe('literal output and failures', () => {
+  it('prints html and javascript links as plain text', () => {
+    const out = html({
+      chat: {
+        ...INITIAL_CHAT,
+        messages: [msg({ text: '<img src=x onerror=alert(1)> [x](javascript:alert(1))' })]
+      }
+    })
+    expect(out).not.toContain('<img')
+    expect(out).not.toContain('<a ')
+    expect(out).not.toContain('href=')
+    expect(out).toContain('&lt;img src=x onerror=alert(1)&gt;')
+    expect(out).toContain('[x](javascript:alert(1))')
+  })
+  it('shows a hint while the coo is answering without a tick lock', () => {
+    const out = html({ chat: { ...INITIAL_CHAT, runningId: 'x' } })
+    expect(out).toContain('COO가 답하는 중이에요')
+  })
+  it('turns IPC rejection or failure into null', async () => {
+    const boom = async (): Promise<never> => {
+      throw new Error('ipc')
+    }
+    expect(await loadChatSnapshot({ getChatHistory: boom, getChatState: boom })).toBeNull()
+    expect(
+      await loadChatSnapshot({
+        getChatHistory: async () => ({ ok: false, code: 'internal', message: 'x' }),
+        getChatState: boom
+      })
+    ).toBeNull()
   })
 })

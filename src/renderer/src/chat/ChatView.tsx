@@ -89,7 +89,11 @@ export function ChatView(props: Props): React.JSX.Element {
     setBusy(true)
     const ok = await props.send(draft, mode)
     setBusy(false)
-    if (ok) setDraft('')
+    if (ok) {
+      setDraft('')
+      // 인사 지시는 한 번 접수하면 일반 메시지로 돌아가 다음 글이 잘못 접수되지 않게 한다.
+      if (mode === 'hr') setMode('message')
+    }
   }
 
   const newChat = (): void => {
@@ -167,6 +171,11 @@ export function ChatView(props: Props): React.JSX.Element {
         )}
         <div ref={logEnd} />
       </div>
+      {running && !tickRunning && (
+        <p className="chat__lock" role="status">
+          COO가 답하는 중이에요. 끝나면 다음 메시지를 보낼 수 있어요.
+        </p>
+      )}
       {hr.items.length > 0 && (
         <section className="chat__hr" aria-label="인사 지시 처리 상태">
           <h3>인사 지시</h3>
@@ -210,6 +219,11 @@ export function ChatView(props: Props): React.JSX.Element {
             </label>
           ))}
         </div>
+        {mode === 'hr' && (
+          <p className="chat__modebadge">
+            <Badge tone="warn">인사 지시 모드</Badge> 보내면 COO가 아닌 인사팀 요청으로 접수돼요.
+          </p>
+        )}
         <label htmlFor={inputId} className="chat__label">
           {mode === 'hr' ? '인사 지시 (예: pm 채용해)' : 'COO에게 보낼 메시지'}
         </label>
